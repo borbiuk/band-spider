@@ -6,3 +6,10 @@
 
 ### band-scraper is a web scraper for [bandcamp](bandcamp.com)
 It is a web scraper that finds albums and tracks that would suit you best based on purchases and preferences of other users on [bandcamp](bandcamp.com)
+
+### TODO:
+
+| Type                          | Description                   | Priority                |
+|:------------------------------|-------------------------------|-------------------------|
+| :wrench: &nbsp; **BUG FIX**   | relation tables contains null | :sound: &nbsp; High     |
+| :joystick: &nbsp; **FEATURE** | scrap account tracks          | :mute: &nbsp; Low       |

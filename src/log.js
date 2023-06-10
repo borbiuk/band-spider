@@ -3,14 +3,14 @@ const log = (...params) => {
 
 	for (let param of params) {
 		if (Array.isArray(param)) {
-			message += '[\n'
+			message += `(${param.length}) [\n`
 			param.forEach(x => {
 				message += `\t${x}\n`
 			});
 			message += ']\n'
 		}
 		else if (typeof param === 'object') {
-			message += JSON.stringify(param) + '\n';
+			message += `${JSON.stringify(param)}\n`;
 		}
 		else {
 			message += param + '\n';
@@ -21,5 +21,5 @@ const log = (...params) => {
 }
 
 module.exports = {
-	log
+	log,
 }

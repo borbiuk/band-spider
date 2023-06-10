@@ -10,7 +10,19 @@ const chunkArray = (array, chunkSize) => {
 	return chunks;
 };
 
+const isAlbum = (url) => url.includes('/album/');
+const isTrack = (url) => url.includes('/track/');
+
+const delay = (time) => {
+	return new Promise(function(resolve) {
+		setTimeout(resolve, time)
+	});
+}
+
 module.exports = {
 	onlyUnique,
-	chunkArray
+	chunkArray,
+	isAlbum,
+	isTrack,
+	delay,
 }

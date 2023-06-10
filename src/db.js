@@ -8,9 +8,8 @@ const getDb = () => {
 
 // Function to create the database tables
 const createTables = () => {
+	const db = getDb();
 	return new Promise((resolve, reject) => {
-		const db = getDb();
-
 		db.serialize(() => {
 			db.run(`
                 CREATE TABLE IF NOT EXISTS Account
@@ -26,67 +25,72 @@ const createTables = () => {
 			`, (err) => {
 				if (err) {
 					reject(err);
-				} else {
+					return;
+				}
+
+				db.run(`
+          CREATE TABLE IF NOT EXISTS Album (
+            Id INTEGER PRIMARY KEY,
+            Url TEXT UNIQUE
+          )
+        `, (err) => {
+					if (err) {
+						reject(err);
+						return;
+					}
+
 					db.run(`
-                        CREATE TABLE IF NOT EXISTS Album
-                        (
-                            Id
-                            INTEGER
-                            PRIMARY
-                            KEY,
-                            Url
-                            TEXT
-                            UNIQUE
-                        )
-					`, (err) => {
+            CREATE TABLE IF NOT EXISTS Track (
+              Id INTEGER PRIMARY KEY,
+              Url TEXT UNIQUE
+            )
+          `, (err) => {
 						if (err) {
 							reject(err);
-						} else {
+							return;
+						}
+
+						db.run(`
+              CREATE TABLE IF NOT EXISTS AlbumToAccount (
+                AlbumId INTEGER,
+                AccountId INTEGER,
+                FOREIGN KEY (AlbumId) REFERENCES Album(Id),
+                FOREIGN KEY (AccountId) REFERENCES Account(Id),
+                PRIMARY KEY (AlbumId, AccountId)
+              )
+            `, (err) => {
+							if (err) {
+								reject(err);
+								return;
+							}
+
 							db.run(`
-                                CREATE TABLE IF NOT EXISTS AlbumToAccount
-                                (
-                                    AlbumId
-                                    INTEGER,
-                                    AccountId
-                                    INTEGER,
-                                    FOREIGN
-                                    KEY
-                                (
-                                    AlbumId
-                                ) REFERENCES Album
-                                (
-                                    Id
-                                ),
-                                    FOREIGN KEY
-                                (
-                                    AccountId
-                                ) REFERENCES Account
-                                (
-                                    Id
-                                ),
-                                    PRIMARY KEY
-                                (
-                                    AlbumId,
-                                    AccountId
-                                )
-                                    )
-							`, (err) => {
+                CREATE TABLE IF NOT EXISTS TrackToAccount (
+                  TrackId INTEGER,
+                  AccountId INTEGER,
+                  FOREIGN KEY (TrackId) REFERENCES Track(Id),
+                  FOREIGN KEY (AccountId) REFERENCES Account(Id),
+                  PRIMARY KEY (TrackId, AccountId)
+                )
+              `, (err) => {
 								if (err) {
 									reject(err);
-								} else {
-									resolve();
+									return;
 								}
+
+								resolve();
 							});
-						}
+						});
 					});
-				}
+				});
 			});
 		});
-	});
+	})
+		.finally(() => {
+			db.close();
+		});
 };
 
-
-// Function to insert an account URL into the database
 const insertAccount = (url) => {
 	const db = getDb();
 
@@ -95,7 +99,6 @@ const insertAccount = (url) => {
 	db.close();
 };
 
-// Function to insert an album URL into the database
 const insertAlbum = (url) => {
 	const db = getDb();
 
@@ -104,7 +107,14 @@ const insertAlbum = (url) => {
 	db.close();
 };
 
-// Function to insert a relationship between an album and an account into the database
+const insertTrack = (url) => {
+	const db = getDb();
+
+	db.run('INSERT OR IGNORE INTO Track (Url) VALUES (?)', url);
+
+	db.close();
+};
+
 const insertAlbumToAccount = (albumId, accountId) => {
 	return new Promise((resolve, reject) => {
 		const db = getDb();
@@ -117,6 +127,43 @@ const insertAlbumToAccount = (albumId, accountId) => {
 				} else {
 					log(`Relationship already exists between AlbumId: ${albumId} and AccountId: ${accountId}`);
 					resolve();
+				}
+			}
+		});
+		db.close();
+	});
+};
+
+const insertTrackToAccount = (trackId, accountId) => {
+	return new Promise((resolve, reject) => {
+		const db = getDb();
+		db.run('INSERT OR IGNORE INTO TrackToAccount (TrackId, AccountId) VALUES (?, ?)', trackId, accountId, function (err) {
+			if (err) {
+				reject(err);
+			} else {
+				if (this.changes > 0) {
+					resolve();
+				} else {
+					log(`Relationship already exists between TrackId: ${trackId} and AccountId: ${accountId}`);
+					resolve();
+				}
+			}
+		});
+		db.close();
+	});
+};
+
+const getAccountId = (accountUrl) => {
+	return new Promise((resolve, reject) => {
+		const db = getDb();
+		db.get('SELECT Id FROM Account WHERE Url = ?', accountUrl, (err, row) => {
+			if (err) {
+				reject(err);
+			} else {
+				if (row) {
+					resolve(row.Id);
+				} else {
+					resolve(null);
 				}
 			}
 		});
@@ -142,11 +189,10 @@ const getAlbumId = (albumUrl) => {
 	});
 };
 
-// Function to retrieve the account ID from the database
-const getAccountId = (accountUrl) => {
+const getTrackId = (trackUrl) => {
 	return new Promise((resolve, reject) => {
 		const db = getDb();
-		db.get('SELECT Id FROM Account WHERE Url = ?', accountUrl, (err, row) => {
+		db.get('SELECT Id FROM Track WHERE Url = ?', trackUrl, (err, row) => {
 			if (err) {
 				reject(err);
 			} else {
@@ -162,10 +208,13 @@ const getAccountId = (accountUrl) => {
 };
 
 module.exports = {
-	getAlbumId,
-	getAccountId,
 	createTables,
+	getAccountId,
+	getAlbumId,
+	getTrackId,
 	insertAccount,
 	insertAlbum,
 	insertAlbumToAccount,
+	insertTrack,
+	insertTrackToAccount,
 };

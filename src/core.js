@@ -1,27 +1,33 @@
 const puppeteer = require('puppeteer');
-const {log} = require("./log");
+const {log} = require('./log');
+const {delay} = require("./utils");
 
 // Click the "Load More" button until all values are loaded
-const loadAllAlbumBuyers = async (page) => {
+const loadAllAccounts = async (page) => {
 	let loadMoreButton;
-	while (true) {
+	let retry = 0;
+	while (retry < 3) {
+		if (retry !== 0) {
+			await delay(2_000);
+		}
+
 		loadMoreButton = await page.$('.more-thumbs');
 		if (!loadMoreButton) {
-			break;
+			retry++;
+			continue;
 		}
 
 		try {
 			await loadMoreButton.click();
-			log('button clicked: ' + page.url());
-			await page.waitForTimeout(3_000); // Adjust the timeout as needed
+			log(`"Load more..." button clicked: ${page.url()}`);
 		} catch {
-			break;
+			retry++;
 		}
 	}
 };
 
 // Scrape hrefs from <a class="fan pic"></a> elements
-const getAllAlbumBuyers = async (page) => {
+const getAccounts = async (page) => {
 	const hrefs = [];
 
 	const fanPics = await page.$$('a.fan.pic');
@@ -34,22 +40,22 @@ const getAllAlbumBuyers = async (page) => {
 	return hrefs;
 }
 
-const scrapePage = async (albumUrl) => {
+const scrapeAlbumOrTrackAccounts = async (trackOrAlbumUrl) => {
 	const browser = await puppeteer.launch();
 	const page = await browser.newPage();
-	await page.goto(albumUrl);
+	await page.goto(trackOrAlbumUrl);
 
 	log('Album opened: ' + page.url());
 
-	await loadAllAlbumBuyers(page);
-	const hrefs = await getAllAlbumBuyers(page);
+	await loadAllAccounts(page);
+	const accountUrls = await getAccounts(page);
 
 	await browser.close();
 
-	log('Albums founded: ' + page.url() + '\n' + JSON.stringify(hrefs));
-	return hrefs;
+	log('Albums founded: ' + page.url(), accountUrls);
+	return accountUrls;
 };
 
 module.exports = {
-	scrapePage,
+	scrapeAlbumOrTrackAccounts,
 };

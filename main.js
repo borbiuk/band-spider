@@ -1,53 +1,88 @@
-const {createTables, insertAccount, insertAlbum, insertAlbumToAccount, getAlbumId, getAccountId} = require('./src/db');
-const {scrapePage} = require('./src/core');
+const {
+	createTables,
+	insertAccount,
+	insertAlbum,
+	insertAlbumToAccount,
+	getAlbumId,
+	getAccountId,
+	insertTrackToAccount,
+	getTrackId,
+	insertTrack
+} = require('./src/db');
+const {scrapeAlbumOrTrackAccounts} = require('./src/core');
 const {readUrlsFromFile} = require('./src/file');
-const {chunkArray} = require("./src/utils");
+const {chunkArray, isAlbum, isTrack} = require('./src/utils');
+const {log} = require('./src/log');
 
 const main = async () => {
-	// Read URLs from file
-	const urls = readUrlsFromFile('source.txt');
+	console.time('all');
 
-	console.log(`[${urls.length}] urls will be processed`)
+	// Read URLs from file
+	const sourceTracksOrAlbums = readUrlsFromFile('source.txt');
+
+	log(`[${sourceTracksOrAlbums.length}] urls will be processed`)
 
 	// Chunk URLs into smaller batches
-	const chunkSize = 8;
-	const urlChunks = chunkArray(urls, chunkSize);
+	const chunkSize = 20;
+	const trackOrAlbumsChunks = chunkArray(sourceTracksOrAlbums, chunkSize);
 
-	console.log(`Chunk size: ${chunkSize}`);
-	console.log(`Chunks count: ${urlChunks.length}`);
+	log(`Chunk size: ${chunkSize}`);
+	log(`Chunks count: ${trackOrAlbumsChunks.length}`);
 
 	// Create database tables
 	await createTables();
 
 	// Process URL chunks in parallel
-	for (const chunk of urlChunks) {
-		const scrapePromises = chunk.map(async (url, index) => {
-			console.log(`Chunk [${index}] started`);
-			console.time(`chunkTimer${index}`);
+	for (let i = 0; i < trackOrAlbumsChunks.length; i++) {
+		log(`Chunk [${i}] started`);
+		console.time(`chunkTimer-${i}`);
 
-			const albumUrl = url.split('?')[0];
-
-			// Save URL to Account table if it does not exist
-			await insertAccount(url);
+		const trackOrAlbumsChunk = trackOrAlbumsChunks[i];
+		const scrapePromises = trackOrAlbumsChunk.map(async (trackOrAlbum, index) => {
+			const isAlbumThenTrack = isAlbum(trackOrAlbum) ? true : isTrack(trackOrAlbum) ? false : null;
+			if (isAlbumThenTrack === null) {
+				return;
+			}
 
 			// Scrape the page and get hrefs
-			const hrefs = await scrapePage(albumUrl);
+			const accounts = await scrapeAlbumOrTrackAccounts(trackOrAlbum);
 
-			// Save hrefs to Album table
-			await Promise.all(hrefs.map((href) => insertAlbum(href)));
+			// Save URL to Account table
+			accounts.forEach((account) => insertAccount(account));
 
-			// Save AlbumToAccount relationships
-			const albumId = await getAlbumId(albumUrl);
-			const accountId = await getAccountId(url);
-			await insertAlbumToAccount(albumId, accountId);
+			if (isAlbumThenTrack) {
+				// Save URL to Album table
+				insertAlbum(trackOrAlbum);
 
-			console.log(`Chunk [${index}] finished`);
-			console.timeEnd(`chunkTimer${index}`);
+				// Save Accounts related to Album
+				const albumId = await getAlbumId(trackOrAlbum);
+				await Promise.all(accounts.map(async x => {
+					const accountId = await getAccountId(x);
+					await insertAlbumToAccount(albumId, accountId);
+				}));
+			} else {
+				// Save URL to Track table
+				insertTrack(trackOrAlbum);
+
+				// Save Accounts related to Track
+				const trackId = await getTrackId(trackOrAlbum);
+				await Promise.all(accounts.map(async x => {
+					const accountId = await getAccountId(x);
+					await insertTrackToAccount(trackId, accountId);
+				}));
+			}
 		});
 
 		await Promise.all(scrapePromises);
+
+		log(`Chunk [${i}] finished`);
+		console.timeEnd(`chunkTimer-${i}`);
 	}
+
+	console.timeEnd('all');
 };
 
 process.setMaxListeners(0); // Set maximum listeners to unlimited
+
 main();
+
