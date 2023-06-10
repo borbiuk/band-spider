@@ -1,11 +1,11 @@
 const fs = require('fs');
-const {onlyUnique} = require("./utils");
+const utils = require("../common/utils");
 
 const readUrlsFromFile = (filename) => {
 	const fileContent = fs.readFileSync(filename, 'utf8');
 	return fileContent.split('\n')
 		.filter(Boolean)
-		.filter(onlyUnique);
+		.filter((value, index, array) => utils.onlyUnique(value, index, array));
 };
 
 module.exports = {

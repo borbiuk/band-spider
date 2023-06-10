@@ -1,4 +1,4 @@
-const {log} = require("./log");
+const {log} = require("../common/log");
 const sqlite3 = require('sqlite3').verbose();
 
 // Function to get the database connection
