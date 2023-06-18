@@ -3,18 +3,14 @@ const utils = require("../common/utils");
 const db = require("../data/db");
 const file = require("../data/file");
 const {log} = require("../common/log");
-
-const isAlbum = (url) => url.includes('/album/');
-const isTrack = (url) => url.includes('/track/');
+const {delay, isAlbum, isTrack, originalUrl} = require("../common/utils");
 
 // Click the "Load More" button until all values are loaded
 const loadAllAccounts = async (page) => {
 	let loadMoreButton;
 	let retry = 0;
 	while (retry < 3) {
-		if (retry !== 0) {
-			await utils.delay(2_000);
-		}
+		await utils.delay(250);
 
 		loadMoreButton = await page.$('.more-thumbs');
 		if (!loadMoreButton) {
@@ -35,11 +31,15 @@ const loadAllAccounts = async (page) => {
 const getAccounts = async (page) => {
 	const hrefs = [];
 
+	await utils.delay(250);
+	
 	const fanPics = await page.$$('a.fan.pic');
 	for (const fanPic of fanPics) {
 		const href = await fanPic.getProperty('href');
 		const hrefValue = await href.jsonValue();
-		hrefs.push(hrefValue.split('?')[0]);
+		hrefs.push(
+			originalUrl(hrefValue)
+		);
 	}
 
 	return hrefs;
@@ -62,15 +62,19 @@ const scrapeAlbumOrTrackAccounts = async (trackOrAlbumUrl) => {
 };
 
 const accountScraper = async () => {
-	console.time('all');
+	console.time('accountScraper');
 
 	// Read URLs from file
-	const sourceTracksOrAlbums = file.readUrlsFromFile('source.txt');
+	// const sourceTracksOrAlbums = file.readUrlsFromFile('source.txt');
+	const albums = await db.getAllAlbums();
+	const tracks = await db.getAllTracks();
+
+	const sourceTracksOrAlbums = [...albums, ...tracks].map(({Url}) => Url);
 
 	log(`[${sourceTracksOrAlbums.length}] urls will be processed`)
 
 	// Chunk URLs into smaller batches
-	const chunkSize = 20;
+	const chunkSize = 100;
 	const trackOrAlbumsChunks = utils.chunkArray(sourceTracksOrAlbums, chunkSize);
 
 	log(`Chunk size: ${chunkSize}`);
@@ -95,7 +99,7 @@ const accountScraper = async () => {
 			const accounts = await scrapeAlbumOrTrackAccounts(trackOrAlbum);
 
 			// Save URL to Account table
-			accounts.forEach((account) => insertAccount(account));
+			accounts.forEach((account) => db.insertAccount(account));
 
 			if (isAlbumThenTrack) {
 				// Save URL to Album table
@@ -126,7 +130,7 @@ const accountScraper = async () => {
 		console.timeEnd(`chunkTimer-${i}`);
 	}
 
-	console.timeEnd('all');
+	console.timeEnd('accountScraper');
 };
 
 module.exports = {

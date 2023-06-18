@@ -1,9 +1,11 @@
 const {accountScraper} = require("./src/core/account-scraper");
+const {tracksScraper} = require("./src/core/tracks-scraper");
 
 const main = async () => {
 	console.time('main');
 
-	await accountScraper();
+	//await accountScraper();
+	await tracksScraper();
 
 	console.timeEnd('main');
 };

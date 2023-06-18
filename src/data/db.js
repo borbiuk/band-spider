@@ -207,10 +207,64 @@ const getTrackId = (trackUrl) => {
 	});
 };
 
+const getAllAccounts = () => {
+	const db = getDb();
+
+	return new Promise((resolve, reject) => {
+		db.all('SELECT * FROM Account', (err, rows) => {
+			if (err) {
+				reject(err);
+			} else {
+				resolve(rows);
+			}
+		});
+	})
+		.finally(() => {
+			db.close();
+		});
+};
+
+const getAllAlbums = () => {
+	const db = getDb();
+
+	return new Promise((resolve, reject) => {
+		db.all('SELECT * FROM Album', (err, rows) => {
+			if (err) {
+				reject(err);
+			} else {
+				resolve(rows);
+			}
+		});
+	})
+		.finally(() => {
+			db.close();
+		});
+};
+
+const getAllTracks = () => {
+	const db = getDb();
+
+	return new Promise((resolve, reject) => {
+		db.all('SELECT * FROM Track', (err, rows) => {
+			if (err) {
+				reject(err);
+			} else {
+				resolve(rows);
+			}
+		});
+	})
+		.finally(() => {
+			db.close();
+		});
+};
+
 module.exports = {
 	createTables,
 	getAccountId,
 	getAlbumId,
+	getAllAccounts,
+	getAllAlbums,
+	getAllTracks,
 	getTrackId,
 	insertAccount,
 	insertAlbum,

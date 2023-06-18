@@ -12,6 +12,7 @@
   "license": "ISC",
   "dependencies": {
     "puppeteer": "^20.5.0",
+    "puppeteer-autoscroll-down": "^1.1.2",
     "sqlite3": "^5.1.6"
   }
 }
