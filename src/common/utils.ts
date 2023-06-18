@@ -1,8 +1,8 @@
-const onlyUnique = (value, index, array) => {
+export const onlyUnique = (value, index, array) => {
 	return array.indexOf(value) === index;
 }
 
-const chunkArray = (array, chunkSize) => {
+export const chunkArray = (array, chunkSize) => {
 	const chunks = [];
 	for (let i = 0; i < array.length; i += chunkSize) {
 		chunks.push(array.slice(i, i + chunkSize));
@@ -10,7 +10,7 @@ const chunkArray = (array, chunkSize) => {
 	return chunks;
 };
 
-const createChunks = (array, chunkCount) => {
+export const createChunks = (array, chunkCount) => {
 	const length = array.length;
 	const chunkSize = Math.ceil(length / chunkCount);
 	const chunks = [];
@@ -23,22 +23,12 @@ const createChunks = (array, chunkCount) => {
 	return chunks;
 }
 
-const delay = (time) => {
+export const delay = (time) => {
 	return new Promise(function (resolve) {
 		setTimeout(resolve, time)
 	});
 }
 
-const isAlbum = (url) => url.includes('/album/');
-const isTrack = (url) => url.includes('/track/');
-const originalUrl = (url) => url.split('?')[0];
-
-module.exports = {
-	chunkArray,
-	createChunks,
-	delay,
-	onlyUnique,
-	isAlbum,
-	isTrack,
-	originalUrl
-}
+export const isAlbum = (url) => url.includes('/album/');
+export const isTrack = (url) => url.includes('/track/');
+export const originalUrl = (url) => url.split('?')[0];

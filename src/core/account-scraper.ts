@@ -1,16 +1,25 @@
-const puppeteer = require('puppeteer');
-const utils = require("../common/utils");
-const db = require("../data/db");
-const file = require("../data/file");
-const {log} = require("../common/log");
-const {delay, isAlbum, isTrack, originalUrl} = require("../common/utils");
-
 // Click the "Load More" button until all values are loaded
+import puppeteer from 'puppeteer';
+import { log } from '../common/log';
+import { chunkArray, createChunks, delay, isAlbum, isTrack, originalUrl } from '../common/utils';
+import {
+	createTables,
+	getAccountId, getAlbumId,
+	getAllAlbums,
+	getAllTracks,
+	getTrackId,
+	insertAccount, insertAlbum,
+	insertAlbumToAccount,
+	insertTrack,
+	insertTrackToAccount
+} from '../data/db';
+import { readUrlsFromFile } from '../data/file';
+
 const loadAllAccounts = async (page) => {
 	let loadMoreButton;
 	let retry = 0;
 	while (retry < 3) {
-		await utils.delay(250);
+		await delay(250);
 
 		loadMoreButton = await page.$('.more-thumbs');
 		if (!loadMoreButton) {
@@ -31,7 +40,7 @@ const loadAllAccounts = async (page) => {
 const getAccounts = async (page) => {
 	const hrefs = [];
 
-	await utils.delay(250);
+	await delay(250);
 	
 	const fanPics = await page.$$('a.fan.pic');
 	for (const fanPic of fanPics) {
@@ -65,23 +74,23 @@ const accountScraper = async () => {
 	console.time('accountScraper');
 
 	// Read URLs from file
-	// const sourceTracksOrAlbums = file.readUrlsFromFile('source.txt');
-	const albums = await db.getAllAlbums();
-	const tracks = await db.getAllTracks();
-
-	const sourceTracksOrAlbums = [...albums, ...tracks].map(({Url}) => Url);
+	const sourceTracksOrAlbums = readUrlsFromFile('source.txt');
+	// const albums = await getAllAlbums();
+	// const tracks = await getAllTracks();
+	//
+	// const sourceTracksOrAlbums = [...albums, ...tracks].map(({url}) => url);
 
 	log(`[${sourceTracksOrAlbums.length}] urls will be processed`)
 
 	// Chunk URLs into smaller batches
-	const chunkSize = 100;
-	const trackOrAlbumsChunks = utils.chunkArray(sourceTracksOrAlbums, chunkSize);
+	const chunkSize = 1;
+	const trackOrAlbumsChunks = chunkArray(sourceTracksOrAlbums, chunkSize);
 
 	log(`Chunk size: ${chunkSize}`);
 	log(`Chunks count: ${trackOrAlbumsChunks.length}`);
 
 	// Create database tables
-	await db.createTables();
+	await createTables();
 
 	// Process URL chunks in parallel
 	for (let i = 0; i < trackOrAlbumsChunks.length; i++) {
@@ -99,27 +108,27 @@ const accountScraper = async () => {
 			const accounts = await scrapeAlbumOrTrackAccounts(trackOrAlbum);
 
 			// Save URL to Account table
-			accounts.forEach((account) => db.insertAccount(account));
+			accounts.forEach((account) => insertAccount(account));
 
 			if (isAlbumThenTrack) {
 				// Save URL to Album table
-				db.insertAlbum(trackOrAlbum);
+				insertAlbum(trackOrAlbum);
 
 				// Save Accounts related to Album
-				const albumId = await db.getAlbumId(trackOrAlbum);
+				const albumId = await getAlbumId(trackOrAlbum);
 				await Promise.all(accounts.map(async x => {
-					const accountId = await db.getAccountId(x);
-					await db.insertAlbumToAccount(albumId, accountId);
+					const accountId = await getAccountId(x);
+					await insertAlbumToAccount(albumId, accountId);
 				}));
 			} else {
 				// Save URL to Track table
-				db.insertTrack(trackOrAlbum);
+				insertTrack(trackOrAlbum);
 
 				// Save Accounts related to Track
-				const trackId = await db.getTrackId(trackOrAlbum);
+				const trackId = await getTrackId(trackOrAlbum);
 				await Promise.all(accounts.map(async x => {
-					const accountId = await db.getAccountId(x);
-					await db.insertTrackToAccount(trackId, accountId);
+					const accountId = await getAccountId(x);
+					await insertTrackToAccount(trackId, accountId);
 				}));
 			}
 		});

@@ -1,4 +1,8 @@
-const {log} = require("../common/log");
+import { log } from '../common/log';
+import { Account } from '../models/account';
+import { Album } from '../models/album';
+import { Track } from '../models/track';
+
 const sqlite3 = require('sqlite3').verbose();
 
 // Function to get the database connection
@@ -7,18 +11,18 @@ const getDb = () => {
 };
 
 // Function to create the database tables
-const createTables = () => {
+export const createTables = (): Promise<void> => {
 	const db = getDb();
-	return new Promise((resolve, reject) => {
+	return new Promise<void>((resolve, reject) => {
 		db.serialize(() => {
 			db.run(`
                 CREATE TABLE IF NOT EXISTS Account
                 (
-                    Id
+                    id
                     INTEGER
                     PRIMARY
                     KEY,
-                    Url
+                    url
                     TEXT
                     UNIQUE
                 )
@@ -30,7 +34,7 @@ const createTables = () => {
 
 				db.run(`
           CREATE TABLE IF NOT EXISTS Album (
-            Id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             Url TEXT UNIQUE
           )
         `, (err) => {
@@ -41,7 +45,7 @@ const createTables = () => {
 
 					db.run(`
             CREATE TABLE IF NOT EXISTS Track (
-              Id INTEGER PRIMARY KEY,
+              id INTEGER PRIMARY KEY,
               Url TEXT UNIQUE
             )
           `, (err) => {
@@ -52,11 +56,11 @@ const createTables = () => {
 
 						db.run(`
               CREATE TABLE IF NOT EXISTS AlbumToAccount (
-                AlbumId INTEGER,
-                AccountId INTEGER,
-                FOREIGN KEY (AlbumId) REFERENCES Album(Id),
-                FOREIGN KEY (AccountId) REFERENCES Account(Id),
-                PRIMARY KEY (AlbumId, AccountId)
+                albumId INTEGER,
+                accountId INTEGER,
+                FOREIGN KEY (albumId) REFERENCES Album(id),
+                FOREIGN KEY (accountId) REFERENCES Account(id),
+                PRIMARY KEY (albumId, accountId)
               )
             `, (err) => {
 							if (err) {
@@ -66,11 +70,11 @@ const createTables = () => {
 
 							db.run(`
                 CREATE TABLE IF NOT EXISTS TrackToAccount (
-                  TrackId INTEGER,
-                  AccountId INTEGER,
-                  FOREIGN KEY (TrackId) REFERENCES Track(Id),
-                  FOREIGN KEY (AccountId) REFERENCES Account(Id),
-                  PRIMARY KEY (TrackId, AccountId)
+                  trackId INTEGER,
+                  accountId INTEGER,
+                  FOREIGN KEY (trackId) REFERENCES Track(id),
+                  FOREIGN KEY (accountId) REFERENCES Account(id),
+                  PRIMARY KEY (trackId, accountId)
                 )
               `, (err) => {
 								if (err) {
@@ -78,7 +82,7 @@ const createTables = () => {
 									return;
 								}
 
-								resolve();
+								resolve(null);
 							});
 						});
 					});
@@ -91,7 +95,7 @@ const createTables = () => {
 		});
 };
 
-const insertAccount = (url) => {
+export const insertAccount = (url): void => {
 	const db = getDb();
 
 	db.run('INSERT OR IGNORE INTO Account (Url) VALUES (?)', url);
@@ -99,7 +103,7 @@ const insertAccount = (url) => {
 	db.close();
 };
 
-const insertAlbum = (url) => {
+export const insertAlbum = (url): void => {
 	const db = getDb();
 
 	db.run('INSERT OR IGNORE INTO Album (Url) VALUES (?)', url);
@@ -107,7 +111,7 @@ const insertAlbum = (url) => {
 	db.close();
 };
 
-const insertTrack = (url) => {
+export const insertTrack = (url): void => {
 	const db = getDb();
 
 	db.run('INSERT OR IGNORE INTO Track (Url) VALUES (?)', url);
@@ -115,17 +119,17 @@ const insertTrack = (url) => {
 	db.close();
 };
 
-const insertAlbumToAccount = (albumId, accountId) => {
-	return new Promise((resolve, reject) => {
+export const insertAlbumToAccount = (albumId, accountId): Promise<void> => {
+	return new Promise<void>((resolve, reject) => {
 		const db = getDb();
-		db.run('INSERT OR IGNORE INTO AlbumToAccount (AlbumId, AccountId) VALUES (?, ?)', albumId, accountId, function (err) {
+		db.run('INSERT OR IGNORE INTO AlbumToAccount (albumId, accountId) VALUES (?, ?)', albumId, accountId, function (err) {
 			if (err) {
 				reject(err);
 			} else {
 				if (this.changes > 0) {
 					resolve();
 				} else {
-					log(`Relationship already exists between AlbumId: ${albumId} and AccountId: ${accountId}`);
+					log(`Relationship already exists between albumId: ${albumId} and accountId: ${accountId}`);
 					resolve();
 				}
 			}
@@ -134,17 +138,17 @@ const insertAlbumToAccount = (albumId, accountId) => {
 	});
 };
 
-const insertTrackToAccount = (trackId, accountId) => {
-	return new Promise((resolve, reject) => {
+export const insertTrackToAccount = (trackId, accountId): Promise<void> => {
+	return new Promise<void>((resolve, reject) => {
 		const db = getDb();
-		db.run('INSERT OR IGNORE INTO TrackToAccount (TrackId, AccountId) VALUES (?, ?)', trackId, accountId, function (err) {
+		db.run('INSERT OR IGNORE INTO TrackToAccount (trackId, accountId) VALUES (?, ?)', trackId, accountId, function (err) {
 			if (err) {
 				reject(err);
 			} else {
 				if (this.changes > 0) {
 					resolve();
 				} else {
-					log(`Relationship already exists between TrackId: ${trackId} and AccountId: ${accountId}`);
+					log(`Relationship already exists between trackId: ${trackId} and accountId: ${accountId}`);
 					resolve();
 				}
 			}
@@ -153,15 +157,15 @@ const insertTrackToAccount = (trackId, accountId) => {
 	});
 };
 
-const getAccountId = (accountUrl) => {
-	return new Promise((resolve, reject) => {
+export const getAccountId = (accountUrl): Promise<number> => {
+	return new Promise<number>((resolve, reject) => {
 		const db = getDb();
-		db.get('SELECT Id FROM Account WHERE Url = ?', accountUrl, (err, row) => {
+		db.get('SELECT id FROM Account WHERE Url = ?', accountUrl, (err, row) => {
 			if (err) {
 				reject(err);
 			} else {
 				if (row) {
-					resolve(row.Id);
+					resolve(row.id);
 				} else {
 					resolve(null);
 				}
@@ -171,15 +175,15 @@ const getAccountId = (accountUrl) => {
 	});
 };
 
-const getAlbumId = (albumUrl) => {
-	return new Promise((resolve, reject) => {
+export const getAlbumId = (albumUrl): Promise<number> => {
+	return new Promise<number>((resolve, reject) => {
 		const db = getDb();
-		db.get('SELECT Id FROM Album WHERE Url = ?', albumUrl, (err, row) => {
+		db.get('SELECT id FROM Album WHERE Url = ?', albumUrl, (err, row) => {
 			if (err) {
 				reject(err);
 			} else {
 				if (row) {
-					resolve(row.Id);
+					resolve(row.id);
 				} else {
 					resolve(null);
 				}
@@ -189,15 +193,15 @@ const getAlbumId = (albumUrl) => {
 	});
 };
 
-const getTrackId = (trackUrl) => {
-	return new Promise((resolve, reject) => {
+export const getTrackId = (trackUrl): Promise<number> => {
+	return new Promise<number>((resolve, reject) => {
 		const db = getDb();
-		db.get('SELECT Id FROM Track WHERE Url = ?', trackUrl, (err, row) => {
+		db.get('SELECT id FROM Track WHERE Url = ?', trackUrl, (err, row) => {
 			if (err) {
 				reject(err);
 			} else {
 				if (row) {
-					resolve(row.Id);
+					resolve(row.id);
 				} else {
 					resolve(null);
 				}
@@ -207,10 +211,10 @@ const getTrackId = (trackUrl) => {
 	});
 };
 
-const getAllAccounts = () => {
+export const getAllAccounts = (): Promise<Account[]> => {
 	const db = getDb();
 
-	return new Promise((resolve, reject) => {
+	return new Promise<Account[]>((resolve, reject) => {
 		db.all('SELECT * FROM Account', (err, rows) => {
 			if (err) {
 				reject(err);
@@ -224,10 +228,10 @@ const getAllAccounts = () => {
 		});
 };
 
-const getAllAlbums = () => {
+export const getAllAlbums = (): Promise<Album[]> => {
 	const db = getDb();
 
-	return new Promise((resolve, reject) => {
+	return new Promise<Album[]>((resolve, reject) => {
 		db.all('SELECT * FROM Album', (err, rows) => {
 			if (err) {
 				reject(err);
@@ -241,10 +245,10 @@ const getAllAlbums = () => {
 		});
 };
 
-const getAllTracks = () => {
+export const getAllTracks = (): Promise<Track[]> => {
 	const db = getDb();
 
-	return new Promise((resolve, reject) => {
+	return new Promise<Track[]>((resolve, reject) => {
 		db.all('SELECT * FROM Track', (err, rows) => {
 			if (err) {
 				reject(err);
@@ -256,19 +260,4 @@ const getAllTracks = () => {
 		.finally(() => {
 			db.close();
 		});
-};
-
-module.exports = {
-	createTables,
-	getAccountId,
-	getAlbumId,
-	getAllAccounts,
-	getAllAlbums,
-	getAllTracks,
-	getTrackId,
-	insertAccount,
-	insertAlbum,
-	insertAlbumToAccount,
-	insertTrack,
-	insertTrackToAccount,
 };

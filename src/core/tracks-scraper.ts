@@ -1,17 +1,15 @@
-const {getAllAccounts, insertAlbum, insertAlbumToAccount, insertTrack, insertTrackToAccount} = require("../data/db");
-const puppeteer = require("puppeteer");
-const utils = require("../common/utils");
-const {log} = require("../common/log");
-const {isAlbum, isTrack, originalUrl, chunkArray, createChunks, delay} = require("../common/utils");
-const db = require("../data/db");
-const {scrollPageToBottom} = require('puppeteer-autoscroll-down')
+import puppeteer from 'puppeteer';
+import { scrollPageToBottom } from 'puppeteer-autoscroll-down';
+import { log } from '../common/log';
+import { createChunks, delay, isAlbum, isTrack, originalUrl } from '../common/utils';
+import { getAlbumId, getAllAccounts, getTrackId, insertAlbum, insertAlbumToAccount, insertTrack, insertTrackToAccount } from '../data/db';
 
 const loadAllTracks = async (page) => {
 	// Click the '.show-more' button until it no longer exists
 	let showMoreButton = await page.$('.show-more');
 	let retry = 0;
 	while (retry < 3) {
-		await utils.delay(250);
+		await delay(250);
 
 		showMoreButton = await page.$('.show-more');
 		if (!showMoreButton) {
@@ -31,7 +29,7 @@ const loadAllTracks = async (page) => {
 		}
 	}
 
-	await utils.delay(150);
+	await delay(150);
 
 	let isLoadingAvailable = true // Your condition-to-stop
 
@@ -41,7 +39,7 @@ const loadAllTracks = async (page) => {
 
 	while (isLoadingAvailable && r < 3) {
 		try {
-			await scrollPageToBottom(page, {size: 5_000});
+			await scrollPageToBottom(page, { size: 5_000 });
 			log(`Scrolled [${retry}]: ${page.url()}`);
 
 			await page.waitForResponse(
@@ -69,18 +67,13 @@ const openPage = async (url) => {
 	const browser = await puppeteer.launch();
 	const page = await browser.newPage();
 	await page.goto(url);
-	return {page, browser};
+	return { page, browser };
 };
 
 const readHrefs = async (page, selector) => {
-	const hrefs = await page.$$eval(selector, (elements) =>
+	return await page.$$eval(selector, (elements) =>
 		elements.map((element) => element.href)
 	);
-
-	const elements = await page.$$eval(selector, (elements) =>
-		elements
-	);
-	return hrefs;
 };
 
 const tracksScraper = async () => {
@@ -89,7 +82,7 @@ const tracksScraper = async () => {
 	const allAccounts = await getAllAccounts();
 	let chunks = createChunks(
 		allAccounts
-			.filter(({Id, Url}) => Id !== null && Id !== undefined && Url !== null && Url !== undefined),
+			.filter(({ id, url }) => id !== null && id !== undefined && url !== null && url !== undefined),
 		60
 	);
 
@@ -109,7 +102,7 @@ const tracksScraper = async () => {
 			// 	height: 800
 			// });
 
-			const {Id, Url} = accounts[i];
+			const { Id, Url } = accounts[i];
 
 			await page.goto(Url);
 
@@ -124,7 +117,7 @@ const tracksScraper = async () => {
 				}
 			}
 
-			await utils.delay(150);
+			await delay(150);
 			let hrefs = await readHrefs(page, '.item-link');
 			hrefs = hrefs.filter(x => x !== null && x !== undefined && x !== '');
 
@@ -134,18 +127,19 @@ const tracksScraper = async () => {
 				if (isAlbum(url)) {
 					insertAlbum(url);
 					await delay(500);
-					const albumId = await db.getAlbumId(url);
+					const albumId = await getAlbumId(url);
 					await insertAlbumToAccount(albumId, Id);
 					await delay(500);
-					
-				} else if (isTrack(url)) {
+
+				}
+				else if (isTrack(url)) {
 					insertTrack(url);
 					await delay(500);
-					
-					const trackId = await db.getTrackId(url);
+
+					const trackId = await getTrackId(url);
 					await insertTrackToAccount(trackId, Id);
 					await delay(500);
-					
+
 				}
 			}
 

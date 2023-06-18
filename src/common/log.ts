@@ -1,4 +1,4 @@
-const log = (...params) => {
+export const log = (...params) => {
 	let message = '';
 
 	for (let param of params) {
@@ -18,8 +18,4 @@ const log = (...params) => {
 	}
 
 	console.log('%cINFO: %c' + message, 'background: #202124; color: #1BA0C3', 'background: #202124; color: white');
-}
-
-module.exports = {
-	log,
 }
