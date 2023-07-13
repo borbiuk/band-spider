@@ -1,161 +1,272 @@
 import puppeteer from 'puppeteer';
 import { scrollPageToBottom } from 'puppeteer-autoscroll-down';
-import { log } from '../common/log';
-import { createChunks, delay, isAlbum, isTrack, originalUrl } from '../common/utils';
+import { logger } from '../common/logger';
+import { delay, divideArray, isAlbum, isEmptyString, isNullOrUndefined, isTrack, originalUrl } from '../common/utils';
 import { getAlbumId, getAllAccounts, getTrackId, insertAlbum, insertAlbumToAccount, insertTrack, insertTrackToAccount } from '../data/db';
+import { Account } from '../models/account';
 
-const loadAllTracks = async (page) => {
-	// Click the '.show-more' button until it no longer exists
-	let showMoreButton = await page.$('.show-more');
-	let retry = 0;
-	while (retry < 3) {
-		await delay(250);
+/*
+	#############################################################################
+	#									DATA:									#
+	#############################################################################
+*/
 
-		showMoreButton = await page.$('.show-more');
-		if (!showMoreButton) {
-			retry++;
-			log(`"Load more..." button not exists [${retry}]: ${page.url()}`);
+const saveRelations = async (
+	urlId: { [url: string]: number },
+	accountUrls: { id: number, url: string }[]
+): Promise<number> => {
+	let relationsCount = 0;
+	for (let i = 0; i < accountUrls.length; i++) {
+		const { id, url } = accountUrls[i];
+
+		let fn: (id1, id2,) => Promise<boolean>;
+		if (isAlbum(url)) {
+			fn = insertAlbumToAccount;
+		}
+		else if (isTrack(url)) {
+			fn = insertTrackToAccount;
+		}
+		else {
 			continue;
 		}
 
-		try {
-			await showMoreButton.click();
-			log(`"Load more..." button clicked [${retry}]: ${page.url()}`);
-			break;
-		} catch (e) {
-			log(`"Load more..." button error [${retry}]: ${page.url()}`);
-			retry++;
-			log(e);
+		const urlsId = urlId[url];
+		const added = await fn(urlsId, id);
+		if (added) {
+			relationsCount++;
 		}
 	}
+	return relationsCount;
+}
 
-	await delay(150);
+const saveUrls = async (
+	accountUrls: { id: number, url: string }[]
+) => {
+	const urlId: { [url: string]: number } = {};
+	let savedUrlsCount = 0;
+	for (let i = 0; i < accountUrls.length; i++) {
+		const { url } = accountUrls[i];
 
-	let isLoadingAvailable = true // Your condition-to-stop
+		if (isAlbum(url)) {
+			let albumId = await getAlbumId(url) ?? await insertAlbum(url);
+			if (albumId) {
+				urlId[url] = albumId;
+				savedUrlsCount++;
+				continue;
+			}
+		}
 
-	let container = await page.$('.fan-container');
-	let height = (await container.boundingBox()).height;
-	let r = 0;
+		if (isTrack(url)) {
+			let trackId = await getTrackId(url) ?? await insertTrack(url);
+			if (trackId) {
+				urlId[url] = trackId;
+				savedUrlsCount++;
+				continue;
+			}
+		}
 
-	while (isLoadingAvailable && r < 3) {
+		logger.warning('undefined', url);
+	}
+	return { urlId, savedUrlsCount };
+}
+
+/*
+	#############################################################################
+	#							WEB PAGE FUNCTIONS:								#
+	#############################################################################
+*/
+
+const LOAD_MORE_TRACKS_RETRY: number = 10;
+const LOAD_MORE_TRACKS_DELAY: number = 2_000;
+const LOAD_MORE_TRACKS_CONTAINER: string = '.show-more';
+const showAllAlbumsOrTracks = async (page): Promise<void> => {
+	let showMoreButton;
+	let retry = 0;
+
+	while (retry < LOAD_MORE_TRACKS_RETRY) {
+		if (retry > 0) {
+			await delay(LOAD_MORE_TRACKS_DELAY);
+		}
+
 		try {
-			await scrollPageToBottom(page, { size: 5_000 });
-			log(`Scrolled [${retry}]: ${page.url()}`);
+			showMoreButton = await page.$(LOAD_MORE_TRACKS_CONTAINER);
+			await showMoreButton.click();
 
+			logger.info(`"button clicked [${retry}]`, page.url());
+			break;
+		}
+		catch (e) {
+			logger.error(e, `"Load more..." button error [${retry}]`, page.url());
+			retry++;
+		}
+	}
+}
+
+const SCROLL_TO_END_RETRY: number = 5;
+const SCROLL_SIZE: number = 5_000;
+const SCROLL_REQUEST_ENDPOINT: string = 'collection_items';
+const SCROLL_REQUEST_TIMEOUT: number = 1_000;
+const SCROLL_CONTAINER: string = '.fan-container';
+const scrollToEnd = async (page): Promise<void> => {
+	let isLoadingAvailable = true;
+
+	let container = await page.$(SCROLL_CONTAINER);
+	let height = (await container.boundingBox()).height;
+	let retry = 0;
+
+	while (isLoadingAvailable && retry < SCROLL_TO_END_RETRY) {
+		try {
+			// scroll page
+			await scrollPageToBottom(page, { size: SCROLL_SIZE });
+			logger.info(`Scrolled [${retry}]`, page.url());
+
+			// wait response
 			await page.waitForResponse(
-				response => response.url().includes('collection_items') && response.status() === 200,
+				response => response.url().includes(SCROLL_REQUEST_ENDPOINT) && response.status() === 200,
 				{
-					timeout: 500
+					timeout: SCROLL_REQUEST_TIMEOUT
 				}
 			)
 
-			let currentHeight = (await container.boundingBox()).height;
-			isLoadingAvailable = currentHeight !== height; // Update your condition-to-stop value
-			height = currentHeight;
+			// check is more scroll needed
+			const currentHeight = (await container.boundingBox()).height;
+			isLoadingAvailable = currentHeight !== height;
 			if (!isLoadingAvailable) {
-				log(`Scrolled to end [${retry}]: ${page.url()}`);
+				logger.info(`Scrolled to end [${retry}]:`, page.url());
+				return;
 			}
+
+			height = currentHeight;
 		} catch (e) {
-			r++;
-			log(e);
-			log(`Scroll error [${retry}]: ${page.url()}`);
+			retry++;
+			logger.error(e, `Scroll error [${retry}]`, page.url());
 		}
+	}
+}
+
+const loadAllTracks = async (page): Promise<void> => {
+	try {
+		await showAllAlbumsOrTracks(page);
+		await scrollToEnd(page);
+	} catch (e) {
+		logger.error(e, 'loadAllTracks', page.url());
 	}
 };
 
-const openPage = async (url) => {
-	const browser = await puppeteer.launch();
-	const page = await browser.newPage();
-	await page.goto(url);
-	return { page, browser };
-};
-
-const readHrefs = async (page, selector) => {
+const readHrefs = async (page, selector): Promise<string[]> => {
 	return await page.$$eval(selector, (elements) =>
 		elements.map((element) => element.href)
 	);
 };
 
-const tracksScraper = async () => {
-	console.time('tracksScraper');
+/*
+	#############################################################################
+	#								CORE FUNCTIONS:								#
+	#############################################################################
+*/
 
-	const allAccounts = await getAllAccounts();
-	let chunks = createChunks(
-		allAccounts
-			.filter(({ id, url }) => id !== null && id !== undefined && url !== null && url !== undefined),
-		60
-	);
+const ALBUM_OR_TRACK_URL_CONTAINER: string = '.item-link';
+const scrapChunk = async (browser, accounts: Account[]) => {
+	const chunkResult: {
+		id: number,
+		urls: string[]
+	}[] = [];
 
-	chunks = chunks.filter((x, i) => i > chunks.length / 2);
+	const page = await browser.newPage();
+	for (let i = 0; i < accounts.length; i++) {
+		const { id, url } = accounts[i];
 
-	const scrapePromises = chunks.map(async (accounts, chunkIndex) => {
-		console.time(`tracksScraper-[${chunkIndex}]`);
+		// open account page
+		await page.goto(url);
 
-		const browser = await puppeteer.launch({
-			// headless: false
+		// show all album or tracks
+		await loadAllTracks(page);
+
+		// read all album or tracks urls
+		const urls = (await readHrefs(page, ALBUM_OR_TRACK_URL_CONTAINER))
+			.filter(x => !isEmptyString(x))
+			.map(x => originalUrl(x));
+
+		chunkResult.push({
+			id,
+			urls
 		});
+	}
+	await page.close();
 
-		for (let i = 0; i < accounts.length; i++) {
-			const page = await browser.newPage();
-			// await page.setViewport({
-			// 	width: 1200,
-			// 	height: 800
-			// });
-
-			const { Id, Url } = accounts[i];
-
-			await page.goto(Url);
-
-			let r = 0;
-			while (r < 3) {
-				try {
-					await loadAllTracks(page);
-					break;
-				} catch (e) {
-					r++;
-					log(e);
-				}
-			}
-
-			await delay(150);
-			let hrefs = await readHrefs(page, '.item-link');
-			hrefs = hrefs.filter(x => x !== null && x !== undefined && x !== '');
-
-			log(`Tracks founded [${chunkIndex}, ${i}]: ${hrefs.length}`);
-			for (const href of hrefs) {
-				const url = originalUrl(href);
-				if (isAlbum(url)) {
-					insertAlbum(url);
-					await delay(500);
-					const albumId = await getAlbumId(url);
-					await insertAlbumToAccount(albumId, Id);
-					await delay(500);
-
-				}
-				else if (isTrack(url)) {
-					insertTrack(url);
-					await delay(500);
-
-					const trackId = await getTrackId(url);
-					await insertTrackToAccount(trackId, Id);
-					await delay(500);
-
-				}
-			}
-
-			await page.close();
-		}
-
-		await browser.close();
-
-		console.timeEnd(`tracksScraper-[${chunkIndex}]`);
-	});
-
-	await Promise.all(scrapePromises);
-
-	console.timeEnd('tracksScraper');
+	return chunkResult;
 }
 
-module.exports = {
-	tracksScraper,
+const scrapChunks = async (chunk: Account[][], chunkIndex: number) => {
+	console.time(`scrapChunks-${chunkIndex}`);
+
+	// create browser
+	const browser = await puppeteer.launch();
+
+	// create parallel tasks
+	const promises = chunk.map(async (accounts, index) => {
+		try {
+			return await scrapChunk(browser, accounts)
+		} catch (e) {
+			logger.error(e, `CHUNK [${chunkIndex}, ${index}] SCRAPING FAILED !`);
+			return []
+		}
+	});
+
+	// wait all tasks
+	const result: {
+		id: number,
+		urls: string[]
+	}[] = (await Promise.all(promises)).flat();
+
+	// close browser
+	await browser.close();
+
+	const accountUrls = result
+		.flat()
+		.map(({ id, urls }) =>
+			urls.map(url => ({
+				id,
+				url
+			})))
+		.flat();
+
+	//save tracks
+	const { urlId, savedUrlsCount } = await saveUrls(accountUrls);
+
+	//save relations
+	const relationsCount = await saveRelations(urlId, accountUrls);
+
+	logger.info(savedUrlsCount, relationsCount);
+	console.timeEnd(`scrapChunks-${chunkIndex}`);
+}
+
+const URLS_ON_PAGE = 1;
+const PAGES_COUNT = 40;
+export const tracksScraper = async () => {
+	console.time('tracksScraper');
+
+	// read URLs
+	const allAccounts = (await getAllAccounts())
+		.filter(({ id, url }) =>
+			!isNullOrUndefined(id) && !isNullOrUndefined(url)
+		);
+
+	// create chunks
+	const chunks: Account[][][] = divideArray(
+		divideArray(allAccounts, URLS_ON_PAGE),
+		PAGES_COUNT
+	);
+
+	for (let i = 0; i < chunks.length; i++) {
+		const chunk = chunks[i];
+		try {
+			await scrapChunks(chunk, i);
+			logger.success(`[${i}] CHUNK PROCESSED SUCCESSFULLY ! (${chunk.flat().length} accounts)`);
+		} catch (e) {
+			logger.error(e, `[${i}] CHUNK PROCESSING FAILED !`);
+		}
+	}
+
+	console.timeEnd('tracksScraper');
 }

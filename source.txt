@@ -21,7 +21,9 @@ https://casavoyager.net/album/transhuman-x-press
 https://censormusic.bandcamp.com/album/stars-wobble-ep
 https://childrenatplay.bandcamp.com/album/dark-world
 https://clergyrecords.bandcamp.com/album/-
+https://craigieknowes.com/album/microtransitions-ep
 https://craigieknowes.com/album/surreality-ep
+https://craigieknowes.com/track/electromagnetic-field
 https://crazedbehaviour.bandcamp.com/album/counter-attack
 https://dame-music.bandcamp.com/album/the-melting-point-vol-4
 https://dancefloorimpactresearch.bandcamp.com/album/lick-it-ep
@@ -29,11 +31,16 @@ https://dasbootyrave.bandcamp.com/album/some-trax-2
 https://discosmarcianos.bandcamp.com/album/acid-lakes-ep
 https://discotecarecords.bandcamp.com/album/acapulco
 https://discotecarecords.bandcamp.com/album/von-cristeuf-vol-1
+https://discotecarecords.bandcamp.com/album/von-cristeuf-vol-1
+https://discotecarecords.bandcamp.com/track/hit
+https://discotecarecords.bandcamp.com/track/mappa-mundi
+https://discotecarecords.bandcamp.com/track/world-of-content-5am-rework
 https://divineaudio.bandcamp.com/album/all-the-way-down-ep
 https://djfingerblast.bandcamp.com/album/business-trance
 https://djswagger.bandcamp.com/album/many-me-ep
 https://doctorjeep.bandcamp.com/album/natural-selection-ep-plush-recordings
 https://doctorjeep.bandcamp.com/album/push-the-body
+https://eckk.bandcamp.com/track/disko-stick
 https://eckk.bandcamp.com/track/spice-girls-wannabe-eckk-edit
 https://eradys-records.bandcamp.com/album/erva004-five-years-anniversary
 https://everyoneonacid.bandcamp.com/album/everyone-on-acid-volume-7
@@ -55,6 +62,8 @@ https://humanmovement.bandcamp.com/track/simon-says
 https://imogenlondon.bandcamp.com/album/tunnel-vision
 https://in2stellar.bandcamp.com/album/in2stellar-ep
 https://innerground.bandcamp.com/album/dj-marky-da-latin-thing-cant-hide-inn113-free-download
+https://interplanetarycriminal.bandcamp.com/album/coming-on-strong-ep
+https://interplanetarycriminal.bandcamp.com/track/gangster-time
 https://jadelabel.bandcamp.com/album/for-faith-jad007
 https://jenseninterceptor.bandcamp.com/album/master-control-program-ep
 https://jerryhorny.bandcamp.com/album/amor-satyr-vuk-vuk-ep
@@ -101,7 +110,10 @@ https://randmuzikrecordings.bandcamp.com/album/rm120181-water
 https://redrummm.bandcamp.com/track/dj-sacred-1312-re-drum-remix
 https://rigsonrigson.bandcamp.com/album/all-these-yrs-1991
 https://riposte404.bandcamp.com/album/black-mamba-vol-1
+https://rumorsrecords.bandcamp.com/album/the-girl-next-door
 https://sakerecords.bandcamp.com/track/fallin
+https://sartana.bandcamp.com/album/pandemic-club-tools-vol-2
+https://sartana.bandcamp.com/track/why-in-her-mouth
 https://sebtaylor.bandcamp.com/album/the-early-years-1995-2000
 https://selected-berlin.bandcamp.com/album/360-pop-shove-it
 https://selected-berlin.bandcamp.com/album/open-air-romance
@@ -114,6 +126,8 @@ https://slash-none.bandcamp.com/album/aid-kit-in-a-space-sp
 https://sloucho.bandcamp.com/track/memory-walk
 https://sonicrain.bandcamp.com/track/slated
 https://soulmasstransitsystem.bandcamp.com/album/gsc001
+https://soulmasstransitsystem.bandcamp.com/track/come-together-as-one
+https://soulmasstransitsystem.bandcamp.com/track/i-get-high
 https://spinningaround.bandcamp.com/album/my-selfish-year
 https://spinningaround.bandcamp.com/album/spinning-around-2021-alumni-va-compilation
 https://stevebug.bandcamp.com/album/the-haze-feat-ali-love

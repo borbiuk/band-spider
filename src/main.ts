@@ -1,15 +1,14 @@
+import { accountScraper } from './core/account-scraper';
+import { tracksScraper } from './core/tracks-scraper';
 import { createTables } from './data/db';
-
-const {accountScraper} = require("./core/account-scraper");
-const {tracksScraper} = require("./core/tracks-scraper");
 
 const main = async () => {
 	console.time('main');
 
 	await createTables();
 
-	await accountScraper();
-	//await tracksScraper();
+	//await accountScraper(true);
+	await tracksScraper();
 
 	console.timeEnd('main');
 };

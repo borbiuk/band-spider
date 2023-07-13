@@ -12,7 +12,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "puppeteer": "^20.5.0",
+    "node-color-log": "^10.0.2",
+    "puppeteer": "^20.8.2",
     "puppeteer-autoscroll-down": "^1.1.2",
     "sqlite3": "^5.1.6"
   }

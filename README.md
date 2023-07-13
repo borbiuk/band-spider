@@ -9,7 +9,12 @@ It is a web scraper that finds albums and tracks that would suit you best based 
 
 ### TODO:
 
-| Type                          | Description                   | Priority                |
-|:------------------------------|-------------------------------|-------------------------|
-| :wrench: &nbsp; **BUG FIX**   | relation tables contains null | :sound: &nbsp; High     |
-| :joystick: &nbsp; **FEATURE** | scrap account tracks          | :mute: &nbsp; Low       |
+| Type                          | Description                   | Status             |
+|:------------------------------|-------------------------------|--------------------|
+| :joystick: &nbsp; **FEATURE** | Skip existed relations        | :zap:              |
+| :wrench: &nbsp; **BUG FIX**   | Handle 429 HTTP response      | :zap:              |
+| :joystick: &nbsp; **FEATURE** | Add album to track relation   | :zap:              |
+| :joystick: &nbsp; **FEATURE** | Add release date              | :zap:              |
+| :joystick: &nbsp; **FEATURE** | Add level of relation         | :zap:              |
+| :wrench: &nbsp; **BUG FIX**   | relation tables contains null | :white_check_mark: |
+| :joystick: &nbsp; **FEATURE** | scrap account tracks          | :white_check_mark: |
