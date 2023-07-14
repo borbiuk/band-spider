@@ -1,5 +1,5 @@
-import { accountScraper } from './core/account-scraper';
-import { tracksScraper } from './core/tracks-scraper';
+import { urlsScraper } from './core/urls-scraper';
+import { accountsScraper } from './core/accounts-scraper';
 import { createTables } from './data/db';
 
 const main = async () => {
@@ -7,8 +7,14 @@ const main = async () => {
 
 	await createTables();
 
-	//await accountScraper(true);
-	await tracksScraper();
+	const args = process.argv.slice(2);
+	if (args.includes('urls')) {
+		const fromFile = args.includes('from-file');
+		await urlsScraper(fromFile);
+	}
+	else if (args.includes('accounts')) {
+		await accountsScraper();
+	}
 
 	console.timeEnd('main');
 };

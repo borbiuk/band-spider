@@ -1,20 +1,20 @@
 {
-  "name": "band-spider",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "account-scrapper": "node main.js",
-    "ts": "npx ts-node ./src/main.ts"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "node-color-log": "^10.0.2",
-    "puppeteer": "^20.8.2",
-    "puppeteer-autoscroll-down": "^1.1.2",
-    "sqlite3": "^5.1.6"
-  }
+	"name": "band-spider",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"urls": "npx ts-node ./src/main.ts accounts",
+		"urls:from-file": "npx ts-node ./src/main.ts accounts from-file",
+		"accounts": "npx ts-node ./src/main.ts urls"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"node-color-log": "^10.0.2",
+		"puppeteer": "^20.8.2",
+		"puppeteer-autoscroll-down": "^1.1.2",
+		"sqlite3": "^5.1.6"
+	}
 }

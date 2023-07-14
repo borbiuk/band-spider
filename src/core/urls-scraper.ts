@@ -256,7 +256,7 @@ const scrapChunks = async (chunks: string[][], chunkIndex: number): Promise<void
 
 const URLS_ON_PAGE: number = 1;
 const PAGES_COUNT: number = 40;
-export const accountScraper = async (fromFile: boolean = true): Promise<void> => {
+export const urlsScraper = async (fromFile: boolean = true): Promise<void> => {
 	console.time('accountScraper');
 
 	// read URLs

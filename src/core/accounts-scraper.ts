@@ -243,7 +243,7 @@ const scrapChunks = async (chunk: Account[][], chunkIndex: number) => {
 
 const URLS_ON_PAGE = 1;
 const PAGES_COUNT = 40;
-export const tracksScraper = async () => {
+export const accountsScraper = async () => {
 	console.time('tracksScraper');
 
 	// read URLs
