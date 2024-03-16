@@ -4,6 +4,7 @@ import { logger } from '../common/logger';
 import { delay, divideArray, isAlbum, isEmptyString, isNullOrUndefined, isTrack, originalUrl } from '../common/utils';
 import { getAlbumId, getAllAccounts, getTrackId, insertAlbum, insertAlbumToAccount, insertTrack, insertTrackToAccount } from '../data/db';
 import { Account } from '../models/account';
+import { AccountScrapResult } from '../models/url-scrap-result';
 
 /*
 	#############################################################################
@@ -166,11 +167,8 @@ const readHrefs = async (page, selector): Promise<string[]> => {
 */
 
 const ALBUM_OR_TRACK_URL_CONTAINER: string = '.item-link';
-const scrapChunk = async (browser, accounts: Account[]) => {
-	const chunkResult: {
-		id: number,
-		urls: string[]
-	}[] = [];
+const scrapChunk = async (browser, accounts: Account[]): Promise<AccountScrapResult[]> => {
+	const chunkResult: AccountScrapResult[] = [];
 
 	const page = await browser.newPage();
 	for (let i = 0; i < accounts.length; i++) {
@@ -214,10 +212,7 @@ const scrapChunks = async (chunk: Account[][], chunkIndex: number) => {
 	});
 
 	// wait all tasks
-	const result: {
-		id: number,
-		urls: string[]
-	}[] = (await Promise.all(promises)).flat();
+	const result: AccountScrapResult[] = (await Promise.all(promises)).flat();
 
 	// close browser
 	await browser.close();

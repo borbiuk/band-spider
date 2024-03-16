@@ -18,13 +18,8 @@ export const createTables = (): Promise<void> => {
 			db.run(`
                 CREATE TABLE IF NOT EXISTS Account
                 (
-                    id
-                    INTEGER
-                    PRIMARY
-                    KEY,
-                    url
-                    TEXT
-                    UNIQUE
+                    id INTEGER PRIMARY KEY,
+                    url TEXT UNIQUE
                 )
 			`, (err) => {
 				if (err) {
@@ -95,10 +90,10 @@ export const createTables = (): Promise<void> => {
 		});
 };
 
-export const insertAccount = (url): Promise<number> => {
+export const insertAccount = (url: string): Promise<number> => {
 	return new Promise<number>((resolve, reject) => {
 		const db = getDb();
-		db.run('INSERT OR IGNORE INTO Account (url) VALUES (?)', url,function (error) {
+		db.run('INSERT OR IGNORE INTO Account (url) VALUES (?)', url, function (error) {
 			if (error) {
 				reject(error);
 			} else {
@@ -110,10 +105,10 @@ export const insertAccount = (url): Promise<number> => {
 	});
 };
 
-export const insertAlbum = (url): Promise<number> => {
+export const insertAlbum = (url: string): Promise<number> => {
 	return new Promise<number>((resolve, reject) => {
 		const db = getDb();
-		db.run('INSERT OR IGNORE INTO Album (url) VALUES (?)', url,function (error) {
+		db.run('INSERT OR IGNORE INTO Album (url) VALUES (?)', url, function (error) {
 			if (error) {
 				reject(error);
 			} else {
@@ -125,10 +120,10 @@ export const insertAlbum = (url): Promise<number> => {
 	});
 };
 
-export const insertTrack = (url): Promise<number> => {
+export const insertTrack = (url: string): Promise<number> => {
 	return new Promise<number>((resolve, reject) => {
 		const db = getDb();
-		db.run('INSERT OR IGNORE INTO Track (url) VALUES (?)', url,function (error) {
+		db.run('INSERT OR IGNORE INTO Track (url) VALUES (?)', url, function (error) {
 			if (error) {
 				reject(error);
 			} else {
@@ -140,7 +135,7 @@ export const insertTrack = (url): Promise<number> => {
 	});
 };
 
-export const insertAlbumToAccount = (albumId, accountId): Promise<boolean> => {
+export const insertAlbumToAccount = (albumId: number, accountId: number): Promise<boolean> => {
 	return new Promise<boolean>((resolve, reject) => {
 		const db = getDb();
 		db.run('INSERT OR IGNORE INTO AlbumToAccount (albumId, accountId) VALUES (?, ?)', albumId, accountId, function (err) {
@@ -159,7 +154,7 @@ export const insertAlbumToAccount = (albumId, accountId): Promise<boolean> => {
 	});
 };
 
-export const insertTrackToAccount = (trackId, accountId): Promise<boolean> => {
+export const insertTrackToAccount = (trackId: number, accountId: number): Promise<boolean> => {
 	return new Promise<boolean>((resolve, reject) => {
 		const db = getDb();
 		db.run('INSERT OR IGNORE INTO TrackToAccount (trackId, accountId) VALUES (?, ?)', trackId, accountId, function (err) {
@@ -196,7 +191,7 @@ export const getAccountId = (accountUrl): Promise<number> => {
 	});
 };
 
-export const getAlbumId = (albumUrl): Promise<number> => {
+export const getAlbumId = (albumUrl: string): Promise<number> => {
 	return new Promise<number>((resolve, reject) => {
 		const db = getDb();
 		db.get('SELECT id FROM Album WHERE url = ?', albumUrl, (err, row) => {
@@ -214,7 +209,7 @@ export const getAlbumId = (albumUrl): Promise<number> => {
 	});
 };
 
-export const getTrackId = (trackUrl): Promise<number> => {
+export const getTrackId = (trackUrl: string): Promise<number> => {
 	return new Promise<number>((resolve, reject) => {
 		const db = getDb();
 		db.get('SELECT id FROM Track WHERE url = ?', trackUrl, (err, row) => {

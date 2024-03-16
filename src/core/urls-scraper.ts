@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer';
 import { logger } from '../common/logger';
-import { delay, divideArray, isAlbum, isNullOrUndefined, isTrack, onlyUnique, originalUrl } from '../common/utils';
+import { delay, divideArray, isAlbum, isNullOrUndefined, isTrack, onlyUniqueScrapResult, originalUrl } from '../common/utils';
 import {
 	getAccountId,
 	getAlbumId,
@@ -14,6 +14,8 @@ import {
 	insertTrackToAccount
 } from '../data/db';
 import { readUrlsFromFile } from '../data/file';
+import { Item } from '../models/base/item';
+import { UrlScrapResult } from '../models/url-scrap-result';
 
 /*
 	#############################################################################
@@ -21,22 +23,21 @@ import { readUrlsFromFile } from '../data/file';
 	#############################################################################
 */
 
-const readUrlsFromDb = async (): Promise<string[]> => {
+const readUrlsFromDb = async (): Promise<Item[]> => {
 	const albums = await getAllAlbums();
 	const tracks = await getAllTracks();
 	return [...albums, ...tracks]
-		.map(({ url }) => url)
 		.filter(x => !isNullOrUndefined(x));
 }
 
 const saveRelations = async (
-	res: { url: string; accountUrls: string[] }[],
+	res: UrlScrapResult[],
 	urlId: { [url: string]: number },
 	accountId: { [url: string]: number }
 ): Promise<number> => {
 	let relationsCount = 0;
 	for (let i = 0; i < res.length; i++) {
-		const { url, accountUrls } = res[i];
+		const { url, urls } = res[i];
 
 		let fn: (id: number, accountId: number) => Promise<boolean>;
 		if (isAlbum(url)) {
@@ -50,8 +51,8 @@ const saveRelations = async (
 		}
 
 		const id = urlId[url];
-		for (let j = 0; j < accountUrls.length; j++) {
-			const accountUrl = accountUrls[j];
+		for (let j = 0; j < urls.length; j++) {
+			const accountUrl = urls[j];
 			const accId = accountId[accountUrl];
 			const added = await fn(id, accId);
 			if (added) {
@@ -63,59 +64,57 @@ const saveRelations = async (
 }
 
 const saveAccounts = async (
-	res: { url: string; accountUrls: string[] }[]
+	res: UrlScrapResult[]
 ) => {
 	const accountId: { [url: string]: number } = {};
-	const uniqueAccounts = res
-		.map(x => x.accountUrls)
-		.flat()
-		.filter(onlyUnique);
+	const uniqueAccounts = res.filter(onlyUniqueScrapResult);
 	let savedAccountsCount = 0;
-	for (let i = 0; i < uniqueAccounts.length; i++) {
-		const url = uniqueAccounts[i];
+	for (let a of uniqueAccounts){
+		for (let b of a.urls) {
+			let id = (await getAccountId(b)) ?? (await insertAccount(b));
+			if (id) {
+				accountId[b] = id;
+				savedAccountsCount++;
+				continue;
+			}
 
-		let id = (await getAccountId(url)) ?? (await insertAccount(url));
-		if (id) {
-			accountId[url] = id;
-			savedAccountsCount++;
-			continue;
+			logger.warning('undefined', b);
 		}
-
-		logger.warning('undefined', url);
 	}
+
 	return { accountId, savedAccountsCount };
 }
 
 const saveUrls = async (
-	res: { url: string; accountUrls: string[] }[]
+	res: UrlScrapResult[]
 ) => {
 	const urlId: { [url: string]: number } = {};
-	const uniqueUrls = res
-		.map(x => x.url)
-		.filter(onlyUnique);
+	const uniqueResults = res.filter(onlyUniqueScrapResult);
+
 	let savedAlbumsCount = 0;
 	let savedTracksCount = 0;
-	for (let i = 0; i < uniqueUrls.length; i++) {
-		const url = uniqueUrls[i];
-		if (isAlbum(url)) {
-			let id = await getAlbumId(url) ?? await insertAlbum(url);
+
+	for (let i = 0; i < uniqueResults.length; i++) {
+		const result = uniqueResults[i];
+		if (isAlbum(result.url)) {
+			let id = await getAlbumId(result.url) ?? await insertAlbum(result.url);
 			if (id) {
-				urlId[url] = id;
+				urlId[result.url] = id;
 				savedAlbumsCount++;
 				continue;
 			}
 		}
 
-		if (isTrack(url)) {
-			let id = await getTrackId(url) ?? await insertTrack(url);
+		if (isTrack(result.url)) {
+			let id = await getTrackId(result.url) ?? await insertTrack(result.url);
 			if (id) {
-				urlId[url] = id;
+				urlId[result.url] = id;
 				savedTracksCount++;
 				continue;
 			}
 		}
 
-		logger.warning('undefined', url);
+		logger.warning('undefined', result);
 	}
 	return { urlId, savedAlbumsCount, savedTracksCount };
 }
@@ -179,33 +178,27 @@ const getPageAccounts = async (page): Promise<string[]> => {
 */
 
 const OPEN_URL_DELAY: number = 500;
-const scrapChunk = async (browser, urls: string[]): Promise<{
-	url: string,
-	accountUrls: string[]
-}[]> => {
-	const chunkResult: {
-		url: string,
-		accountUrls: string[]
-	}[] = [];
+const scrapChunk = async (browser, items: Item[]): Promise<UrlScrapResult[]> => {
+	const chunkResult: UrlScrapResult[] = [];
 
 	// open new page
 	const page = await browser.newPage();
-	for (let i = 0; i < urls.length; i++) {
-		const albumOrTrackUrl = urls[i];
+	for (let i = 0; i < items.length; i++) {
+		const albumOrTrackItem = items[i];
 
 		await delay(OPEN_URL_DELAY);
 
 		// open url and show all accounts
-		await page.goto(albumOrTrackUrl);
+		await page.goto(albumOrTrackItem.url);
 		await showAllAccounts(page);
 
 		// scrap accounts
 		const accountUrls = await getPageAccounts(page);
-		logger.info(`${accountUrls.length} Accounts was read from ${albumOrTrackUrl}`);
+		logger.info(`${accountUrls.length} Accounts was read from ${albumOrTrackItem}`);
 
 		chunkResult.push({
-			url: albumOrTrackUrl,
-			accountUrls: accountUrls
+			url: albumOrTrackItem.url,
+			urls: accountUrls,
 		});
 	}
 
@@ -214,17 +207,19 @@ const scrapChunk = async (browser, urls: string[]): Promise<{
 	return chunkResult;
 }
 
-const scrapChunks = async (chunks: string[][], chunkIndex: number): Promise<void> => {
+const scrapTracksOrAlbumsChunks = async (tracksOrAlbumsChunks: Item[][], chunkIndex: number): Promise<void> => {
 	console.time(`scrapChunks-${chunkIndex}`);
 
 	// create browser
-	const browser = await puppeteer.launch();
+	const browser = await puppeteer.launch({
+		headless: false,
+	});
 
 	// create parallel tasks
-	const pagesPromises = chunks
-		.map(async (hrefs, index) => {
+	const pagesPromises = tracksOrAlbumsChunks
+		.map(async (items, index) => {
 			try {
-				return await scrapChunk(browser, hrefs);
+				return await scrapChunk(browser, items);
 			} catch (e) {
 				logger.error(e, `CHUNK [${chunkIndex}, ${index}] SCRAPING FAILED !`);
 				return [];
@@ -261,22 +256,22 @@ export const urlsScraper = async (fromFile: boolean = true): Promise<void> => {
 
 	// read URLs
 	const sourceTracksOrAlbums = fromFile
-		? readUrlsFromFile('source.txt')
+		? readUrlsFromFile('source.txt').map(x => ({ url: x } as Item))
 		: await readUrlsFromDb();
 	logger.info(`${sourceTracksOrAlbums.length} links was read from ${fromFile ? 'file' : 'DB'}`);
 
 	// create chunks
-	const chunks: string[][][] = divideArray(
+	const tracksOrAlbumsChunks: Item[][][] = divideArray(
 		divideArray(sourceTracksOrAlbums, URLS_ON_PAGE),
 		PAGES_COUNT
 	);
-	logger.info(`${chunks.length} was created`, `pages count - ${PAGES_COUNT}`, `URL on page - ${PAGES_COUNT}`);
+	logger.info(`${tracksOrAlbumsChunks.length} was created`, `pages count - ${PAGES_COUNT}`, `URL on page - ${PAGES_COUNT}`);
 
 	// process chunks
-	for (let i = 0; i < chunks.length; i++) {
-		const chunk = chunks[i];
+	for (let i = 0; i < tracksOrAlbumsChunks.length; i++) {
+		const chunk = tracksOrAlbumsChunks[i];
 		try {
-			await scrapChunks(chunk, i);
+			await scrapTracksOrAlbumsChunks(chunk, i);
 			logger.success(`[${i}] CHUNK PROCESSED SUCCESSFULLY ! (${chunk.flat().length} urls)`);
 		} catch (e) {
 			logger.error(e, `[${i}] CHUNK PROCESSING FAILED !`);

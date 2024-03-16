@@ -1,26 +1,38 @@
 import { isArray, isObject } from './utils';
 
-interface ILogger {
-	success(...params): void;
+export interface ILogger {
+	success(...params: any[]): void;
 
-	info(...params): void;
+	info(...params: any[]): void;
 
-	warning(...params): void;
+	warning(...params: any[]): void;
 
-	error(e: Error, ...params): void;
+	error(e: Error, ...params: any[]): void;
+}
+
+export enum LogLevel {
+	Success = 0,
+	Info = 1,
+	Warning = 2,
+	Error = 3
+}
+
+export interface LoggerOptions {
+	enable: boolean;
+	level: LogLevel;
+	zeroErrorPolicy: boolean
 }
 
 class Logger implements ILogger {
 	private readonly color = require('node-color-log');
 
 	constructor(
-		private readonly enable = true,
-		private readonly zeroErrorPolicy = false
+		private readonly options: LoggerOptions
 	) {
 	}
 
-	public success(...params): void {
-		if (!this.enable) {
+	public success(...params: any[]): void {
+		if (!this.options.enable || this.options.level < LogLevel.Success) {
 			return;
 		}
 
@@ -28,8 +40,8 @@ class Logger implements ILogger {
 		this.color.color('green').log(`SUCCESS:${message}`);
 	}
 
-	public info(...params): void {
-		if (!this.enable) {
+	public info(...params: any[]): void {
+		if (!this.options.enable || this.options.level < LogLevel.Info) {
 			return;
 		}
 
@@ -37,8 +49,8 @@ class Logger implements ILogger {
 		this.color.color('blue').log(`INFO:${message}`);
 	}
 
-	public warning(...params): void {
-		if (!this.enable) {
+	public warning(...params: any[]): void {
+		if (!this.options.enable|| this.options.level < LogLevel.Warning) {
 			return;
 		}
 
@@ -46,22 +58,22 @@ class Logger implements ILogger {
 		this.color.color('yellow').log(`WARNING:${message}`);
 	}
 
-	public error(e: Error, ...params): void {
-		if (!this.enable) {
+	public error(error: Error, ...params: any[]): void {
+		if (!this.options.enable || this.options.level < LogLevel.Error) {
 			return;
 		}
 
 		const message = this.getText(...params);
-		this.color.color('red').log(`ERROR:${message}`);
-		this.color.color('red').log(e);
+		this.color.color('red').error(`ERROR:${message}`);
+		this.color.color('red').error(error);
 
-		if (this.zeroErrorPolicy) {
-			throw e;
+		if (this.options.zeroErrorPolicy) {
+			throw error;
 		}
 	}
 
 	private getText(...params: any[]): string {
-		let message = '';
+		let message = '\n';
 
 		for (let param of params) {
 			if (isArray(param)) {
@@ -71,7 +83,7 @@ class Logger implements ILogger {
 				message += this.getObjectText(param);
 			}
 			else {
-				message += '    --> ' + param + '\n';
+				message += '\t--> ' + param + '\n';
 			}
 		}
 
@@ -79,18 +91,22 @@ class Logger implements ILogger {
 	}
 
 	private getArrayText(value: []): string {
-		let message = `\n    --> ${value.length} [\n`
+		let message = `\t--> ${value.length} [\n`
 		value.forEach(x => {
-			message += `\t${this.getText(x)}`
+			message += `\t\t${this.getText(x)}`
 		});
 		message += '\t]';
 
-		return message + '\n';
+		return message;
 	}
 
 	private getObjectText(value: object): string {
-		return '    --> ' + JSON.stringify(value, null, 2).split('\n').join('\n\t') + '\n';
+		return '\t--> ' + JSON.stringify(value, null, 2).split('\n').join('\n\t') + '\n';
 	}
 }
 
-export const logger: ILogger = new Logger();
+export const logger: ILogger = new Logger({
+	enable: true,
+	level: LogLevel.Info,
+	zeroErrorPolicy: false
+} as LoggerOptions);

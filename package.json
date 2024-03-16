@@ -4,9 +4,9 @@
 	"description": "",
 	"main": "index.js",
 	"scripts": {
-		"urls": "npx ts-node ./src/main.ts urls",
-		"urls:from-file": "npx ts-node ./src/main.ts urls from-file",
-		"accounts": "npx ts-node ./src/main.ts accounts"
+		"db:urls": "npx ts-node ./src/main.ts urls",
+		"db:accounts": "npx ts-node ./src/main.ts accounts",
+		"file:urls": "npx ts-node ./src/main.ts urls from-file"
 	},
 	"keywords": [],
 	"author": "",
