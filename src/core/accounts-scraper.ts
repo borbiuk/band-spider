@@ -7,8 +7,8 @@ import { Account } from '../models/account';
 import { AccountScrapResult } from '../models/url-scrap-result';
 
 export class AccountsScraper {
-	private readonly URLS_ON_PAGE = 1;
-	private readonly PAGES_COUNT = 40;
+	private readonly URLS_ON_PAGE: number = 1;
+	private readonly PAGES_COUNT: number = 40;
 	private readonly LOAD_MORE_TRACKS_RETRY: number = 5;
 	private readonly LOAD_MORE_TRACKS_DELAY: number = 1_000;
 	private readonly LOAD_MORE_TRACKS_CONTAINER: string = '.show-more';
@@ -18,14 +18,16 @@ export class AccountsScraper {
 	private readonly SCROLL_REQUEST_TIMEOUT: number = 1_000;
 	private readonly SCROLL_CONTAINER: string = '.fan-container';
 	private readonly ALBUM_OR_TRACK_URL_CONTAINER: string = '.item-link';
+	
+	private database: Database;
 
 	public async run(): Promise<void> {
 		console.time('tracksScraper');
 
-		const database = await Database.initialize();
+		this.database = await Database.initialize();
 
 		// read URLs
-		const allAccounts = (await database.getAllAccounts())
+		const allAccounts = (await this.database.getAllAccounts())
 			.filter(({ id, url }) =>
 				!isNullOrUndefined(id) && !isNullOrUndefined(url)
 			);
@@ -53,8 +55,6 @@ export class AccountsScraper {
 		urlId: { [url: string]: number },
 		accountUrls: { id: number, url: string }[]
 	): Promise<number> {
-		const database = await Database.initialize();
-
 		let relationsCount = 0;
 		for (const element of accountUrls) {
 			const { id, url } = element;
@@ -64,7 +64,7 @@ export class AccountsScraper {
 			}
 
 			const urlsId = urlId[url];
-			const added = await database.insertItemToAccount(urlsId, id);
+			const added = await this.database.insertItemToAccount(urlsId, id);
 			if (added) {
 				relationsCount++;
 			}
@@ -75,15 +75,13 @@ export class AccountsScraper {
 	private async saveUrls(
 		accountUrls: { id: number, url: string }[]
 	): Promise<{ savedUrlsCount: number; urlId: { [p: string]: number } }> {
-		const database = await Database.initialize();
-
 		const urlId: { [url: string]: number } = {};
 		let savedUrlsCount = 0;
 		for (const element of accountUrls) {
 			const { url } = element;
 
 			if (isAlbum(url)) {
-				let albumId = await database.insertItem(url);
+				let albumId = await this.database.insertItem(url);
 				if (albumId) {
 					urlId[url] = albumId;
 					savedUrlsCount++;
@@ -92,7 +90,7 @@ export class AccountsScraper {
 			}
 
 			if (isTrack(url)) {
-				let trackId = await database.insertItem(url);
+				let trackId = await this.database.insertItem(url);
 				if (trackId) {
 					urlId[url] = trackId;
 					savedUrlsCount++;

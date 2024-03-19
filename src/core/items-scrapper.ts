@@ -14,9 +14,13 @@ export class ItemsScrapper {
 	private readonly LOAD_MORE_ACCOUNTS_RETRY: number = 5;
 	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 1_000;
 	private readonly LOAD_ACCOUNTS_CONTAINER: string = '.more-thumbs'
+	
+	private database: Database;
 
 	public async run(fromFile: boolean = true): Promise<void> {
 		console.time('accountScraper');
+
+		this.database = await Database.initialize();
 
 		// read URLs
 		const sourceTracksOrAlbums = fromFile
@@ -46,10 +50,8 @@ export class ItemsScrapper {
 	}
 
 	private async readUrlsFromDb(): Promise<Item[]> {
-		const database = await Database.initialize();
-
-		const albums = await database.getAllAlbums();
-		const tracks = await database.getAllTracks();
+		const albums = await this.database.getAllAlbums();
+		const tracks = await this.database.getAllTracks();
 		return [...albums, ...tracks]
 			.filter(x => !isNullOrUndefined(x));
 	}
@@ -60,7 +62,6 @@ export class ItemsScrapper {
 		accountId: { [url: string]: number }
 	): Promise<number> {
 		let relationsCount = 0;
-		const database = await Database.initialize();
 
 		for (const element of res) {
 			const { url, urls } = element;
@@ -72,7 +73,7 @@ export class ItemsScrapper {
 			const id = urlId[url];
 			for (const element of urls) {
 				const accId = accountId[element];
-				const added = await database.insertItemToAccount(id, accId);
+				const added = await this.database.insertItemToAccount(id, accId);
 				if (added) {
 					relationsCount++;
 				}
@@ -84,14 +85,12 @@ export class ItemsScrapper {
 	private async saveAccounts(
 		res: UrlScrapResult[]
 	): Promise<{ savedAccountsCount: number; accountId: { [p: string]: number } }> {
-		const database = await Database.initialize();
-
 		const accountId: { [url: string]: number } = {};
 		const uniqueAccounts = res.filter(onlyUniqueScrapResult);
 		let savedAccountsCount = 0;
 		for (let a of uniqueAccounts) {
 			for (let b of a.urls) {
-				const id = await database.insertAccount(b);
+				const id = await this.database.insertAccount(b);
 				if (id) {
 					accountId[b] = id;
 					savedAccountsCount++;
