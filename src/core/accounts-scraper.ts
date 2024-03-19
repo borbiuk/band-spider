@@ -20,8 +20,8 @@ const saveRelations = async (
 	const database = await Database.initialize();
 	
 	let relationsCount = 0;
-	for (let i = 0; i < accountUrls.length; i++) {
-		const { id, url } = accountUrls[i];
+	for (const element of accountUrls) {
+		const { id, url } = element;
 
 		if (!isAlbum(url) && !isTrack(url)) {
 			continue;
@@ -43,8 +43,8 @@ const saveUrls = async (
 
 	const urlId: { [url: string]: number } = {};
 	let savedUrlsCount = 0;
-	for (let i = 0; i < accountUrls.length; i++) {
-		const { url } = accountUrls[i];
+	for (const element of accountUrls) {
+		const { url } = element;
 
 		if (isAlbum(url)) {
 			let albumId = await database.insertItem(url);
@@ -168,8 +168,8 @@ const scrapChunk = async (browser, accounts: Account[]): Promise<AccountScrapRes
 	const chunkResult: AccountScrapResult[] = [];
 
 	const page = await browser.newPage();
-	for (let i = 0; i < accounts.length; i++) {
-		const { id, url } = accounts[i];
+	for (const element of accounts) {
+		const { id, url } = element;
 
 		// open account page
 		await page.goto(url);

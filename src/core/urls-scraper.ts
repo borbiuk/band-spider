@@ -28,18 +28,17 @@ const saveRelations = async (
 ): Promise<number> => {
 	let relationsCount = 0;
 	const database = await Database.initialize();
-	
-	for (let i = 0; i < res.length; i++) {
-		const { url, urls } = res[i];
+
+	for (const element of res) {
+		const { url, urls } = element;
 
 		if (!isAlbum(url) && !isTrack(url)) {
 			continue;
 		}
 
 		const id = urlId[url];
-		for (let j = 0; j < urls.length; j++) {
-			const accountUrl = urls[j];
-			const accId = accountId[accountUrl];
+		for (const element of urls) {
+			const accId = accountId[element];
 			const added = await database.insertItemToAccount(id, accId);
 			if (added) {
 				relationsCount++;
@@ -84,8 +83,8 @@ const saveUrls = async (
 	let savedAlbumsCount = 0;
 	let savedTracksCount = 0;
 
-	for (let i = 0; i < uniqueResults.length; i++) {
-		const result = uniqueResults[i];
+	for (const element of uniqueResults) {
+		const result = element;
 		if (isAlbum(result.url)) {
 			const id = await database.insertItem(result.url)
 			if (id) {
@@ -172,8 +171,8 @@ const scrapChunk = async (browser, items: Item[]): Promise<UrlScrapResult[]> => 
 
 	// open new page
 	const page = await browser.newPage();
-	for (let i = 0; i < items.length; i++) {
-		const albumOrTrackItem = items[i];
+	for (const element of items) {
+		const albumOrTrackItem = element;
 
 		await delay(OPEN_URL_DELAY);
 
