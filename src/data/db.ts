@@ -1,279 +1,122 @@
-import { logger } from '../common/logger';
+import { DataSource, IsNull, Not } from 'typeorm';
+import { AccountEntity } from '../entities/account-entity';
+import { ItemEntity } from '../entities/item-entity';
+import { ItemToAccountEntity } from '../entities/item-to-account-entity';
+import { ItemToTagEntity } from '../entities/item-to-tag-entity';
+import { TagEntity } from '../entities/tag-entity';
 import { Account } from '../models/account';
 import { Album } from '../models/album';
 import { Track } from '../models/track';
 
-const sqlite3 = require('sqlite3').verbose();
+const appDataSource = new DataSource({
+	type: 'sqlite',
+	database: 'band_db.sqlite',
+	synchronize: true,
+	logging: false,
+	migrations: [],
+	entities: [
+		AccountEntity,
+		ItemEntity,
+		TagEntity,
+		ItemToTagEntity,
+		ItemToAccountEntity,
+	]
+});
 
-// Function to get the database connection
-const getDb = () => {
-	return new sqlite3.Database('data/database.sqlite');
-};
+export class Database {
+	private static instance: Database;
+	private readonly dataSource: DataSource;
 
-// Function to create the database tables
-export const createTables = (): Promise<void> => {
-	const db = getDb();
-	return new Promise<void>((resolve, reject) => {
-		db.serialize(() => {
-			db.run(`
-                CREATE TABLE IF NOT EXISTS Account
-                (
-                    id INTEGER PRIMARY KEY,
-                    url TEXT UNIQUE
-                )
-			`, (err) => {
-				if (err) {
-					reject(err);
-					return;
-				}
+	private constructor(dataSource: DataSource) {
+		this.dataSource = dataSource;
+	}
 
-				db.run(`
-          CREATE TABLE IF NOT EXISTS Album (
-            id INTEGER PRIMARY KEY,
-            url TEXT UNIQUE
-          )
-        `, (err) => {
-					if (err) {
-						reject(err);
-						return;
-					}
+	static async initialize() : Promise<Database> {
+		if (!Database.instance) {
+			const dataSource = await appDataSource.initialize();
+			Database.instance = new Database(dataSource);
+		}
 
-					db.run(`
-            CREATE TABLE IF NOT EXISTS Track (
-              id INTEGER PRIMARY KEY,
-              url TEXT UNIQUE
-            )
-          `, (err) => {
-						if (err) {
-							reject(err);
-							return;
-						}
+		return Database.instance;
+	}
 
-						db.run(`
-              CREATE TABLE IF NOT EXISTS AlbumToAccount (
-                albumId INTEGER,
-                accountId INTEGER,
-                FOREIGN KEY (albumId) REFERENCES Album(id),
-                FOREIGN KEY (accountId) REFERENCES Account(id),
-                PRIMARY KEY (albumId, accountId)
-              )
-            `, (err) => {
-							if (err) {
-								reject(err);
-								return;
-							}
+	async insertAccount (url: string): Promise<number> {
+		const repository = this.dataSource.getRepository(AccountEntity);
 
-							db.run(`
-                CREATE TABLE IF NOT EXISTS TrackToAccount (
-                  trackId INTEGER,
-                  accountId INTEGER,
-                  FOREIGN KEY (trackId) REFERENCES Track(id),
-                  FOREIGN KEY (accountId) REFERENCES Account(id),
-                  PRIMARY KEY (trackId, accountId)
-                )
-              `, (err) => {
-								if (err) {
-									reject(err);
-									return;
-								}
+		const existingRecord = await repository.findOne({ where: { url } });
+		if (existingRecord) {
+			return existingRecord.id;
+		}
 
-								resolve(null);
-							});
-						});
-					});
-				});
-			});
-		});
-	})
-		.finally(() => {
-			db.close();
-		});
-};
+		const newRecord = (await repository.insert({ url }))
+			.generatedMaps[0] as AccountEntity;
 
-export const insertAccount = (url: string): Promise<number> => {
-	return new Promise<number>((resolve, reject) => {
-		const db = getDb();
-		db.run('INSERT OR IGNORE INTO Account (url) VALUES (?)', url, function (error) {
-			if (error) {
-				reject(error);
-			} else {
-				resolve(this.lastID);
-			}
+		return newRecord.id;
+	};
 
-			db.close();
-		});
-	});
-};
+	async getAllAccounts(): Promise<Account[]> {
+		return await this.dataSource.getRepository(AccountEntity).find();
+	};
 
-export const insertAlbum = (url: string): Promise<number> => {
-	return new Promise<number>((resolve, reject) => {
-		const db = getDb();
-		db.run('INSERT OR IGNORE INTO Album (url) VALUES (?)', url, function (error) {
-			if (error) {
-				reject(error);
-			} else {
-				resolve(this.lastID);
-			}
+	async getAccountId (url: string): Promise<number> {
+		const account = await this.dataSource.getRepository(AccountEntity)
+			.findOne({ where: { url } });
+		return account?.id;
+	};
 
-			db.close();
-		});
-	});
-};
+	async insertItem(url: string): Promise<number> {
+		const repository = this.dataSource.getRepository(ItemEntity);
 
-export const insertTrack = (url: string): Promise<number> => {
-	return new Promise<number>((resolve, reject) => {
-		const db = getDb();
-		db.run('INSERT OR IGNORE INTO Track (url) VALUES (?)', url, function (error) {
-			if (error) {
-				reject(error);
-			} else {
-				resolve(this.lastID);
-			}
+		const existingRecord = await repository.findOne({ where: { url } });
+		if (existingRecord) {
+			return existingRecord.id;
+		}
 
-			db.close();
-		});
-	});
-};
+		const newRecord = (await repository.insert({ url }))
+			.generatedMaps[0] as ItemEntity;
 
-export const insertAlbumToAccount = (albumId: number, accountId: number): Promise<boolean> => {
-	return new Promise<boolean>((resolve, reject) => {
-		const db = getDb();
-		db.run('INSERT OR IGNORE INTO AlbumToAccount (albumId, accountId) VALUES (?, ?)', albumId, accountId, function (err) {
-			if (err) {
-				reject(err);
-			} else {
-				if (this.changes > 0) {
-					resolve(true);
-				} else {
-					logger.warning(`Relationship already exists between albumId: ${albumId} and accountId: ${accountId}`);
-					resolve(false);
-				}
+		return newRecord.id;
+	};
+
+	async getAllAlbums(): Promise<Album[]> {
+		return await this.dataSource.getRepository(ItemEntity).find({
+			where: {
+				album: IsNull()
 			}
 		});
-		db.close();
-	});
-};
+	};
 
-export const insertTrackToAccount = (trackId: number, accountId: number): Promise<boolean> => {
-	return new Promise<boolean>((resolve, reject) => {
-		const db = getDb();
-		db.run('INSERT OR IGNORE INTO TrackToAccount (trackId, accountId) VALUES (?, ?)', trackId, accountId, function (err) {
-			if (err) {
-				reject(err);
-			} else {
-				if (this.changes > 0) {
-					resolve(true);
-				} else {
-					logger.info(`Relationship already exists between trackId: ${trackId} and accountId: ${accountId}`);
-					resolve(false);
-				}
+	async getAllTracks(): Promise<Track[]> {
+		return await this.dataSource.getRepository(ItemEntity).find({
+			where: {
+				album: Not(IsNull())
 			}
 		});
-		db.close();
-	});
-};
+	};
 
-export const getAccountId = (accountUrl): Promise<number> => {
-	return new Promise<number>((resolve, reject) => {
-		const db = getDb();
-		db.get('SELECT id FROM Account WHERE url = ?', accountUrl, (err, row) => {
-			if (err) {
-				reject(err);
-			} else {
-				if (row) {
-					resolve(row.id);
-				} else {
-					resolve(null);
-				}
+	async getItemId (url: string): Promise<number> {
+		const item = await this.dataSource.getRepository(ItemEntity)
+			.findOne({ where: { url } });
+
+		return item?.id;
+	};
+
+	async insertItemToAccount(itemId: number, accountId: number): Promise<boolean> {
+		const repository = this.dataSource.getRepository(ItemToAccountEntity);
+
+		const existingRecord = await repository.findOne({
+			where: {
+				itemId: itemId,
+				accountId: accountId,
 			}
 		});
-		db.close();
-	});
-};
 
-export const getAlbumId = (albumUrl: string): Promise<number> => {
-	return new Promise<number>((resolve, reject) => {
-		const db = getDb();
-		db.get('SELECT id FROM Album WHERE url = ?', albumUrl, (err, row) => {
-			if (err) {
-				reject(err);
-			} else {
-				if (row) {
-					resolve(row.id);
-				} else {
-					resolve(null);
-				}
-			}
-		});
-		db.close();
-	});
-};
+		if (existingRecord) {
+			return false;
+		}
 
-export const getTrackId = (trackUrl: string): Promise<number> => {
-	return new Promise<number>((resolve, reject) => {
-		const db = getDb();
-		db.get('SELECT id FROM Track WHERE url = ?', trackUrl, (err, row) => {
-			if (err) {
-				reject(err);
-			} else {
-				if (row) {
-					resolve(row.id);
-				} else {
-					resolve(null);
-				}
-			}
-		});
-		db.close();
-	});
-};
+		await repository.insert({ itemId, accountId });
 
-export const getAllAccounts = (): Promise<Account[]> => {
-	const db = getDb();
-
-	return new Promise<Account[]>((resolve, reject) => {
-		db.all('SELECT * FROM Account', (err, rows) => {
-			if (err) {
-				reject(err);
-			} else {
-				resolve(rows);
-			}
-		});
-	})
-		.finally(() => {
-			db.close();
-		});
-};
-
-export const getAllAlbums = (): Promise<Album[]> => {
-	const db = getDb();
-
-	return new Promise<Album[]>((resolve, reject) => {
-		db.all('SELECT * FROM Album', (err, rows) => {
-			if (err) {
-				reject(err);
-			} else {
-				resolve(rows);
-			}
-		});
-	})
-		.finally(() => {
-			db.close();
-		});
-};
-
-export const getAllTracks = (): Promise<Track[]> => {
-	const db = getDb();
-
-	return new Promise<Track[]>((resolve, reject) => {
-		db.all('SELECT * FROM Track', (err, rows) => {
-			if (err) {
-				reject(err);
-			} else {
-				resolve(rows);
-			}
-		});
-	})
-		.finally(() => {
-			db.close();
-		});
-};
+		return true;
+	};
+}

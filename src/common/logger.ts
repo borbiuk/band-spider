@@ -64,8 +64,8 @@ class Logger implements ILogger {
 		}
 
 		const message = this.getText(...params);
-		this.color.color('red').error(`ERROR:${message}`);
-		this.color.color('red').error(error);
+		this.color.color('red').log(`ERROR:${message}`);
+		this.color.color('red').log(error);
 
 		if (this.options.zeroErrorPolicy) {
 			throw error;
@@ -106,7 +106,7 @@ class Logger implements ILogger {
 }
 
 export const logger: ILogger = new Logger({
-	enable: true,
-	level: LogLevel.Info,
+	enable: true, //TODO: true
+	level: LogLevel.Error,
 	zeroErrorPolicy: false
 } as LoggerOptions);

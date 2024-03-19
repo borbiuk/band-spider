@@ -1,8 +1,6 @@
-# Dependency directories
-node_modules/
-
-# IDE
 .idea/
-
-# Database
-data/database.sqlite
+.vscode/
+node_modules/
+build/
+tmp/
+temp/

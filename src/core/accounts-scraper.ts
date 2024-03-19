@@ -2,9 +2,10 @@ import puppeteer from 'puppeteer';
 import { scrollPageToBottom } from 'puppeteer-autoscroll-down';
 import { logger } from '../common/logger';
 import { delay, divideArray, isAlbum, isEmptyString, isNullOrUndefined, isTrack, originalUrl } from '../common/utils';
-import { getAlbumId, getAllAccounts, getTrackId, insertAlbum, insertAlbumToAccount, insertTrack, insertTrackToAccount } from '../data/db';
+import { Database } from '../data/db';
 import { Account } from '../models/account';
 import { AccountScrapResult } from '../models/url-scrap-result';
+
 
 /*
 	#############################################################################
@@ -16,23 +17,18 @@ const saveRelations = async (
 	urlId: { [url: string]: number },
 	accountUrls: { id: number, url: string }[]
 ): Promise<number> => {
+	const database = await Database.initialize();
+	
 	let relationsCount = 0;
 	for (let i = 0; i < accountUrls.length; i++) {
 		const { id, url } = accountUrls[i];
 
-		let fn: (id1, id2,) => Promise<boolean>;
-		if (isAlbum(url)) {
-			fn = insertAlbumToAccount;
-		}
-		else if (isTrack(url)) {
-			fn = insertTrackToAccount;
-		}
-		else {
+		if (!isAlbum(url) && !isTrack(url)) {
 			continue;
 		}
 
 		const urlsId = urlId[url];
-		const added = await fn(urlsId, id);
+		const added = await database.insertItemToAccount(urlsId, id);
 		if (added) {
 			relationsCount++;
 		}
@@ -43,13 +39,15 @@ const saveRelations = async (
 const saveUrls = async (
 	accountUrls: { id: number, url: string }[]
 ) => {
+	const database = await Database.initialize();
+
 	const urlId: { [url: string]: number } = {};
 	let savedUrlsCount = 0;
 	for (let i = 0; i < accountUrls.length; i++) {
 		const { url } = accountUrls[i];
 
 		if (isAlbum(url)) {
-			let albumId = await getAlbumId(url) ?? await insertAlbum(url);
+			let albumId = await database.insertItem(url);
 			if (albumId) {
 				urlId[url] = albumId;
 				savedUrlsCount++;
@@ -58,7 +56,7 @@ const saveUrls = async (
 		}
 
 		if (isTrack(url)) {
-			let trackId = await getTrackId(url) ?? await insertTrack(url);
+			let trackId = await database.insertItem(url);
 			if (trackId) {
 				urlId[url] = trackId;
 				savedUrlsCount++;
@@ -77,11 +75,10 @@ const saveUrls = async (
 	#############################################################################
 */
 
-const LOAD_MORE_TRACKS_RETRY: number = 10;
-const LOAD_MORE_TRACKS_DELAY: number = 2_000;
+const LOAD_MORE_TRACKS_RETRY: number = 5;
+const LOAD_MORE_TRACKS_DELAY: number = 1_000;
 const LOAD_MORE_TRACKS_CONTAINER: string = '.show-more';
 const showAllAlbumsOrTracks = async (page): Promise<void> => {
-	let showMoreButton;
 	let retry = 0;
 
 	while (retry < LOAD_MORE_TRACKS_RETRY) {
@@ -90,7 +87,7 @@ const showAllAlbumsOrTracks = async (page): Promise<void> => {
 		}
 
 		try {
-			showMoreButton = await page.$(LOAD_MORE_TRACKS_CONTAINER);
+			const showMoreButton = await page.$(LOAD_MORE_TRACKS_CONTAINER);
 			await showMoreButton.click();
 
 			logger.info(`"button clicked [${retry}]`, page.url());
@@ -241,8 +238,10 @@ const PAGES_COUNT = 40;
 export const accountsScraper = async () => {
 	console.time('tracksScraper');
 
+	const database = await Database.initialize();
+
 	// read URLs
-	const allAccounts = (await getAllAccounts())
+	const allAccounts = (await database.getAllAccounts())
 		.filter(({ id, url }) =>
 			!isNullOrUndefined(id) && !isNullOrUndefined(url)
 		);

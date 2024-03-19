@@ -1,18 +1,15 @@
 import { urlsScraper } from './core/urls-scraper';
 import { accountsScraper } from './core/accounts-scraper';
-import { createTables } from './data/db';
+import 'reflect-metadata';
 
 const main = async () => {
 	console.time('main');
-
-	await createTables();
 
 	const args = process.argv.slice(2);
 	if (args.includes('urls')) {
 		const fromFile = args.includes('from-file');
 		await urlsScraper(fromFile);
-	}
-	else if (args.includes('accounts')) {
+	} else if (args.includes('accounts')) {
 		await accountsScraper();
 	}
 
@@ -21,5 +18,7 @@ const main = async () => {
 
 process.setMaxListeners(0); // Set maximum listeners to unlimited
 
-main();
+main().catch(error => {
+	console.log(error);
+});
 

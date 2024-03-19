@@ -1,20 +1,30 @@
 {
-	"name": "band-spider",
-	"version": "1.0.0",
-	"description": "",
-	"main": "index.js",
-	"scripts": {
-		"db:urls": "npx ts-node ./src/main.ts urls",
-		"db:accounts": "npx ts-node ./src/main.ts accounts",
-		"file:urls": "npx ts-node ./src/main.ts urls from-file"
-	},
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"dependencies": {
-		"node-color-log": "^10.0.2",
-		"puppeteer": "^20.8.2",
-		"puppeteer-autoscroll-down": "^1.1.2",
-		"sqlite3": "^5.1.6"
-	}
+   "name": "band-spider",
+   "version": "1.0.0",
+   "description": "",
+   "main": "index.js",
+   "scripts": {
+      "db:urls": "npx ts-node ./src/main.ts urls",
+      "db:accounts": "npx ts-node ./src/main.ts accounts",
+      "file:urls": "npx ts-node ./src/main.ts urls from-file",
+      "typeorm": "typeorm-ts-node-commonjs",
+      "start": "ts-node src/index.ts"
+   },
+   "keywords": [],
+   "author": "",
+   "license": "ISC",
+   "dependencies": {
+      "node-color-log": "12.0.0",
+      "puppeteer": "20.8.2",
+      "puppeteer-autoscroll-down": "1.1.2",
+      "sqlite3": "5.1.7",
+      "typeorm": "0.3.20",
+      "reflect-metadata": "^0.1.13",
+      "pg": "^8.4.0"
+   },
+   "devDependencies": {
+      "@types/node": "^16.11.10",
+      "ts-node": "10.9.1",
+      "typescript": "4.5.2"
+   }
 }

@@ -1,18 +1,7 @@
 import puppeteer from 'puppeteer';
 import { logger } from '../common/logger';
 import { delay, divideArray, isAlbum, isNullOrUndefined, isTrack, onlyUniqueScrapResult, originalUrl } from '../common/utils';
-import {
-	getAccountId,
-	getAlbumId,
-	getAllAlbums,
-	getAllTracks,
-	getTrackId,
-	insertAccount,
-	insertAlbum,
-	insertAlbumToAccount,
-	insertTrack,
-	insertTrackToAccount
-} from '../data/db';
+import { Database } from '../data/db';
 import { readUrlsFromFile } from '../data/file';
 import { Item } from '../models/base/item';
 import { UrlScrapResult } from '../models/url-scrap-result';
@@ -24,8 +13,10 @@ import { UrlScrapResult } from '../models/url-scrap-result';
 */
 
 const readUrlsFromDb = async (): Promise<Item[]> => {
-	const albums = await getAllAlbums();
-	const tracks = await getAllTracks();
+	const database = await Database.initialize();
+	
+	const albums = await database.getAllAlbums();
+	const tracks = await database.getAllTracks();
 	return [...albums, ...tracks]
 		.filter(x => !isNullOrUndefined(x));
 }
@@ -36,17 +27,12 @@ const saveRelations = async (
 	accountId: { [url: string]: number }
 ): Promise<number> => {
 	let relationsCount = 0;
+	const database = await Database.initialize();
+	
 	for (let i = 0; i < res.length; i++) {
 		const { url, urls } = res[i];
 
-		let fn: (id: number, accountId: number) => Promise<boolean>;
-		if (isAlbum(url)) {
-			fn = insertAlbumToAccount;
-		}
-		else if (isTrack(url)) {
-			fn = insertTrackToAccount;
-		}
-		else {
+		if (!isAlbum(url) && !isTrack(url)) {
 			continue;
 		}
 
@@ -54,7 +40,7 @@ const saveRelations = async (
 		for (let j = 0; j < urls.length; j++) {
 			const accountUrl = urls[j];
 			const accId = accountId[accountUrl];
-			const added = await fn(id, accId);
+			const added = await database.insertItemToAccount(id, accId);
 			if (added) {
 				relationsCount++;
 			}
@@ -66,12 +52,14 @@ const saveRelations = async (
 const saveAccounts = async (
 	res: UrlScrapResult[]
 ) => {
+	const database = await Database.initialize();
+	
 	const accountId: { [url: string]: number } = {};
 	const uniqueAccounts = res.filter(onlyUniqueScrapResult);
 	let savedAccountsCount = 0;
 	for (let a of uniqueAccounts){
 		for (let b of a.urls) {
-			let id = (await getAccountId(b)) ?? (await insertAccount(b));
+			const id = await database.insertAccount(b);
 			if (id) {
 				accountId[b] = id;
 				savedAccountsCount++;
@@ -88,6 +76,8 @@ const saveAccounts = async (
 const saveUrls = async (
 	res: UrlScrapResult[]
 ) => {
+	const database = await Database.initialize();
+	
 	const urlId: { [url: string]: number } = {};
 	const uniqueResults = res.filter(onlyUniqueScrapResult);
 
@@ -97,7 +87,7 @@ const saveUrls = async (
 	for (let i = 0; i < uniqueResults.length; i++) {
 		const result = uniqueResults[i];
 		if (isAlbum(result.url)) {
-			let id = await getAlbumId(result.url) ?? await insertAlbum(result.url);
+			const id = await database.insertItem(result.url)
 			if (id) {
 				urlId[result.url] = id;
 				savedAlbumsCount++;
@@ -106,7 +96,7 @@ const saveUrls = async (
 		}
 
 		if (isTrack(result.url)) {
-			let id = await getTrackId(result.url) ?? await insertTrack(result.url);
+			let id = await database.insertItem(result.url)
 			if (id) {
 				urlId[result.url] = id;
 				savedTracksCount++;
@@ -125,11 +115,10 @@ const saveUrls = async (
 	#############################################################################
 */
 
-const LOAD_MORE_ACCOUNTS_RETRY: number = 10;
-const LOAD_MORE_ACCOUNTS_DELAY: number = 2_000;
+const LOAD_MORE_ACCOUNTS_RETRY: number = 5;
+const LOAD_MORE_ACCOUNTS_DELAY: number = 1_000;
 const LOAD_ACCOUNTS_CONTAINER: string = '.more-thumbs'
 const showAllAccounts = async (page): Promise<void> => {
-	let button;
 	let retry = 0;
 	let count = 0;
 	let error = null;
@@ -140,7 +129,7 @@ const showAllAccounts = async (page): Promise<void> => {
 		}
 
 		try {
-			button = await page.$(LOAD_ACCOUNTS_CONTAINER);
+			const button = await page.$(LOAD_ACCOUNTS_CONTAINER);
 			await button.click();
 
 			logger.info(`button clicked [${count++}] (${page.url()})`);
