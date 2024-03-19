@@ -1,6 +1,6 @@
-import { urlsScraper } from './core/urls-scraper';
-import { accountsScraper } from './core/accounts-scraper';
 import 'reflect-metadata';
+import { AccountsScraper } from './core/accounts-scraper';
+import { ItemsScrapper } from './core/items-scrapper';
 
 const main = async () => {
 	console.time('main');
@@ -8,9 +8,12 @@ const main = async () => {
 	const args = process.argv.slice(2);
 	if (args.includes('urls')) {
 		const fromFile = args.includes('from-file');
-		await urlsScraper(fromFile);
+		const itemsScrapper = new ItemsScrapper();
+
+		await itemsScrapper.run(fromFile);
 	} else if (args.includes('accounts')) {
-		await accountsScraper();
+		const accountScrapper = new AccountsScraper();
+		await accountScrapper.run();
 	}
 
 	console.timeEnd('main');
