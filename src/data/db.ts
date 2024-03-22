@@ -4,9 +4,6 @@ import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 import { ItemToTagEntity } from '../entities/item-to-tag-entity';
 import { TagEntity } from '../entities/tag-entity';
-import { Account } from '../models/account';
-import { Album } from '../models/album';
-import { Track } from '../models/track';
 
 const appDataSource = new DataSource({
 	type: 'sqlite',
@@ -54,7 +51,7 @@ export class Database {
 		return newRecord.id;
 	};
 
-	async getAllAccounts(): Promise<Account[]> {
+	async getAllAccounts(): Promise<AccountEntity[]> {
 		return await this.dataSource.getRepository(AccountEntity).find();
 	};
 
@@ -78,7 +75,29 @@ export class Database {
 		return newRecord.id;
 	};
 
-	async getAllAlbums(): Promise<Album[]> {
+	async getAllItems(): Promise<ItemEntity[]> {
+		return await this.dataSource.getRepository(ItemEntity).find();
+	};
+
+	async getMostPopularItems(count: number, excludedUrls: string[] = []): Promise<{ url: string, count: number }[]> {
+		const items = await this.dataSource
+			.getRepository(ItemEntity)
+			.createQueryBuilder('item')
+			.leftJoin('item.itemToAccount', 'itemToAccount')
+			.select(['item', 'COUNT(itemToAccount.accountId) AS accountCount'])
+			.where('item.url NOT IN (:...excludedUrls)', { excludedUrls })
+			.groupBy('item.id')
+			.orderBy('accountCount', 'DESC')
+			.limit(count)
+			.getRawMany();
+
+		return items.map((item: any) => ({
+			url: item.item_url,
+			count: parseInt(item.accountCount)
+		}));
+	}
+
+	async getAllAlbums(): Promise<ItemEntity[]> {
 		return await this.dataSource.getRepository(ItemEntity).find({
 			where: {
 				album: IsNull()
@@ -86,7 +105,7 @@ export class Database {
 		});
 	};
 
-	async getAllTracks(): Promise<Track[]> {
+	async getAllTracks(): Promise<ItemEntity[]> {
 		return await this.dataSource.getRepository(ItemEntity).find({
 			where: {
 				album: Not(IsNull())

@@ -1,9 +1,21 @@
 import 'reflect-metadata';
 import { AccountsScraper } from './core/accounts-scraper';
 import { ItemsScrapper } from './core/items-scrapper';
+import { Database } from './data/db';
+import { readUrlsFromFile } from './data/file';
 
 const main = async () => {
 	console.time('main');
+
+	// TODO: mode to separate script:
+	// const d = await Database.initialize();
+	// const e = readUrlsFromFile('source.txt');
+	// const i = await d.getMostPopularItems(100, e);
+	// i.forEach(({ url, count }) => {
+	// 	console.log(url + `\t${count}`);
+	// });
+	//
+	// return;
 
 	const args = process.argv.slice(2);
 	if (args.includes('urls')) {
