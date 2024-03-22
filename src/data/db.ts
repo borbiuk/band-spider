@@ -86,6 +86,7 @@ export class Database {
 			.leftJoin('item.itemToAccount', 'itemToAccount')
 			.select(['item', 'COUNT(itemToAccount.accountId) AS accountCount'])
 			.where('item.url NOT IN (:...excludedUrls)', { excludedUrls })
+			.andWhere('item.url LIKE :urlPattern', { urlPattern: '%/track/%' })
 			.groupBy('item.id')
 			.orderBy('accountCount', 'DESC')
 			.limit(count)

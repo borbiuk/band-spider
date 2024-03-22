@@ -8,9 +8,9 @@ export const onlyUniqueScrapResult = (value: UrlScrapResult, index: number, arra
 	return array.findIndex(x => x.url === value.url) === index;
 }
 
-export const delay = (time: number): Promise<void> => {
+export const delay = (ms: number): Promise<void> => {
 	return new Promise(function (resolve) {
-		setTimeout(resolve, time)
+		setTimeout(resolve, ms)
 	});
 }
 
