@@ -1,83 +1,64 @@
-import puppeteer from 'puppeteer';
+import { Page } from 'puppeteer';
+import { BrowserOptions, performInBrowser } from '../common/browser';
+import { logger } from '../common/logger';
 import { Database } from '../data/db';
 import { AccountEntity } from '../entities/account-entity';
-import { AccountScrapResult } from '../models/url-scrap-result';
 import { AccountPageService } from './page-services/account-page-service';
 
 export class AccountsScraper {
-	private readonly PAGES_COUNT: number = 5;
-
-	private browser;
-	private database: Database;
-	private accounts: AccountEntity[];
-
-	public async run(): Promise<void> {
-		this.browser = await puppeteer.launch({ headless: false });
-		this.database = await Database.initialize();
-
-		// read URLs
-		this.accounts = await this.database.getAllAccounts();
+	public async run(browserOptions: BrowserOptions, pagesCount: number): Promise<void> {
+		const database = await Database.initialize();
+		const accounts = (await database.getAllAccounts()).reverse();
 
 		// scrap chunks
-		await this.scrapChunks();
-
-		this.browser.close();
+		await performInBrowser(
+			this.pageFunctionWrapper(database, accounts),
+			pagesCount,
+			browserOptions
+		);
 	}
 
-	private async scrapChunks(): Promise<void> {
+	private pageFunctionWrapper = (database: Database, accounts: AccountEntity[]) => {
+		return async (page: Page) => {
+			const pageService = new AccountPageService(page);
 
-		// create parallel tasks
-		const promises = Array.from({ length: this.PAGES_COUNT })
-			.map(async () => {
-				try {
-					return await this.scrapChunk()
-				} catch (e) {
-					return []
-				}
-			});
+			while (accounts.length > 0) {
+				const { id, url } = accounts.pop();
 
-		// wait all tasks
-		await Promise.all(promises)
-	}
+				// open account page
+				await page.goto(url);
 
-	private async scrapChunk(): Promise<AccountScrapResult[]> {
-		const chunkResult: AccountScrapResult[] = [];
+				const urls: string[] = await pageService.readAllPageAccounts();
 
-		const page = await this.browser.newPage();
-		const pageService = new AccountPageService(page);
-		
-		while (this.accounts.length > 0) {
-			const { id, url } = this.accounts.pop();
+				const result = urls.map(url => ({
+					id,
+					url
+				}));
 
-			// open account page
-			await page.goto(url);
+				//save tracks
+				const urlId = await this.saveUrls(database, result);
 
-			const urls: string[] = await pageService.readAllPageAccounts();
+				//save relations
+				const relationsCount = await this.saveRelations(database, urlId, result);
 
-			const result = urls.map(url => ({
-				id,
-				url
-			}));
-
-			//save tracks
-			const urlId = await this.saveUrls(result);
-
-			//save relations
-			const relationsCount = await this.saveRelations(urlId, result);
+				logger.success({
+					message: 'Relations was saved successfully!',
+					count: relationsCount,
+					url,
+				});
+			}
 		}
-
-		await page.close();
-
-		return chunkResult;
 	}
+
 
 	private async saveUrls(
+		database: Database,
 		accountUrls: { id: number, url: string }[]
 	): Promise<{ [p: string]: number }> {
 		const urlId: { [url: string]: number } = {};
 
 		for (const { url } of accountUrls) {
-			let albumId = await this.database.insertItem(url);
+			let albumId = await database.insertItem(url);
 			if (albumId) {
 				urlId[url] = albumId;
 			}
@@ -87,6 +68,7 @@ export class AccountsScraper {
 	}
 
 	private async saveRelations(
+		database: Database,
 		urlId: { [url: string]: number },
 		accountUrls: { id: number, url: string }[]
 	): Promise<number> {
@@ -95,7 +77,7 @@ export class AccountsScraper {
 			const { id, url } = element;
 			const urlsId = urlId[url];
 
-			const added = await this.database.insertItemToAccount(urlsId, id);
+			const added = await database.insertItemToAccount(urlsId, id);
 			if (added) {
 				relationsCount++;
 			}

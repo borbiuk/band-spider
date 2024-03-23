@@ -4,9 +4,9 @@
    "description": "",
    "main": "index.js",
    "scripts": {
-      "db:urls": "npx ts-node ./src/main.ts urls",
-      "db:accounts": "npx ts-node ./src/main.ts accounts",
-      "file:urls": "npx ts-node ./src/main.ts urls from-file",
+      "db:urls": "npx ts-node ./src/main.ts urls headless",
+      "db:accounts": "npx ts-node ./src/main.ts accounts headless",
+      "file:urls": "npx ts-node ./src/main.ts urls from-file headless",
       "typeorm": "typeorm-ts-node-commonjs",
       "start": "ts-node src/index.ts"
    },

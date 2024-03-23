@@ -1,15 +1,3 @@
-import { isArray, isObject } from './utils';
-
-export interface ILogger {
-	success(...params: any[]): void;
-
-	info(...params: any[]): void;
-
-	warning(...params: any[]): void;
-
-	error(e: Error, ...params: any[]): void;
-}
-
 export enum LogLevel {
 	Success = 0,
 	Info = 1,
@@ -23,7 +11,7 @@ export interface LoggerOptions {
 	zeroErrorPolicy: boolean
 }
 
-class Logger implements ILogger {
+class Logger {
 	private readonly color = require('node-color-log');
 
 	constructor(
@@ -32,81 +20,48 @@ class Logger implements ILogger {
 	}
 
 	public success(...params: any[]): void {
-		if (!this.options.enable || this.options.level < LogLevel.Success) {
+		if (this.isLoggingAvailable(LogLevel.Success)) {
 			return;
 		}
 
-		const message = this.getText(...params);
-		this.color.color('green').log(`SUCCESS:${message}`);
+		this.color.success(params);
 	}
 
 	public info(...params: any[]): void {
-		if (!this.options.enable || this.options.level < LogLevel.Info) {
+		if (this.isLoggingAvailable(LogLevel.Info)) {
 			return;
 		}
 
-		const message = this.getText(...params);
-		this.color.color('blue').log(`INFO:${message}`);
+		this.color.info(params);
 	}
 
 	public warning(...params: any[]): void {
-		if (!this.options.enable|| this.options.level < LogLevel.Warning) {
+		if (this.isLoggingAvailable(LogLevel.Warning)) {
 			return;
 		}
 
-		const message = this.getText(...params);
-		this.color.color('yellow').log(`WARNING:${message}`);
+		this.color.warn(params);
 	}
 
 	public error(error: Error, ...params: any[]): void {
-		if (!this.options.enable || this.options.level < LogLevel.Error) {
+		if (this.isLoggingAvailable(LogLevel.Error)) {
 			return;
 		}
 
-		const message = this.getText(...params);
-		this.color.color('red').log(`ERROR:${message}`);
-		this.color.color('red').log(error);
+		this.color.error({ ...params, error});
 
 		if (this.options.zeroErrorPolicy) {
 			throw error;
 		}
 	}
-
-	private getText(...params: any[]): string {
-		let message = '\n';
-
-		for (let param of params) {
-			if (isArray(param)) {
-				message += this.getArrayText(param);
-			}
-			else if (isObject(param)) {
-				message += this.getObjectText(param);
-			}
-			else {
-				message += '\t--> ' + param + '\n';
-			}
-		}
-
-		return message;
-	}
-
-	private getArrayText(value: []): string {
-		let message = `\t--> ${value.length} [\n`
-		value.forEach(x => {
-			message += `\t\t${this.getText(x)}`
-		});
-		message += '\t]';
-
-		return message;
-	}
-
-	private getObjectText(value: object): string {
-		return '\t--> ' + JSON.stringify(value, null, 2).split('\n').join('\n\t') + '\n';
+	
+	private isLoggingAvailable(logLevel: LogLevel): boolean {
+		return !this.options.enable || this.options.level < logLevel;
 	}
 }
 
-export const logger: ILogger = new Logger({
-	enable: true, //TODO: true
+export const logger: Logger = new Logger({
+	enable: true,
 	level: LogLevel.Error,
 	zeroErrorPolicy: false
 } as LoggerOptions);

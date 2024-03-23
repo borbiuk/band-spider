@@ -1,4 +1,6 @@
-import puppeteer from 'puppeteer';
+import { Page } from 'puppeteer';
+import { BrowserOptions, performInBrowser } from '../common/browser';
+import { logger } from '../common/logger';
 import { delay } from '../common/utils';
 import { Database } from '../data/db';
 import { readUrlsFromFile } from '../data/file';
@@ -7,82 +9,63 @@ import { UrlScrapResult } from '../models/url-scrap-result';
 import { ItemPageService } from './page-services/item-page-service';
 
 export class ItemsScrapper {
-	private readonly PAGES_COUNT: number = 5;
-	private readonly OPEN_URL_DELAY: number = 3_000;
+	private readonly OPEN_URL_DELAY: number = 1_500;
 
-	private browser;
-	private database: Database;
-	private items: ItemEntity[];
-
-	public async run(fromFile: boolean = true, headless: boolean = false): Promise<void> {
-		this.browser = await puppeteer.launch({ headless });
-		this.database = await Database.initialize();
+	public async run(fromFile: boolean = true, browserOptions: BrowserOptions, pagesCount: number): Promise<void> {
+		const database = await Database.initialize();
 
 		// read URLs
-		this.items = fromFile
+		const items = fromFile
 			? readUrlsFromFile('source.txt').map(x => ({ url: x } as ItemEntity))
-			: await this.database.getAllItems();
+			: await database.getAllItems();
 
 		// process chunks
-		await this.scrapChunks();
-
-		// close browser
-		await this.browser.close();
+		await performInBrowser(
+			this.pageFunctionWrapper(database, items),
+			pagesCount,
+			browserOptions
+		);
 	}
 
-	private async scrapChunks(): Promise<void> {
-		// create parallel tasks
+	private pageFunctionWrapper(database: Database, items: ItemEntity[]) {
+		return async (page: Page) => {
+			const pageService = new ItemPageService(page);
 
-		const pagesPromises = Array.from({ length: this.PAGES_COUNT })
-			.map(async () => {
-				try {
-					return await this.scrapChunk();
-				} catch (e) {
-					return [];
-				}
-			});
+			while (items.length > 0) {
+				const item = items.pop();
 
-		await Promise.all(pagesPromises);
-	}
+				// open url and show all accounts
+				await page.goto(item.url);
+				await delay(this.OPEN_URL_DELAY);
 
-	private async scrapChunk(): Promise<UrlScrapResult[]> {
-		const results: UrlScrapResult[] = [];
+				// scrap accounts
+				const accountUrls = await pageService.readAllPageAccounts(page)
 
-		// open new page
-		const page = await this.browser.newPage();
-		const pageService = new ItemPageService(page);
+				const result = {
+					url: item.url,
+					urls: accountUrls,
+				};
 
-		while (this.items.length > 0) {
-			const item = this.items.pop();
+				//save urls
+				const urlId = await this.saveUrls(database, result);
 
-			// open url and show all accounts
-			await page.goto(item.url);
-			await delay(this.OPEN_URL_DELAY);
+				//save accounts
+				const accountId = await this.saveAccounts(database, result);
 
-			// scrap accounts
-			const accountUrls = await pageService.readAllPageAccounts(page)
+				//save relations
+				const relationsCount = await this.saveRelations(database, result, urlId, accountId);
 
-			const result = {
-				url: item.url,
-				urls: accountUrls,
+				logger.success({
+					message: 'Relations was saved successfully!',
+					count: relationsCount,
+					url: item.url,
+				});
 			}
-
-			//save urls
-			const urlId = await this.saveUrls(result);
-
-			//save accounts
-			const accountId = await this.saveAccounts(result);
-
-			//save relations
-			const relationsCount = await this.saveRelations(result, urlId, accountId);
-		}
-
-		await page.close();
-
-		return results;
+		};
 	}
 
 	private async saveRelations(
+		database: Database,
 		res: UrlScrapResult,
 		urlId: { [url: string]: number },
 		accountId: { [url: string]: number }
@@ -94,7 +77,7 @@ export class ItemsScrapper {
 		const id = urlId[url];
 		for (const element of urls) {
 			const accId = accountId[element];
-			const added = await this.database.insertItemToAccount(id, accId);
+			const added = await database.insertItemToAccount(id, accId);
 			if (added) {
 				relationsCount++;
 			}
@@ -104,14 +87,15 @@ export class ItemsScrapper {
 	}
 
 	private async saveAccounts(
+		database: Database,
 		res: UrlScrapResult
 	): Promise<{ [p: string]: number }> {
 		const accountId: { [url: string]: number } = {};
 
-		for (let b of res.urls) {
-			const id = await this.database.insertAccount(b);
+		for (let accountUrl of res.urls) {
+			const id = await database.insertAccount(accountUrl);
 			if (id) {
-				accountId[b] = id;
+				accountId[accountUrl] = id;
 			}
 		}
 
@@ -119,11 +103,12 @@ export class ItemsScrapper {
 	}
 
 	private async saveUrls(
+		database: Database,
 		res: UrlScrapResult
 	): Promise<{ [p: string]: number }> {
 		const urlId: { [url: string]: number } = {};
 
-		const id = await this.database.insertItem(res.url)
+		const id = await database.insertItem(res.url)
 		if (id) {
 			urlId[res.url] = id;
 		}
