@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToMany, OneToMany, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToMany, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
 import { AccountEntity } from './account-entity';
 import { ItemToAccountEntity } from './item-to-account-entity';
 import { ItemToTagEntity } from './item-to-tag-entity';
@@ -13,7 +13,10 @@ export class ItemEntity {
 	@Column({ unique: true })
 	url: string;
 
-	@OneToOne(() => ItemEntity)
+	@Column({ nullable: true })
+	albumId?: number;
+
+	@ManyToOne(() => ItemEntity, (album) => album.albumId)
 	@JoinColumn()
 	album?: ItemEntity;
 

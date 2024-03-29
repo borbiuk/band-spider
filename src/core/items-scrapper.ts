@@ -1,17 +1,18 @@
 import { Page } from 'puppeteer';
 import { BrowserOptions, performInBrowser } from '../common/browser';
 import { logger } from '../common/logger';
-import { delay } from '../common/utils';
+import { isAlbum, isNullOrUndefined, isTrack } from '../common/utils';
 import { Database } from '../data/db';
 import { readUrlsFromFile } from '../data/file';
 import { ItemEntity } from '../entities/item-entity';
-import { UrlScrapResult } from '../models/url-scrap-result';
 import { ItemPageService } from './page-services/item-page-service';
 
 export class ItemsScrapper {
-	private readonly OPEN_URL_DELAY: number = 1_500;
-
-	public async run(fromFile: boolean = true, browserOptions: BrowserOptions, pagesCount: number): Promise<void> {
+	public async run(
+		fromFile: boolean = true,
+		browserOptions: BrowserOptions,
+		pagesCount: number
+	): Promise<void> {
 		const database = await Database.initialize();
 
 		// read URLs
@@ -19,63 +20,102 @@ export class ItemsScrapper {
 			? readUrlsFromFile('source.txt').map(x => ({ url: x } as ItemEntity))
 			: await database.getAllItems();
 
+		const processedItems: string[] = [];
+
 		// process chunks
 		await performInBrowser(
-			this.pageFunctionWrapper(database, items),
+			this.pageFunctionWrapper(database, items, processedItems),
 			pagesCount,
 			browserOptions
 		);
 	}
 
-	private pageFunctionWrapper(database: Database, items: ItemEntity[]) {
+	private pageFunctionWrapper(database: Database, items: ItemEntity[], processedItems: string[]) {
 		return async (page: Page) => {
-			const pageService = new ItemPageService(page);
+			const pageService = new ItemPageService();
 
 			while (items.length > 0) {
 				const item = items.pop();
+				try {
+					if (processedItems.includes(item.url)) {
+						continue;
+					}
 
-				// open url and show all accounts
-				await page.goto(item.url);
-				await delay(this.OPEN_URL_DELAY);
+					await this.handleItem(page, item.url, pageService, database, items);
 
-				// scrap accounts
-				const accountUrls = await pageService.readAllPageAccounts(page)
-
-				const result = {
-					url: item.url,
-					urls: accountUrls,
-				};
-
-				//save urls
-				const urlId = await this.saveUrls(database, result);
-
-				//save accounts
-				const accountId = await this.saveAccounts(database, result);
-
-				//save relations
-				const relationsCount = await this.saveRelations(database, result, urlId, accountId);
-
-				logger.success({
-					message: 'Relations was saved successfully!',
-					count: relationsCount,
-					url: item.url,
-				});
+					processedItems.push(item.url);
+				} catch (error) {
+					items.push(item);
+					logger.error(error, item.url);
+				}
 			}
 		};
 	}
 
-	private async saveRelations(
+	private async handleItem(page: Page, url: string, pageService: ItemPageService, database: Database, items: ItemEntity[]) {
+		// open url and show all accounts
+		await page.goto(url, { waitUntil: 'networkidle0' });
+
+		// scrap accounts
+		const accountUrls = await pageService.readAllPageAccounts(page)
+
+		// scrap tags
+		const tags = await pageService.readAllPageTags(page);
+
+		//save urls
+		const urlId = await this.saveUrls(database, url);
+
+		//save accounts
+		const accountId = await this.saveAccounts(database, accountUrls);
+
+		//save tags
+		const tagId = await this.saveTags(database, tags);
+
+		//save account relations
+		const accountRelationsCount = await this.saveAccountsRelations(database, url, accountUrls, urlId, accountId);
+
+		//save account relations
+		const tagRelationsCount = await this.saveTagsRelations(database, url, tags, urlId, tagId);
+
+		if (isAlbum(url)) {
+			const albumTracks = await pageService.readAllAlbumTracks(page);
+			const albums = albumTracks.filter(x => !items.some(({ url }) => url === x));
+			for (const albumUrl of albums) {
+				items.push({
+					url: albumUrl
+				} as ItemEntity);
+				await database.insertTrackToAlbum(albumUrl, url);
+			}
+		} else if (isTrack(url)) {
+			const albumUrl = await pageService.readTrackAlbum(page);
+			if (
+				!isNullOrUndefined(albumUrl)
+				&& !items.some(({ url }) => url === albumUrl)
+			) {
+				items.push({ url: albumUrl } as ItemEntity);
+				await database.insertTrackToAlbum(url, albumUrl);
+			}
+		}
+
+		logger.success({
+			message: '[Items] Relations was saved successfully!',
+			url,
+			accountsCount: accountRelationsCount,
+			tagsCount: tagRelationsCount,
+		});
+	}
+
+	private async saveAccountsRelations(
 		database: Database,
-		res: UrlScrapResult,
+		itemUrl: string,
+		accountUrls: string[],
 		urlId: { [url: string]: number },
 		accountId: { [url: string]: number }
 	): Promise<number> {
 		let relationsCount = 0;
 
-		const { url, urls } = res;
-
-		const id = urlId[url];
-		for (const element of urls) {
+		const id = urlId[itemUrl];
+		for (const element of accountUrls) {
 			const accId = accountId[element];
 			const added = await database.insertItemToAccount(id, accId);
 			if (added) {
@@ -86,13 +126,34 @@ export class ItemsScrapper {
 		return relationsCount;
 	}
 
+	private async saveTagsRelations(
+		database: Database,
+		itemUrl: string,
+		tags: string[],
+		tagId: { [url: string]: number },
+		accountId: { [url: string]: number }
+	): Promise<number> {
+		let relationsCount = 0;
+
+		const id = tagId[itemUrl];
+		for (const element of tags) {
+			const accId = accountId[element];
+			const added = await database.insertItemToTag(id, accId);
+			if (added) {
+				relationsCount++;
+			}
+		}
+
+		return relationsCount;
+	}
+
 	private async saveAccounts(
 		database: Database,
-		res: UrlScrapResult
+		urls: string[]
 	): Promise<{ [p: string]: number }> {
 		const accountId: { [url: string]: number } = {};
 
-		for (let accountUrl of res.urls) {
+		for (const accountUrl of urls) {
 			const id = await database.insertAccount(accountUrl);
 			if (id) {
 				accountId[accountUrl] = id;
@@ -102,15 +163,31 @@ export class ItemsScrapper {
 		return accountId;
 	}
 
+	private async saveTags(
+		database: Database,
+		tags: string[]
+	): Promise<{ [p: string]: number }> {
+		const accountId: { [url: string]: number } = {};
+
+		for (const tag of tags) {
+			const { id } = await database.insertTag(tag);
+			if (id) {
+				accountId[tag] = id;
+			}
+		}
+
+		return accountId;
+	}
+
 	private async saveUrls(
 		database: Database,
-		res: UrlScrapResult
+		url: string
 	): Promise<{ [p: string]: number }> {
 		const urlId: { [url: string]: number } = {};
 
-		const id = await database.insertItem(res.url)
+		const { id } = await database.insertItem(url)
 		if (id) {
-			urlId[res.url] = id;
+			urlId[url] = id;
 		}
 
 		return urlId;

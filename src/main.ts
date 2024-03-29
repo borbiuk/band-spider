@@ -3,7 +3,7 @@ import { BrowserOptions } from './common/browser';
 import { AccountsScraper } from './core/accounts-scraper';
 import { ItemsScrapper } from './core/items-scrapper';
 
-const PARALLEL_PAGES_COUNT = 10;
+const PARALLEL_PAGES_COUNT: number = 40;
 
 const main = async () => {
 	console.time('main');
@@ -21,13 +21,12 @@ const main = async () => {
 	const args = process.argv.slice(2);
 	
 	const browserOptions = {
-		headless: args.includes('headless'),
+		headless: true //args.includes('headless'),
 	} as BrowserOptions;
 
 	if (args.includes('urls')) {
 		const fromFile = args.includes('from-file');
 		const itemsScrapper = new ItemsScrapper();
-
 		await itemsScrapper.run(fromFile, browserOptions, PARALLEL_PAGES_COUNT);
 	} else if (args.includes('accounts')) {
 		const accountScrapper = new AccountsScraper();

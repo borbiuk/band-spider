@@ -1,14 +1,17 @@
-import { delay, originalUrl } from '../../common/utils';
+import { Page } from 'puppeteer';
+import { logger } from '../../common/logger';
+import { isNullOrUndefined, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
-	private readonly LOAD_MORE_ACCOUNTS_RETRY: number = 3;
-	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 1_000;
+	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 1_500;
 
 	private readonly LOAD_ACCOUNTS_CONTAINER: string = '.more-thumbs'
 
 	private readonly ACCOUNT_URL_CONTAINER: string = 'a.fan.pic';
 
-	constructor(private readonly page) {
+	private readonly TAG_URL_CONTAINER: string = 'a.tag';
+
+	constructor() {
 	}
 
 	/**
@@ -18,8 +21,10 @@ export class ItemPageService {
 	 * @param page - The Puppeteer page from which to retrieve account URLs.
 	 * @returns A Promise resolving to an array of account URLs.
 	 */
-	public async readAllPageAccounts(page): Promise<string[]> {
+	public async readAllPageAccounts(page: Page): Promise<string[]> {
 		const hrefs: string[] = [];
+
+		await this.loadAllAccount(page);
 
 		const elements = await page.$$(this.ACCOUNT_URL_CONTAINER);
 		for (const e of elements) {
@@ -33,19 +38,72 @@ export class ItemPageService {
 		return hrefs;
 	}
 
-	private async loadAllAccount(): Promise<void> {
-		let retry: number = 0;
+	public async readAllPageTags(page: Page): Promise<string[]> {
+		return await page
+			.$$eval(
+				this.TAG_URL_CONTAINER, 
+					tags => tags.map(x => x.textContent.trim())
+			)
+			.catch((error) => {
+				logger.error(error);
+				return [];
+			});
+	};
 
-		while (retry < this.LOAD_MORE_ACCOUNTS_RETRY) {
-			if (retry > 0) {
-				await delay(this.LOAD_MORE_ACCOUNTS_DELAY);
-			}
+	public async readAllAlbumTracks(page: Page): Promise<string[]> {
 
+		const url = new URL(page.url());
+		const domain = url.protocol + '//' + url.hostname;
+
+		const tracks: string[] = await page
+			.$$eval(
+				'table.track_list#track_table a',
+				links => links.map(link => link.getAttribute('href'))
+			)
+			.catch(error => {
+				logger.error(error);
+				return []
+			});
+
+		return tracks
+			.filter(x => !isNullOrUndefined(x))
+			.map(x => domain + originalUrl(x))
+			.filter(onlyUnique);
+	}
+
+	public async readTrackAlbum(page: Page): Promise<string> {
+
+		const url = new URL(page.url());
+		const domain = url.protocol + '//' + url.hostname;
+
+		let albumPath = await page
+			.$eval(
+				'a#buyAlbumLink',
+				element => element.getAttribute('href')
+			)
+			.catch((error) => {
+				logger.error(error);
+				return null;
+			});
+
+		return isNullOrUndefined(albumPath)
+			? null
+			: domain + albumPath;
+	}
+
+	private async loadAllAccount(page: Page): Promise<void> {
+		while (true) {
 			try {
-				const button = await this.page.$(this.LOAD_ACCOUNTS_CONTAINER);
-				await button.click();
-			} catch (e) {
-				retry++;
+				const showMoreAccountsButton =
+					await page.waitForSelector(
+						this.LOAD_ACCOUNTS_CONTAINER,
+						{
+							timeout: this.LOAD_MORE_ACCOUNTS_DELAY
+						});
+
+				await showMoreAccountsButton.click();
+			} catch {
+				break;
 			}
 		}
 	}

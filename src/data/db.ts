@@ -28,7 +28,7 @@ export class Database {
 		this.dataSource = dataSource;
 	}
 
-	static async initialize() : Promise<Database> {
+	static async initialize(): Promise<Database> {
 		if (!Database.instance) {
 			const dataSource = await appDataSource.initialize();
 			Database.instance = new Database(dataSource);
@@ -37,7 +37,7 @@ export class Database {
 		return Database.instance;
 	}
 
-	async insertAccount (url: string): Promise<number> {
+	async insertAccount(url: string): Promise<number> {
 		const repository = this.dataSource.getRepository(AccountEntity);
 
 		const existingRecord = await repository.findOne({ where: { url } });
@@ -55,24 +55,21 @@ export class Database {
 		return await this.dataSource.getRepository(AccountEntity).find();
 	};
 
-	async getAccountId (url: string): Promise<number> {
-		const account = await this.dataSource.getRepository(AccountEntity)
+	async getAccountId(url: string): Promise<AccountEntity> {
+		return await this.dataSource.getRepository(AccountEntity)
 			.findOne({ where: { url } });
-		return account?.id;
 	};
 
-	async insertItem(url: string): Promise<number> {
+	async insertItem(url: string): Promise<ItemEntity> {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
 		const existingRecord = await repository.findOne({ where: { url } });
 		if (existingRecord) {
-			return existingRecord.id;
+			return existingRecord;
 		}
 
-		const newRecord = (await repository.insert({ url }))
+		return (await repository.insert({ url }))
 			.generatedMaps[0] as ItemEntity;
-
-		return newRecord.id;
 	};
 
 	async getAllItems(): Promise<ItemEntity[]> {
@@ -114,11 +111,9 @@ export class Database {
 		});
 	};
 
-	async getItemId (url: string): Promise<number> {
-		const item = await this.dataSource.getRepository(ItemEntity)
+	async getItemId(url: string): Promise<ItemEntity> {
+		return await this.dataSource.getRepository(ItemEntity)
 			.findOne({ where: { url } });
-
-		return item?.id;
 	};
 
 	async insertItemToAccount(itemId: number, accountId: number): Promise<boolean> {
@@ -139,4 +134,51 @@ export class Database {
 
 		return true;
 	};
+
+	async insertTag(tag: string): Promise<TagEntity> {
+		tag = tag.toLowerCase();
+
+		const repository = this.dataSource.getRepository(TagEntity);
+
+		const existingRecord = await repository.findOne({ where: { name: tag } });
+		if (existingRecord) {
+			return existingRecord;
+		}
+
+		return (await repository.insert({ name: tag }))
+			.generatedMaps[0] as TagEntity;
+	};
+
+	async insertItemToTag(itemId: number, tagId: number): Promise<boolean> {
+		const repository = this.dataSource.getRepository(ItemToTagEntity);
+
+		const existingRecord = await repository.findOne({
+			where: {
+				itemId: itemId,
+				tagId: tagId,
+			}
+		});
+
+		if (existingRecord) {
+			return false;
+		}
+
+		await repository.insert({ itemId, tagId: tagId });
+
+		return true;
+	};
+
+	public async insertTrackToAlbum(trackUrl: string, albumUrl: string): Promise<void> {
+		const repository = this.dataSource.getRepository(ItemEntity);
+
+		const track = await this.insertItem(trackUrl);
+		const album = await this.insertItem(albumUrl);
+		
+		if (track.albumId === album.id) {
+			return;
+		}
+
+		track.albumId = album.id;
+		await repository.save(track);
+	}
 }

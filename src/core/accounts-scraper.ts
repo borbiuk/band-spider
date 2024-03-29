@@ -20,32 +20,37 @@ export class AccountsScraper {
 
 	private pageFunctionWrapper = (database: Database, accounts: AccountEntity[]) => {
 		return async (page: Page) => {
-			const pageService = new AccountPageService(page);
+			const pageService = new AccountPageService();
 
 			while (accounts.length > 0) {
-				const { id, url } = accounts.pop();
+				const account = accounts.pop();
+				try {
+					// open account page
+					await page.goto(account.url);
 
-				// open account page
-				await page.goto(url);
+					const urls: string[] = await pageService.readAllPageAccounts(page);
 
-				const urls: string[] = await pageService.readAllPageAccounts();
+					const result = urls.map(url => ({
+						id: account.id,
+						url
+					}));
 
-				const result = urls.map(url => ({
-					id,
-					url
-				}));
+					//save tracks
+					const urlId = await this.saveUrls(database, result);
 
-				//save tracks
-				const urlId = await this.saveUrls(database, result);
+					//save relations
+					const relationsCount = await this.saveRelations(database, urlId, result);
 
-				//save relations
-				const relationsCount = await this.saveRelations(database, urlId, result);
-
-				logger.success({
-					message: 'Relations was saved successfully!',
-					count: relationsCount,
-					url,
-				});
+					logger.success({
+						message: 'Relations was saved successfully!',
+						url: account.url,
+						count: relationsCount,
+					});
+				}
+				catch (error) {
+					accounts.push(account)
+					logger.error(error);
+				}
 			}
 		}
 	}
@@ -58,9 +63,9 @@ export class AccountsScraper {
 		const urlId: { [url: string]: number } = {};
 
 		for (const { url } of accountUrls) {
-			let albumId = await database.insertItem(url);
-			if (albumId) {
-				urlId[url] = albumId;
+			let { id } = await database.insertItem(url);
+			if (id) {
+				urlId[url] = id;
 			}
 		}
 
