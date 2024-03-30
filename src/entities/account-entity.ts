@@ -1,9 +1,10 @@
 import { Column, Entity, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { BaseEntity } from './base/enitity';
 import { ItemEntity } from './item-entity';
 import { ItemToAccountEntity } from './item-to-account-entity';
 
 @Entity('accounts')
-export class AccountEntity {
+export class AccountEntity implements BaseEntity {
 
 	@PrimaryGeneratedColumn()
 	id: number;

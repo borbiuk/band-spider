@@ -1,9 +1,10 @@
 import { Column, Entity, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { BaseEntity } from './base/enitity';
 import { ItemEntity } from './item-entity';
 import { ItemToTagEntity } from './item-to-tag-entity';
 
 @Entity('tags')
-export class TagEntity {
+export class TagEntity implements BaseEntity {
 
 	@PrimaryGeneratedColumn()
 	id: number;

@@ -7,47 +7,42 @@ import { AccountPageService } from './page-services/account-page-service';
 
 export class AccountsScraper {
 	public async run(browserOptions: BrowserOptions, pagesCount: number): Promise<void> {
-		const database = await Database.initialize();
-		const accounts = (await database.getAllAccounts()).reverse();
+		const database: Database = await Database.initialize();
+		const accounts: AccountEntity[] = await database.getAllAccounts();
+
+		const processedAccount: string[] = [];
 
 		// scrap chunks
 		await performInBrowser(
-			this.pageFunctionWrapper(database, accounts),
+			this.pageFunctionWrapper(database, accounts, processedAccount),
 			pagesCount,
 			browserOptions
 		);
 	}
 
-	private pageFunctionWrapper = (database: Database, accounts: AccountEntity[]) => {
+	private pageFunctionWrapper = (database: Database, accounts: AccountEntity[], processedAccount: string[]) => {
 		return async (page: Page) => {
 			const pageService = new AccountPageService();
 
 			while (accounts.length > 0) {
 				const account = accounts.pop();
+
+				if (processedAccount.includes(account.url)) {
+					continue;
+				}
+
 				try {
 					// open account page
-					await page.goto(account.url);
+					await page.goto(account.url, { timeout: 10_000, waitUntil: 'networkidle0' });
 
-					const urls: string[] = await pageService.readAllPageAccounts(page);
+					// scrap items
+					await this.processAccount(page, pageService, database, account);
 
-					const result = urls.map(url => ({
-						id: account.id,
-						url
-					}));
+					// save as processed
+					processedAccount.push(account.url);
 
-					//save tracks
-					const urlId = await this.saveUrls(database, result);
-
-					//save relations
-					const relationsCount = await this.saveRelations(database, urlId, result);
-
-					logger.success({
-						message: 'Relations was saved successfully!',
-						url: account.url,
-						count: relationsCount,
-					});
-				}
-				catch (error) {
+					logger.info(`Processed count: [${processedAccount.length}]`);
+				} catch (error) {
 					accounts.push(account)
 					logger.error(error);
 				}
@@ -55,6 +50,32 @@ export class AccountsScraper {
 		}
 	}
 
+
+	private async processAccount(
+		page: Page,
+		pageService: AccountPageService,
+		database: Database,
+		account: AccountEntity,
+	): Promise<void> {
+		const urls: string[] = await pageService.readAllPageAccounts(page);
+
+		const result = urls.map(url => ({
+			id: account.id,
+			url
+		}));
+
+		//save tracks
+		const urlId = await this.saveUrls(database, result);
+
+		//save relations
+		const itemsCount = await this.saveRelations(database, urlId, result);
+
+		logger.debug({
+			message: 'Account processing finished!',
+			url: account.url,
+			items: itemsCount,
+		});
+	}
 
 	private async saveUrls(
 		database: Database,

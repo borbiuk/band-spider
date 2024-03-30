@@ -2,8 +2,10 @@ import 'reflect-metadata';
 import { BrowserOptions } from './common/browser';
 import { AccountsScraper } from './core/accounts-scraper';
 import { ItemsScrapper } from './core/items-scrapper';
+import { Database } from './data/db';
+import { readUrlsFromFile } from './data/file';
 
-const PARALLEL_PAGES_COUNT: number = 40;
+const PARALLEL_PAGES_COUNT: number = 80;
 
 const main = async () => {
 	console.time('main');

@@ -1,10 +1,11 @@
-import { Column, Entity, ManyToOne, PrimaryColumn, PrimaryGeneratedColumn, Unique } from 'typeorm';
+import { Entity, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
 import { AccountEntity } from './account-entity';
+import { BaseEntity } from './base/enitity';
 import { ItemEntity } from './item-entity';
 
 @Entity('items-to-accounts')
 @Unique(['itemId', 'accountId'])
-export class ItemToAccountEntity {
+export class ItemToAccountEntity implements BaseEntity {
 
 	@PrimaryColumn()
 	itemId: number;

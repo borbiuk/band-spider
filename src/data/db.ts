@@ -22,7 +22,7 @@ const appDataSource = new DataSource({
 
 export class Database {
 	private static instance: Database;
-	private readonly dataSource: DataSource;
+	public readonly dataSource: DataSource;
 
 	private constructor(dataSource: DataSource) {
 		this.dataSource = dataSource;
@@ -173,7 +173,7 @@ export class Database {
 
 		const track = await this.insertItem(trackUrl);
 		const album = await this.insertItem(albumUrl);
-		
+
 		if (track.albumId === album.id) {
 			return;
 		}

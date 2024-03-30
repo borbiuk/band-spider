@@ -13,25 +13,27 @@ export class ItemsScrapper {
 		browserOptions: BrowserOptions,
 		pagesCount: number
 	): Promise<void> {
-		const database = await Database.initialize();
+		const database: Database = await Database.initialize();
 
 		// read URLs
-		const items = fromFile
+		const items: ItemEntity[] = fromFile
 			? readUrlsFromFile('source.txt').map(x => ({ url: x } as ItemEntity))
 			: await database.getAllItems();
+
+		logger.info(`Items to processing count: [${items.length}]`);
 
 		const processedItems: string[] = [];
 
 		// process chunks
 		await performInBrowser(
 			this.pageFunctionWrapper(database, items, processedItems),
-			pagesCount,
+			pagesCount > items.length ? items.length : pagesCount,
 			browserOptions
 		);
 	}
 
 	private pageFunctionWrapper(database: Database, items: ItemEntity[], processedItems: string[]) {
-		return async (page: Page) => {
+		return async (page: Page): Promise<void> => {
 			const pageService = new ItemPageService();
 
 			while (items.length > 0) {
@@ -41,9 +43,11 @@ export class ItemsScrapper {
 						continue;
 					}
 
-					await this.handleItem(page, item.url, pageService, database, items);
+					await this.processItem(page, pageService, database, item.url, items);
 
 					processedItems.push(item.url);
+
+					logger.info(`Processed count: [${processedItems.length}]`);
 				} catch (error) {
 					items.push(item);
 					logger.error(error, item.url);
@@ -52,9 +56,15 @@ export class ItemsScrapper {
 		};
 	}
 
-	private async handleItem(page: Page, url: string, pageService: ItemPageService, database: Database, items: ItemEntity[]) {
+	private async processItem(
+		page: Page,
+		pageService: ItemPageService,
+		database: Database,
+		url: string,
+		items: ItemEntity[]
+	): Promise<void> {
 		// open url and show all accounts
-		await page.goto(url, { waitUntil: 'networkidle0' });
+		await page.goto(url, { timeout: 10_000, waitUntil: 'networkidle0' });
 
 		// scrap accounts
 		const accountUrls = await pageService.readAllPageAccounts(page)
@@ -62,31 +72,55 @@ export class ItemsScrapper {
 		// scrap tags
 		const tags = await pageService.readAllPageTags(page);
 
-		//save urls
+		// save urls
 		const urlId = await this.saveUrls(database, url);
 
-		//save accounts
+		// save accounts
 		const accountId = await this.saveAccounts(database, accountUrls);
 
-		//save tags
+		// save tags
 		const tagId = await this.saveTags(database, tags);
 
-		//save account relations
+		// save account relations
 		const accountRelationsCount = await this.saveAccountsRelations(database, url, accountUrls, urlId, accountId);
 
-		//save account relations
+		// save account relations
 		const tagRelationsCount = await this.saveTagsRelations(database, url, tags, urlId, tagId);
 
+		// extract album or tracks
+		const albumOrTracksExtractingResult = await this.extractAlbumOrTracks(url, pageService, page, items, database);
+
+		logger.info({
+			message: 'Item processing finished!', 
+			url,
+			accounts: accountRelationsCount,
+			tags: tagRelationsCount,
+			...albumOrTracksExtractingResult
+		});
+	}
+
+	private async extractAlbumOrTracks(
+		url: string,
+		pageService: ItemPageService,
+		page: Page,
+		items: ItemEntity[],
+		database: Database
+	): Promise<{ albumDefined: true } | { tracks: number }> {
 		if (isAlbum(url)) {
 			const albumTracks = await pageService.readAllAlbumTracks(page);
 			const albums = albumTracks.filter(x => !items.some(({ url }) => url === x));
+
 			for (const albumUrl of albums) {
 				items.push({
 					url: albumUrl
 				} as ItemEntity);
 				await database.insertTrackToAlbum(albumUrl, url);
 			}
-		} else if (isTrack(url)) {
+
+			return { tracks: albumTracks.length };
+		}
+
+		if (isTrack(url)) {
 			const albumUrl = await pageService.readTrackAlbum(page);
 			if (
 				!isNullOrUndefined(albumUrl)
@@ -95,14 +129,9 @@ export class ItemsScrapper {
 				items.push({ url: albumUrl } as ItemEntity);
 				await database.insertTrackToAlbum(url, albumUrl);
 			}
-		}
 
-		logger.success({
-			message: '[Items] Relations was saved successfully!',
-			url,
-			accountsCount: accountRelationsCount,
-			tagsCount: tagRelationsCount,
-		});
+			return { albumDefined: true }
+		}
 	}
 
 	private async saveAccountsRelations(
