@@ -2,20 +2,27 @@ import { Page } from 'puppeteer';
 import { BrowserOptions, performInBrowser } from '../common/browser';
 import { logger } from '../common/logger';
 import { Database } from '../data/db';
+import { readUrlsFromFile } from '../data/file';
 import { AccountEntity } from '../entities/account-entity';
 import { AccountPageService } from './page-services/account-page-service';
 
 export class AccountsScraper {
-	public async run(browserOptions: BrowserOptions, pagesCount: number): Promise<void> {
+	public async run(
+		fromFile: boolean = true,
+		browserOptions: BrowserOptions,
+		pagesCount: number
+	): Promise<void> {
 		const database: Database = await Database.initialize();
-		const accounts: AccountEntity[] = await database.getAllAccounts();
+		const accounts: AccountEntity[] = fromFile
+			? readUrlsFromFile('accounts.txt').map(x => ({ url: x } as AccountEntity))
+			: await database.getAllAccounts();
 
 		const processedAccount: string[] = [];
 
 		// scrap chunks
 		await performInBrowser(
 			this.pageFunctionWrapper(database, accounts, processedAccount),
-			pagesCount,
+			Math.min(pagesCount, accounts.length),
 			browserOptions
 		);
 	}
@@ -26,25 +33,17 @@ export class AccountsScraper {
 
 			while (accounts.length > 0) {
 				const account = accounts.pop();
-
 				if (processedAccount.includes(account.url)) {
 					continue;
 				}
 
 				try {
-					// open account page
-					await page.goto(account.url, { timeout: 10_000, waitUntil: 'networkidle0' });
-
-					// scrap items
 					await this.processAccount(page, pageService, database, account);
-
-					// save as processed
 					processedAccount.push(account.url);
-
 					logger.info(`Processed count: [${processedAccount.length}]`);
 				} catch (error) {
 					accounts.push(account)
-					logger.error(error);
+					logger.error(error, account.url);
 				}
 			}
 		}
@@ -57,10 +56,16 @@ export class AccountsScraper {
 		database: Database,
 		account: AccountEntity,
 	): Promise<void> {
-		const urls: string[] = await pageService.readAllPageAccounts(page);
+		// open url and show all accounts
+		await page.goto(account.url, { timeout: 10_000, waitUntil: 'networkidle0' });
 
-		const result = urls.map(url => ({
-			id: account.id,
+		// save Account
+		const { id } = await database.insertAccount(account.url);
+
+		const itemsUrls: string[] = await pageService.readAllAccountItems(page);
+
+		const result = itemsUrls.map(url => ({
+			id,
 			url
 		}));
 

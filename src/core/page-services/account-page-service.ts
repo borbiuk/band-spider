@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
 import { scrollPageToBottom } from 'puppeteer-autoscroll-down';
-import { isEmptyString, originalUrl } from '../../common/utils';
+import { isEmptyString, isValidUrl, originalUrl } from '../../common/utils';
 
 export class AccountPageService {
 
@@ -18,14 +18,14 @@ export class AccountPageService {
 	constructor() {
 	}
 
-	public async readAllPageAccounts(page: Page): Promise<string[]> {
+	public async readAllAccountItems(page: Page): Promise<string[]> {
 		// show all album or tracks
 		await this.clickShowAllItemsButton(page);
 		await this.scrollToEnd(page);
 
 		// read all album or tracks urls
 		return (await this.readHrefs(page, this.ALBUM_OR_TRACK_URL_CONTAINER))
-			.filter(x => !isEmptyString(x))
+			.filter(x => isValidUrl(x))
 			.map(x => originalUrl(x))
 	}
 

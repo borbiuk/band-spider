@@ -37,18 +37,17 @@ export class Database {
 		return Database.instance;
 	}
 
-	async insertAccount(url: string): Promise<number> {
+	async insertAccount(url: string): Promise<AccountEntity> {
 		const repository = this.dataSource.getRepository(AccountEntity);
 
 		const existingRecord = await repository.findOne({ where: { url } });
 		if (existingRecord) {
-			return existingRecord.id;
+			return existingRecord;
 		}
 
-		const newRecord = (await repository.insert({ url }))
-			.generatedMaps[0] as AccountEntity;
+		const insertResult = await repository.insert({ url });
 
-		return newRecord.id;
+		return insertResult.generatedMaps[0] as AccountEntity;;
 	};
 
 	async getAllAccounts(): Promise<AccountEntity[]> {
@@ -68,8 +67,9 @@ export class Database {
 			return existingRecord;
 		}
 
-		return (await repository.insert({ url }))
-			.generatedMaps[0] as ItemEntity;
+		const insertResult = await repository.insert({ url });
+
+		return insertResult.generatedMaps[0] as ItemEntity;
 	};
 
 	async getAllItems(): Promise<ItemEntity[]> {
@@ -145,8 +145,9 @@ export class Database {
 			return existingRecord;
 		}
 
-		return (await repository.insert({ name: tag }))
-			.generatedMaps[0] as TagEntity;
+		const insertResult = await repository.insert({ name: tag });
+
+		return insertResult.generatedMaps[0] as TagEntity;
 	};
 
 	async insertItemToTag(itemId: number, tagId: number): Promise<boolean> {
