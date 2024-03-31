@@ -18,13 +18,12 @@ const handlePage = async (
 		// run task in page
 		await pageHandler(page);
 	} catch (e) {
+		logger.fatal(e, `[Page ${pageIndex}] was throw an error!`);
+	}
 
-		// close page if exist
-		if (page) {
-			await page.close();
-		}
-
-		logger.error(e, `Page [${pageIndex}] was throw an error!`);
+	// close page if exist
+	if (page) {
+		await page.close();
 	}
 };
 
@@ -42,7 +41,8 @@ export const performInBrowser = async (
 		// create parallel tasks
 		const promises = Array.from({ length: pagesCount })
 			.map(async (_, index) => {
-				await handlePage(browser, index, pageFunction)
+				await handlePage(browser, index, pageFunction);
+				logger.info(`[Page ${index}] was finished!`);
 			});
 
 		// wait all tasks
@@ -54,6 +54,6 @@ export const performInBrowser = async (
 			await browser.close();
 		}
 
-		logger.error(error, 'Browser was throw an error!');
+		logger.fatal(error, '[Browser] was throw an error!');
 	}
 };

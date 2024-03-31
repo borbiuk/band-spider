@@ -169,17 +169,19 @@ export class Database {
 		return true;
 	};
 
-	public async insertTrackToAlbum(trackUrl: string, albumUrl: string): Promise<void> {
+	public async insertTrackToAlbum(trackUrl: string, albumUrl: string): Promise<boolean> {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
 		const track = await this.insertItem(trackUrl);
 		const album = await this.insertItem(albumUrl);
 
 		if (track.albumId === album.id) {
-			return;
+			return false;
 		}
 
 		track.albumId = album.id;
 		await repository.save(track);
+		
+		return true;
 	}
 }

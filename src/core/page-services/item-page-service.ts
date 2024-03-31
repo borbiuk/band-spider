@@ -41,8 +41,8 @@ export class ItemPageService {
 	public async readAllPageTags(page: Page): Promise<string[]> {
 		return await page
 			.$$eval(
-				this.TAG_URL_CONTAINER, 
-					tags => tags.map(x => x.textContent.trim())
+				this.TAG_URL_CONTAINER,
+				tags => tags.map(x => x.textContent.trim())
 			)
 			.catch((error) => {
 				logger.error(error);

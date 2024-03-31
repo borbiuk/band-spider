@@ -1,31 +1,36 @@
 {
-   "name": "band-spider",
-   "version": "1.0.0",
-   "description": "",
-   "main": "index.js",
-   "scripts": {
-      "db:urls": "npx ts-node ./src/main.ts urls headless",
-      "db:accounts": "npx ts-node ./src/main.ts accounts headless",
-      "file:urls": "npx ts-node ./src/main.ts urls from-file headless",
-      "typeorm": "typeorm-ts-node-commonjs",
-      "start": "ts-node src/index.ts"
-   },
-   "keywords": [],
-   "author": "",
-   "license": "ISC",
-   "dependencies": {
-      "pg": "8.11.3",
-      "pino": "8.19.0",
-      "puppeteer": "22.6.1",
-      "puppeteer-autoscroll-down": "1.1.2",
-      "reflect-metadata": "0.2.2",
-      "sqlite3": "5.1.7",
-      "typeorm": "0.3.20"
-   },
-   "devDependencies": {
-      "@types/node": "20.12.2",
-      "pino-pretty": "11.0.0",
-      "ts-node": "10.9.2",
-      "typescript": "5.4.3"
-   }
+	"name": "band-spider",
+	"version": "1.0.0",
+	"description": "",
+	"main": "index.js",
+	"scripts": {
+		"file:account": "npx ts-node ./src/main.ts --file --headless --account",
+		"file:items": "npx ts-node ./src/main.ts --file --headless",
+		"db:account": "npx ts-node ./src/main.ts --headless --account",
+		"db:items": "npx ts-node ./src/main.ts --headless",
+		"debug:file:account": "npx ts-node ./src/main.ts --file --account",
+		"debug:file:items": "npx ts-node ./src/main.ts --file",
+		"debug:db:account": "npx ts-node ./src/main.ts --account",
+		"debug:db:items": "npx ts-node ./src/main.ts",
+		"typeorm": "typeorm-ts-node-commonjs",
+		"start": "ts-node src/index.ts"
+	},
+	"keywords": [],
+	"author": "",
+	"license": "ISC",
+	"dependencies": {
+		"pg": "8.11.3",
+		"pino": "8.19.0",
+		"puppeteer": "22.6.1",
+		"puppeteer-autoscroll-down": "1.1.2",
+		"reflect-metadata": "0.2.2",
+		"sqlite3": "5.1.7",
+		"typeorm": "0.3.20"
+	},
+	"devDependencies": {
+		"@types/node": "20.12.2",
+		"pino-pretty": "11.0.0",
+		"ts-node": "10.9.2",
+		"typescript": "5.4.3"
+	}
 }
