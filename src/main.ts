@@ -3,7 +3,7 @@ import { logger, Source } from './common/logger';
 import { logMessage } from './common/utils';
 import { BandSpider, InitType } from './core/band-spider';
 
-const PARALLEL_PAGES_COUNT: number = 60;
+const PARALLEL_PAGES_COUNT: number = 100;
 
 const main = async (): Promise<void> => {
 	console.time('main');
@@ -27,4 +27,3 @@ process.setMaxListeners(0); // Set maximum listeners to unlimited
 main().catch(error => {
 	logger.fatal(error, logMessage(Source.Main, error.message));
 });
-

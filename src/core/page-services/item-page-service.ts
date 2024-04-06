@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
 import { logger, Source } from '../../common/logger';
-import { isEmptyString, isNullOrUndefined, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
+import { isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
 	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 1_500;
@@ -10,6 +10,12 @@ export class ItemPageService {
 	private readonly ACCOUNT_URL_CONTAINER: string = 'a.fan.pic';
 
 	private readonly TAG_URL_CONTAINER: string = 'a.tag';
+
+	private readonly ALBUM_URL_SELECTOR: string = '#buyAlbumLink';
+
+	private readonly RELEASE_DATE_CONTAINER: string = '.tralbumData.tralbum-credits';
+
+	private readonly releaseDateRegex: RegExp = /(?:released|releases) (\w+ \d{1,2}, \d{4})/;
 
 	constructor() {
 	}
@@ -87,11 +93,11 @@ export class ItemPageService {
 
 		let albumPath = await page
 			.$eval(
-				'#buyAlbumLink',
+				this.ALBUM_URL_SELECTOR,
 				element => element.getAttribute('href')
 			)
 			.catch((error) => {
-				if (!error.message.includes('Error: failed to find element matching selector "#buyAlbumLink"')) {
+				if (!this.isFoundSelectorErrorMessage(error.message, this.ALBUM_URL_SELECTOR)) {
 					logger.error(error, logMessage(Source.Item, error.message, pageUrl));
 				}
 				return null;
@@ -100,6 +106,34 @@ export class ItemPageService {
 		return isEmptyString(albumPath)
 			? null
 			: domain + albumPath;
+	}
+
+	public async readTrackReleaseDate(page: Page): Promise<Date> {
+		const pageUrl = page.url();
+
+		const content = await page
+			.$eval(
+				this.ALBUM_URL_SELECTOR,
+				element => element.textContent
+			)
+			.catch(error => {
+				if (!this.isFoundSelectorErrorMessage(error.message, this.RELEASE_DATE_CONTAINER)) {
+					logger.error(error, logMessage(Source.Date, 'Item release date not found', pageUrl));
+				}
+				return null;
+			});
+
+		if (isNullOrUndefined(content)) {
+			return null;
+		}
+
+		const match = content.match(this.releaseDateRegex);
+		if (isNullOrUndefined(match) || match.length <= 1 || isNullOrUndefined(match[1])) {
+			return null;
+		}
+
+		const date: Date = new Date(match[1]);
+		return isValidDate(date) ? date : null;
 	}
 
 	private async loadAllAccount(page: Page): Promise<void> {
@@ -117,5 +151,9 @@ export class ItemPageService {
 				break;
 			}
 		}
+	}
+
+	private isFoundSelectorErrorMessage(message: string, selector: string): boolean {
+		return message.includes(`Error: failed to find element matching selector "${selector}"`);
 	}
 }

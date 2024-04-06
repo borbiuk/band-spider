@@ -19,6 +19,9 @@ export class ItemHandler {
 		// save Item
 		const { id } = await database.insertItem(itemUrl);
 
+		// save Item release date
+		const releaseDateProcessingResult = await this.readAndSaveReleaseDate(page, pageService, database, id);
+
 		// scrap and save Tags
 		const tagsProcessingResult = await this.readAndSaveTags(page, pageService, database, id);
 
@@ -30,18 +33,44 @@ export class ItemHandler {
 		if (isAlbum(itemUrl)) {
 			albumInfo = await this.readAndSaveAlbumTracks(page, pageService, database, itemUrl, urls);
 		} else if (isTrack(itemUrl)) {
-			albumInfo =  await this.readAndSaveTrackAlbum(page, pageService, database, itemUrl, urls);
+			albumInfo = await this.readAndSaveTrackAlbum(page, pageService, database, itemUrl, urls);
 		}
+
+		// save that item was processed now
+		await database.updateItemProcessingDate(id);
 
 		logger.info(
 			logMessage(
 				Source.Item,
-				`Processing finished: ${JSON.stringify({...accountsProcessingResult, ...tagsProcessingResult, ...albumInfo})}`,
+				`Processing finished: ${JSON.stringify({ ...releaseDateProcessingResult, ...accountsProcessingResult, ...tagsProcessingResult, ...albumInfo })}`,
 				itemUrl
 			)
 		);
 
 		return urls;
+	}
+
+	private async readAndSaveReleaseDate(
+		page: Page,
+		service: ItemPageService,
+		database: Database,
+		itemId: number
+	): Promise<{ isDateExtracted: boolean, isDateAlreadySaved: boolean }> {
+		let isDateExtracted: boolean = false;
+		let isDateAlreadySaved: boolean = false;
+
+		const url: string = page.url();
+		try {
+			const date: Date = await service.readTrackReleaseDate(page);
+			if (!isNullOrUndefined(date)) {
+				isDateExtracted = true;
+				isDateAlreadySaved = !await database.updateItemReleaseDate(itemId, date);
+			}
+		} catch (error) {
+			logger.error(error, logMessage(Source.Date, `Processing failed: ${error.message}`, url));
+		}
+
+		return { isDateExtracted, isDateAlreadySaved };
 	}
 
 	private async readAndSaveTags(
@@ -125,7 +154,7 @@ export class ItemHandler {
 		database: Database,
 		albumUrl: string,
 		urls: string[]
-	): Promise<{  }> {
+	): Promise<{}> {
 
 		const url: string = page.url();
 		try {

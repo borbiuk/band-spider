@@ -24,7 +24,7 @@ export class BandSpider {
 	): Promise<void> {
 		const database: Database = await Database.initialize();
 
-		const urls: string[] = await this.getInitialUrlsToProcess(type, fromFile, database);
+		const urls: string[] = (await this.getInitialUrlsToProcess(type, fromFile, database)).filter(x => isTrackOrAlbum(x));
 		const processedUrls: Set<string> = new Set<string>();
 		const errors: { [url: string]: number } = {};
 
@@ -117,8 +117,7 @@ export class BandSpider {
 
 					if (errors[url] < 3) {
 						urls.push(url);
-					}
-					else {
+					} else {
 						logger.fatal(
 							error,
 							logMessage(

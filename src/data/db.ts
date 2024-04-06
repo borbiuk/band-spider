@@ -1,4 +1,5 @@
 import { DataSource, IsNull, Not } from 'typeorm';
+import { isNullOrUndefined } from '../common/utils';
 import { AccountEntity } from '../entities/account-entity';
 import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
@@ -37,15 +38,15 @@ export class Database {
 		return Database.instance;
 	}
 
-	async insertAccount(url: string): Promise<AccountEntity> {
+	async insertAccount(accountUrl: string): Promise<AccountEntity> {
 		const repository = this.dataSource.getRepository(AccountEntity);
 
-		const existingRecord = await repository.findOne({ where: { url } });
+		const existingRecord = await repository.findOne({ where: { url: accountUrl } });
 		if (existingRecord) {
 			return existingRecord;
 		}
 
-		const insertResult = await repository.insert({ url });
+		const insertResult = await repository.insert({ url: accountUrl });
 
 		return insertResult.generatedMaps[0] as AccountEntity;
 	};
@@ -54,20 +55,20 @@ export class Database {
 		return await this.dataSource.getRepository(AccountEntity).find();
 	};
 
-	async getAccountId(url: string): Promise<AccountEntity> {
+	async getAccountId(accountUrl: string): Promise<AccountEntity> {
 		return await this.dataSource.getRepository(AccountEntity)
-			.findOne({ where: { url } });
+			.findOne({ where: { url: accountUrl } });
 	};
 
-	async insertItem(url: string): Promise<ItemEntity> {
+	async insertItem(itemUrl: string): Promise<ItemEntity> {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
-		const existingRecord = await repository.findOne({ where: { url } });
+		const existingRecord = await repository.findOne({ where: { url: itemUrl } });
 		if (existingRecord) {
 			return existingRecord;
 		}
 
-		const insertResult = await repository.insert({ url });
+		const insertResult = await repository.insert({ url: itemUrl });
 
 		return insertResult.generatedMaps[0] as ItemEntity;
 	};
@@ -75,6 +76,10 @@ export class Database {
 	async getAllItems(): Promise<ItemEntity[]> {
 		return await this.dataSource.getRepository(ItemEntity).find();
 	};
+
+	async getItem(itemId: number): Promise<ItemEntity> {
+		return await this.dataSource.getRepository(ItemEntity).findOne({ where: { id: itemId } });
+	}
 
 	async getMostPopularItems(count: number, excludedUrls: string[] = []): Promise<{ url: string, count: number }[]> {
 		const items = await this.dataSource
@@ -111,9 +116,9 @@ export class Database {
 		});
 	};
 
-	async getItemId(url: string): Promise<ItemEntity> {
+	async getItemId(itemUrl: string): Promise<ItemEntity> {
 		return await this.dataSource.getRepository(ItemEntity)
-			.findOne({ where: { url } });
+			.findOne({ where: { url: itemUrl } });
 	};
 
 	async insertItemToAccount(itemId: number, accountId: number): Promise<boolean> {
@@ -164,12 +169,12 @@ export class Database {
 			return false;
 		}
 
-		await repository.insert({ itemId, tagId: tagId });
+		await repository.insert({ itemId: itemId, tagId: tagId });
 
 		return true;
 	};
 
-	public async insertTrackToAlbum(trackUrl: string, albumUrl: string): Promise<boolean> {
+	async insertTrackToAlbum(trackUrl: string, albumUrl: string): Promise<boolean> {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
 		const track = await this.insertItem(trackUrl);
@@ -186,7 +191,7 @@ export class Database {
 	}
 
 	// TODO: test it
-	public async topItemsRelatedToAccount(accountId: number, count: number): Promise<ItemEntity[]> {
+	async topItemsRelatedToAccount(accountId: number, count: number): Promise<ItemEntity[]> {
 		const itemToAccountRepository = this.dataSource.getRepository(ItemToAccountEntity);
 		const itemRepository = this.dataSource.getRepository(ItemEntity);
 
@@ -216,5 +221,22 @@ export class Database {
 			.getMany();
 
 		return topItems;
+	}
+
+	async updateItemReleaseDate(itemId: number, date: Date): Promise<boolean> {
+		const item: ItemEntity = await this.getItem(itemId);
+		if (!isNullOrUndefined(item.releaseDate)) {
+			return false;
+		}
+
+		item.releaseDate = date;
+		await this.dataSource.getRepository(ItemEntity).save(item);
+		return true;
+	}
+
+	async updateItemProcessingDate(itemId: number): Promise<void> {
+		const item: ItemEntity = await this.getItem(itemId);
+		item.lastProcessingDate = new Date();
+		await this.dataSource.getRepository(ItemEntity).save(item);
 	}
 }

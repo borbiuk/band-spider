@@ -8,7 +8,7 @@ const stream = pretty({
 	ignore: 'pid,hostname',
 });
 
-export const logger = pino({ level: 'debug'}, stream);
+export const logger = pino({ level: 'debug' }, stream);
 
 export enum Source {
 	Main =    '[🚨️ MAIN___]',
@@ -17,4 +17,5 @@ export enum Source {
 	Account = '[💁 ACCOUNT]',
 	Item =    '[📀 ITEM___]',
 	Tag =     '[🏷 TAG____]',
+	Date =    '[📅 DATE___]',
 }

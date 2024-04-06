@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToMany, OneToOne, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { AccountEntity } from './account-entity';
 import { BaseEntity } from './base/enitity';
 import { ItemToAccountEntity } from './item-to-account-entity';
@@ -13,6 +13,9 @@ export class ItemEntity implements BaseEntity {
 
 	@Column({ unique: true })
 	url: string;
+
+	@Column({ type: 'date', nullable: true })
+	releaseDate?: Date;
 
 	@Column({ nullable: true })
 	albumId?: number;
@@ -31,6 +34,9 @@ export class ItemEntity implements BaseEntity {
 	tags: TagEntity[];
 
 	@OneToMany(() => ItemToTagEntity, (itemToTag) => itemToTag.item)
-	itemToTag: ItemToTagEntity[]
+	itemToTag: ItemToTagEntity[];
+
+	@Column({ type: 'date', nullable: true })
+	lastProcessingDate?: Date;
 
 }

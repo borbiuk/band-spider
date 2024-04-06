@@ -7,6 +7,7 @@ export const isAlbum = (url: string): boolean => isValidUrl(url) && url.includes
 export const isTrack = (url: string): boolean => isValidUrl(url) && url.includes('/track/');
 export const isTrackOrAlbum = (url: string): boolean => isValidUrl(url) && (url.includes('/album/') || url.includes('/track/'));
 export const originalUrl = (url: string): string => url.split('?')[0];
+export const isValidDate = (date: Date): boolean => !isNullOrUndefined(date) && !isNaN(date.getTime())
 export const isValidUrl = (urlString: string): boolean => {
 	if (isEmptyString(urlString)) {
 		return false;
