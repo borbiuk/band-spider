@@ -10,3 +10,12 @@ const stream = pretty({
 });
 
 export const logger = pino({ level: 'debug' }, stream);
+
+export enum Source {
+	Main =    '[⚠️ MAIN___]',
+	Browser = '[🖥 BROWSER]',
+	Page =    '[📄 PAGE___]',
+	Account = '[💁 ACCOUNT]',
+	Item =    '[📀 ITEM___]',
+	Tag =     '[🏷 TAG____]',
+}

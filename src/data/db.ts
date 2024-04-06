@@ -47,7 +47,7 @@ export class Database {
 
 		const insertResult = await repository.insert({ url });
 
-		return insertResult.generatedMaps[0] as AccountEntity;;
+		return insertResult.generatedMaps[0] as AccountEntity;
 	};
 
 	async getAllAccounts(): Promise<AccountEntity[]> {
@@ -181,7 +181,40 @@ export class Database {
 
 		track.albumId = album.id;
 		await repository.save(track);
-		
+
 		return true;
+	}
+
+	// TODO: test it
+	public async topItemsRelatedToAccount(accountId: number, count: number): Promise<ItemEntity[]> {
+		const itemToAccountRepository = this.dataSource.getRepository(ItemToAccountEntity);
+		const itemRepository = this.dataSource.getRepository(ItemEntity);
+
+		// Query to find items related to accounts other than the given accountId
+		const itemsQuery = itemRepository.createQueryBuilder('item')
+			.leftJoinAndSelect('item.itemToAccount', 'itemToAccount')
+			.leftJoinAndSelect('itemToAccount.account', 'account')
+			.where('account.id != :accountId', { accountId });
+
+		const test1 = await itemsQuery.getMany();
+
+		// Subquery to get ids of items related to other accounts
+		const subQuery = itemToAccountRepository.createQueryBuilder('itemToAccount')
+			.select('DISTINCT("itemToAccount"."itemId")')
+			.where('itemToAccount.accountId = :accountId', { accountId });
+
+		const test2 = await subQuery.getMany();
+
+		// Get the parameters from the subquery
+		const subQueryParameters = subQuery.getParameters();
+
+		// Final query to get top 'count' items not related to the given accountId
+		const topItems = await itemsQuery
+			.andWhere('item.id NOT IN (' + subQuery.getQuery() + ')')
+			.setParameters({ ...subQueryParameters, accountId }) // Include accountId in parameters
+			.take(count)
+			.getMany();
+
+		return topItems;
 	}
 }

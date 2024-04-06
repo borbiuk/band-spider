@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
-import { logger } from '../../common/logger';
-import { isAlbum, isNullOrUndefined, isTrack } from '../../common/utils';
+import { logger, Source } from '../../common/logger';
+import { isAlbum, isNullOrUndefined, isTrack, logMessage } from '../../common/utils';
 import { Database } from '../../data/db';
 import { ItemPageService } from '../page-services/item-page-service';
 
@@ -20,40 +20,43 @@ export class ItemHandler {
 		const { id } = await database.insertItem(itemUrl);
 
 		// scrap and save Tags
-		const tagsCount: number = await this.readAndSaveTags(page, pageService, database, id);
+		const tagsProcessingResult = await this.readAndSaveTags(page, pageService, database, id);
 
 		// scrap and save Accounts
-		const accountsCount: number = await this.readAndSaveAccount(page, pageService, database, id, urls);
+		const accountsProcessingResult = await this.readAndSaveAccounts(page, pageService, database, id, urls);
 
 		// extract album or tracks
-		let albumInfo = null;
+		let albumInfo: object = null;
 		if (isAlbum(itemUrl)) {
-			const albumLength: number = await this.readAndSaveAlbumTracks(page, pageService, database, itemUrl, urls);
-			albumInfo = {
-				albumLength
-			};
+			albumInfo = await this.readAndSaveAlbumTracks(page, pageService, database, itemUrl, urls);
 		} else if (isTrack(itemUrl)) {
-			const albumExtracted: boolean = await this.readAndSaveTrackAlbum(page, pageService, database, itemUrl, urls);
-			albumInfo = {
-				albumExtracted
-			};
+			albumInfo =  await this.readAndSaveTrackAlbum(page, pageService, database, itemUrl, urls);
 		}
 
-		logger.info({
-			message: 'Item processing finished!',
-			url: itemUrl,
-			accounts: accountsCount,
-			tags: tagsCount,
-			...albumInfo
-		});
+		logger.info(
+			logMessage(
+				Source.Item,
+				`Processing finished: ${JSON.stringify({...accountsProcessingResult, ...tagsProcessingResult, ...albumInfo})}`,
+				itemUrl
+			)
+		);
 
 		return urls;
 	}
 
-	private async readAndSaveTags(page: Page, service: ItemPageService, database: Database, itemId: number): Promise<number> {
-		let tagRelationsCount = 0;
+	private async readAndSaveTags(
+		page: Page,
+		service: ItemPageService,
+		database: Database,
+		itemId: number
+	): Promise<{ totalTagsCount: number, newTagsCount: number }> {
+		let totalTagsCount: number = 0;
+		let newTagsCount: number = 0;
+
+		const url: string = page.url();
 		try {
 			const tags: string[] = await service.readAllPageTags(page);
+			totalTagsCount = tags.length;
 
 			// save Tags
 			const tagsIds: number[] = [];
@@ -66,20 +69,30 @@ export class ItemHandler {
 			for (const tagId of tagsIds) {
 				const added = await database.insertItemToTag(itemId, tagId);
 				if (added) {
-					tagRelationsCount++;
+					newTagsCount++;
 				}
 			}
 		} catch (error) {
-			logger.error(error, '[Item] Tags processing failed!')
+			logger.error(error, logMessage(Source.Tag, `Processing failed: ${error.message}`, url));
 		}
 
-		return tagRelationsCount;
+		return { totalTagsCount, newTagsCount };
 	}
 
-	private async readAndSaveAccount(page: Page, service: ItemPageService, database: Database, itemId: number, urls: string[]): Promise<number> {
-		let accountsRelationsCount: number = 0;
+	private async readAndSaveAccounts(
+		page: Page,
+		service: ItemPageService,
+		database: Database,
+		itemId: number,
+		urls: string[]
+	): Promise<{ totalAccountsCount: number, newAccountCount: number }> {
+		let totalAccountsCount: number = 0;
+		let newAccountCount: number = 0;
+
+		const url: string = page.url();
 		try {
 			const accounts: string[] = await service.readAllPageAccounts(page);
+			totalAccountsCount = accounts.length;
 
 			// save Accounts
 			const accountsIds: number[] = [];
@@ -96,14 +109,14 @@ export class ItemHandler {
 			for (const accountId of accountsIds) {
 				const added = await database.insertItemToAccount(itemId, accountId);
 				if (added) {
-					accountsRelationsCount++;
+					newAccountCount++;
 				}
 			}
 		} catch (error) {
-			logger.error(error, '[Item] Accounts processing failed!')
+			logger.error(error, logMessage(Source.Item, `Accounts processing failed: ${error.message}`, url));
 		}
 
-		return accountsRelationsCount;
+		return { totalAccountsCount, newAccountCount };
 	}
 
 	private async readAndSaveAlbumTracks(
@@ -112,27 +125,30 @@ export class ItemHandler {
 		database: Database,
 		albumUrl: string,
 		urls: string[]
-	): Promise<number> {
-		let trackAlbumRelationsCount: number = 0;
+	): Promise<{  }> {
 
+		const url: string = page.url();
 		try {
 			const tracksUrls: string[] = await pageService.readAllAlbumTracks(page);
+
+			let albumRelationAlreadyExist: number = 0;
 			while (tracksUrls.length > 0) {
 				const trackUrl = tracksUrls.pop();
 				const added = await database.insertTrackToAlbum(trackUrl, albumUrl);
 				if (added) {
-					trackAlbumRelationsCount++;
+					albumRelationAlreadyExist++;
 				}
 
 				// add to processing
 				urls.push(trackUrl);
 			}
-		}
-		catch (error) {
-			logger.error(error, '[Item] Album Tracks processing failed!');
+
+			return { extractedTracksCount: tracksUrls.length, albumRelationAlreadyExist }
+		} catch (error) {
+			logger.error(error, logMessage(Source.Item, `Album Tracks processing failed: ${error.message}`, url));
 		}
 
-		return trackAlbumRelationsCount;
+		return null;
 	}
 
 	private async readAndSaveTrackAlbum(
@@ -141,7 +157,8 @@ export class ItemHandler {
 		database: Database,
 		trackUrl: string,
 		urls: string[]
-	): Promise<boolean> {
+	): Promise<{ albumExtracted: boolean, albumRelationAlreadyExist: boolean }> {
+		const url: string = page.url();
 		try {
 			const albumUrl: string = await pageService.readTrackAlbum(page);
 			if (!isNullOrUndefined(albumUrl)) {
@@ -150,13 +167,12 @@ export class ItemHandler {
 				// add to processing
 				urls.push(albumUrl);
 
-				return added;
+				return { albumExtracted: true, albumRelationAlreadyExist: !added };
 			}
-		}
-		catch (error) {
-			logger.error(error, '[Item] Track Album processing failed');
+		} catch (error) {
+			logger.error(error, logMessage(Source.Item, `Track Album processing failed: ${error.message}`, url));
 		}
 
-		return false;
+		return null;
 	}
 }

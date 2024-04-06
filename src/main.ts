@@ -1,5 +1,6 @@
 import 'reflect-metadata';
-import { logger } from './common/logger';
+import { logger, Source } from './common/logger';
+import { logMessage } from './common/utils';
 import { BandSpider, InitType } from './core/band-spider';
 
 const PARALLEL_PAGES_COUNT: number = 60;
@@ -24,6 +25,6 @@ const main = async (): Promise<void> => {
 process.setMaxListeners(0); // Set maximum listeners to unlimited
 
 main().catch(error => {
-	logger.fatal(error, '[Main] thrown an error!');
+	logger.fatal(error, logMessage(Source.Main, error.message));
 });
 

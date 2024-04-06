@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
-import { logger } from '../../common/logger';
-import { isNullOrUndefined, onlyUnique, originalUrl } from '../../common/utils';
+import { logger, Source } from '../../common/logger';
+import { logMessage, isNullOrUndefined, onlyUnique, originalUrl, isEmptyString, isValidUrl } from '../../common/utils';
 
 export class ItemPageService {
 	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 1_500;
@@ -39,20 +39,22 @@ export class ItemPageService {
 	}
 
 	public async readAllPageTags(page: Page): Promise<string[]> {
+		const url: string = page.url();
 		return await page
 			.$$eval(
 				this.TAG_URL_CONTAINER,
 				tags => tags.map(x => x.textContent.trim())
 			)
 			.catch((error) => {
-				logger.error(error);
+				logger.error(error, logMessage(Source.Item, error.message, url));
 				return [];
 			});
 	};
 
 	public async readAllAlbumTracks(page: Page): Promise<string[]> {
 
-		const url = new URL(page.url());
+		const pageUrl = page.url();
+		const url = new URL(pageUrl);
 		const domain = url.protocol + '//' + url.hostname;
 
 		const tracks: string[] = await page
@@ -61,32 +63,34 @@ export class ItemPageService {
 				links => links.map(link => link.getAttribute('href'))
 			)
 			.catch(error => {
-				logger.error(error);
+				logger.error(error, logMessage(Source.Item, error.message, pageUrl));
 				return []
 			});
 
 		return tracks
 			.filter(x => !isNullOrUndefined(x))
 			.map(x => domain + originalUrl(x))
+			.filter(x => isValidUrl(x))
 			.filter(onlyUnique);
 	}
 
 	public async readTrackAlbum(page: Page): Promise<string> {
 
+		const pageUrl = page.url();
 		const url = new URL(page.url());
 		const domain = url.protocol + '//' + url.hostname;
 
 		let albumPath = await page
 			.$eval(
-				'a#buyAlbumLink',
+				'#buyAlbumLink',
 				element => element.getAttribute('href')
 			)
 			.catch((error) => {
-				logger.error(error);
+				logger.error(error, logMessage(Source.Item, error.message, pageUrl));
 				return null;
 			});
 
-		return isNullOrUndefined(albumPath)
+		return isEmptyString(albumPath)
 			? null
 			: domain + albumPath;
 	}
