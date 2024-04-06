@@ -14,7 +14,7 @@ export class AccountHandler {
 		const urls: string[] = [];
 
 		// open url and show all accounts
-		await page.goto(accountUrl, { timeout: 10_000, waitUntil: 'networkidle0' });
+		await page.goto(accountUrl, { timeout: 15_000, waitUntil: 'domcontentloaded' });
 
 		// save Account
 		const { id } = await database.insertAccount(accountUrl);

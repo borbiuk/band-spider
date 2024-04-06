@@ -14,7 +14,7 @@ export class ItemHandler {
 		const urls: string[] = [];
 
 		// open Item url
-		await page.goto(itemUrl, { timeout: 10_000, waitUntil: 'networkidle0' });
+		await page.goto(itemUrl, { timeout: 15_000, waitUntil: 'domcontentloaded' });
 
 		// save Item
 		const { id } = await database.insertItem(itemUrl);

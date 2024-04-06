@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
 import { scrollPageToBottom } from 'puppeteer-autoscroll-down';
-import { isEmptyString, isValidUrl, originalUrl } from '../../common/utils';
+import { isNullOrUndefined, isValidUrl, originalUrl } from '../../common/utils';
 
 export class AccountPageService {
 
@@ -50,6 +50,10 @@ export class AccountPageService {
 		let isLoadingAvailable = true;
 
 		let container = await page.$(this.SCROLL_CONTAINER);
+		if (isNullOrUndefined(container)) {
+			return;
+		}
+
 		let height = (await container.boundingBox()).height;
 		let retry = 0;
 
@@ -82,7 +86,7 @@ export class AccountPageService {
 	}
 
 	private async readHrefs(page: Page, selector: string): Promise<string[]> {
-		return await page.$$eval(selector, (elements) =>
+		return await page.$$eval(selector, (elements: HTMLAnchorElement[]) =>
 			elements.map((element) => element.href)
 		);
 	}

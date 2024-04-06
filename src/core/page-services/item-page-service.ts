@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
 import { logger, Source } from '../../common/logger';
-import { logMessage, isNullOrUndefined, onlyUnique, originalUrl, isEmptyString, isValidUrl } from '../../common/utils';
+import { isEmptyString, isNullOrUndefined, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
 	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 1_500;
@@ -22,20 +22,25 @@ export class ItemPageService {
 	 * @returns A Promise resolving to an array of account URLs.
 	 */
 	public async readAllPageAccounts(page: Page): Promise<string[]> {
-		const hrefs: string[] = [];
+		const url: string = page.url();
 
 		await this.loadAllAccount(page);
 
-		const elements = await page.$$(this.ACCOUNT_URL_CONTAINER);
-		for (const e of elements) {
-			const href = await e.getProperty('href');
-			const hrefValue = await href.jsonValue();
-			hrefs.push(
-				originalUrl(hrefValue)
-			);
-		}
+		const accounts: string[] = await page
+			.$$eval(
+				this.ACCOUNT_URL_CONTAINER,
+				(elements) => elements
+					.map(x => x.getAttribute('href'))
+			)
+			.catch((error) => {
+				logger.error(error, logMessage(Source.Item, error.message, url));
+				return [];
+			});
 
-		return hrefs;
+		return accounts
+			.filter(x => !isNullOrUndefined(x))
+			.map(x => originalUrl(x))
+			.filter(onlyUnique);
 	}
 
 	public async readAllPageTags(page: Page): Promise<string[]> {
@@ -86,7 +91,9 @@ export class ItemPageService {
 				element => element.getAttribute('href')
 			)
 			.catch((error) => {
-				logger.error(error, logMessage(Source.Item, error.message, pageUrl));
+				if (!error.message.includes('Error: failed to find element matching selector "#buyAlbumLink"')) {
+					logger.error(error, logMessage(Source.Item, error.message, pageUrl));
+				}
 				return null;
 			});
 
