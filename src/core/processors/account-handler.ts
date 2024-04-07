@@ -5,9 +5,10 @@ import { Database } from '../../data/db';
 import { AccountPageService } from '../page-services/account-page-service';
 
 export class AccountHandler {
+	private readonly pageService: AccountPageService = new AccountPageService();
+
 	public async processAccount(
 		page: Page,
-		pageService: AccountPageService,
 		database: Database,
 		accountUrl: string
 	): Promise<string[]> {
@@ -20,9 +21,18 @@ export class AccountHandler {
 		const { id } = await database.insertAccount(accountUrl);
 
 		// scrap and save Items
-		const processingResult = await this.readAndSaveAccountItems(page, pageService, database, id, urls);
+		const processingResult = await this.readAndSaveAccountItems(page, this.pageService, database, id, urls);
 
-		logger.info(logMessage(Source.Account, `Processing finished: ${JSON.stringify(processingResult)}`, accountUrl));
+		// save that account was processed now
+		await database.updateAccountProcessingDate(id);
+
+		logger.info(
+			logMessage(
+				Source.Account,
+				`Processing finished: ${JSON.stringify(processingResult)}`,
+				accountUrl
+			)
+		);
 
 		return urls;
 	}

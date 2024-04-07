@@ -5,9 +5,10 @@ import { Database } from '../../data/db';
 import { ItemPageService } from '../page-services/item-page-service';
 
 export class ItemHandler {
+	private readonly pageService: ItemPageService = new ItemPageService();
+
 	public async processItem(
 		page: Page,
-		pageService: ItemPageService,
 		database: Database,
 		itemUrl: string
 	): Promise<string[]> {
@@ -18,6 +19,8 @@ export class ItemHandler {
 
 		// save Item
 		const { id } = await database.insertItem(itemUrl);
+
+		const pageService: ItemPageService = this.pageService;
 
 		// save Item release date
 		const releaseDateProcessingResult = await this.readAndSaveReleaseDate(page, pageService, database, id);

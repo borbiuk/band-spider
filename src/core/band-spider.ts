@@ -24,7 +24,7 @@ export class BandSpider {
 	): Promise<void> {
 		const database: Database = await Database.initialize();
 
-		const urls: string[] = (await this.getInitialUrlsToProcess(type, fromFile, database)).filter(x => isTrackOrAlbum(x));
+		const urls: string[] = (await this.getInitialUrlsToProcess(type, fromFile, database));
 		const processedUrls: Set<string> = new Set<string>();
 		const errors: { [url: string]: number } = {};
 
@@ -61,11 +61,7 @@ export class BandSpider {
 		processedUrls: Set<string>,
 		errors: { [url: string]: number; }
 	) => {
-		return async (page: Page) => {
-
-			// create page services
-			const accountPageService = new AccountPageService();
-			const itemPageService = new ItemPageService();
+		return async (page: Page): Promise<void> => {
 
 			// create handlers
 			const accountHandler = new AccountHandler();
@@ -83,52 +79,77 @@ export class BandSpider {
 					continue;
 				}
 
-				const isItem = isTrackOrAlbum(url);
-				try {
-					if (isItem) {
-						const itemAccountsUrls = await itemHandler.processItem(page, itemPageService, database, url);
-						for (const accountUrl of itemAccountsUrls) {
-							urls.push(accountUrl);
-						}
-					} else if (isValidUrl(url)) {
-						const accountItemsUrls = await accountHandler.processAccount(page, accountPageService, database, url);
-						for (const itemUrl of accountItemsUrls) {
-							urls.push(itemUrl);
-						}
-					}
-
-					processedUrls.add(url);
-				} catch (error) {
-					logger.error(
-						error,
-						logMessage(
-							isItem ? Source.Item : Source.Account,
-							`Processing failed: ${error.message}`,
-							url
-						)
-					);
-
-					// increase url errors count
-					if (isNullOrUndefined(errors[url])) {
-						errors[url] = 1;
-					} else {
-						errors[url] += 1;
-					}
-
-					if (errors[url] < 3) {
-						urls.push(url);
-					} else {
-						logger.fatal(
-							error,
-							logMessage(
-								isItem ? Source.Item : Source.Account,
-								`Cant be processed after retry: ${error.message}`,
-								url
-							)
-						);
-					}
-				}
+				const extractedUrls: string[] = await this.processUrl(
+					page,
+					itemHandler,
+					accountHandler,
+					database,
+					url,
+					errors
+				);
+				extractedUrls.forEach(x => {
+					urls.push(x);
+				});
 			}
 		}
+	}
+
+	private async processUrl(
+		page: Page,
+		itemHandler: ItemHandler,
+		accountHandler: AccountHandler,
+		database: Database,
+		url: string,
+		errors: { [p: string]: number }
+	): Promise<string[]> {
+		const extractedUrls: string[] = [];
+
+		const isItem = isTrackOrAlbum(url);
+		try {
+			if (isItem) {
+				//TODO: remove it
+				return [];
+				const itemAccountsUrls = await itemHandler.processItem(page, database, url);
+				for (const accountUrl of itemAccountsUrls) {
+					extractedUrls.push(accountUrl);
+				}
+			} else if (isValidUrl(url)) {
+				const accountItemsUrls = await accountHandler.processAccount(page, database, url);
+				for (const itemUrl of accountItemsUrls) {
+					extractedUrls.push(itemUrl);
+				}
+			}
+		} catch (error) {
+			logger.error(
+				error,
+				logMessage(
+					isItem ? Source.Item : Source.Account,
+					`Processing failed: ${error.message}`,
+					url
+				)
+			);
+
+			// increase url errors count
+			if (isNullOrUndefined(errors[url])) {
+				errors[url] = 1;
+			} else {
+				errors[url] += 1;
+			}
+
+			if (errors[url] < 3) {
+				extractedUrls.push(url);
+			} else {
+				logger.fatal(
+					error,
+					logMessage(
+						isItem ? Source.Item : Source.Account,
+						`Cant be processed after retry: ${error.message}`,
+						url
+					)
+				);
+			}
+		}
+
+		return extractedUrls;
 	}
 }

@@ -80,6 +80,10 @@ export class Database {
 	async getItem(itemId: number): Promise<ItemEntity> {
 		return await this.dataSource.getRepository(ItemEntity).findOne({ where: { id: itemId } });
 	}
+	
+	async getAccount(accountId: number): Promise<AccountEntity> {
+		return await this.dataSource.getRepository(AccountEntity).findOne({ where: { id: accountId } });
+	}
 
 	async getMostPopularItems(count: number, excludedUrls: string[] = []): Promise<{ url: string, count: number }[]> {
 		const items = await this.dataSource
@@ -238,5 +242,11 @@ export class Database {
 		const item: ItemEntity = await this.getItem(itemId);
 		item.lastProcessingDate = new Date();
 		await this.dataSource.getRepository(ItemEntity).save(item);
+	}
+
+	async updateAccountProcessingDate(accountId: number): Promise<void> {
+		const item: AccountEntity = await this.getAccount(accountId);
+		item.lastProcessingDate = new Date();
+		await this.dataSource.getRepository(AccountEntity).save(item);
 	}
 }

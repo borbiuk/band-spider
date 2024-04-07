@@ -16,6 +16,9 @@ export class AccountEntity implements BaseEntity {
 	items: ItemEntity[];
 
 	@OneToMany(() => ItemToAccountEntity, (itemToTag) => itemToTag.account)
-	itemToAccount: ItemToAccountEntity[]
+	itemToAccount: ItemToAccountEntity[];
+
+	@Column({ type: 'date', nullable: true })
+	lastProcessingDate?: Date;
 
 }
