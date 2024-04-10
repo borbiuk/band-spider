@@ -6,13 +6,13 @@ export class AccountPageService {
 
 	private readonly ALBUM_OR_TRACK_URL_CONTAINER: string = '.item-link';
 
-	private readonly LOAD_MORE_TRACKS_DELAY: number = 1_500;
+	private readonly LOAD_MORE_TRACKS_DELAY: number = 5_000;
 	private readonly LOAD_MORE_TRACKS_CONTAINER: string = '.show-more';
 
-	private readonly SCROLL_TO_END_RETRY: number = 3;
+	private readonly SCROLL_TO_END_RETRY: number = 2;
 	private readonly SCROLL_SIZE: number = 5_000;
 	private readonly SCROLL_REQUEST_ENDPOINT: string = 'collection_items';
-	private readonly SCROLL_REQUEST_TIMEOUT: number = 1_000;
+	private readonly SCROLL_REQUEST_TIMEOUT: number = 5_000;
 	private readonly SCROLL_CONTAINER: string = '.fan-container';
 
 	constructor() {

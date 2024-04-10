@@ -5,14 +5,16 @@
 	"main": "index.js",
 	"type": "commonjs",
 	"scripts": {
-		"file:account": "npx ts-node ./src/main.ts --file --headless --account",
-		"file:items": "npx ts-node ./src/main.ts --file --headless",
-		"db:account": "npx ts-node ./src/main.ts --headless --account",
-		"db:items": "npx ts-node ./src/main.ts --headless",
-		"debug:file:account": "npx ts-node ./src/main.ts --file --account",
-		"debug:file:items": "npx ts-node ./src/main.ts --file",
-		"debug:db:account": "npx ts-node ./src/main.ts --account",
-		"debug:db:items": "npx ts-node ./src/main.ts"
+		"file:account": "npx ts-node ./src/index.ts --file --headless --account",
+		"file:items": "npx ts-node ./src/index.ts --file --headless",
+		"db:account": "npx ts-node ./src/index.ts --headless --account",
+		"db:items": "npx ts-node ./src/index.ts --headless",
+		"debug:file:account": "npx ts-node ./src/index.ts --file --account",
+		"debug:file:items": "npx ts-node ./src/index.ts --file",
+		"debug:db:account": "npx ts-node ./src/index.ts --account",
+		"debug:db:items": "npx ts-node ./src/index.ts",
+		"build": "npx tsc",
+		"start": "node dist/index.js --headless"
 	},
 	"keywords": [],
 	"author": "",
@@ -26,9 +28,9 @@
 		"typeorm": "0.3.20"
 	},
 	"devDependencies": {
-		"@types/node": "20.12.5",
+		"@types/node": "20.12.7",
 		"pino-pretty": "11.0.0",
 		"ts-node": "10.9.2",
-		"typescript": "5.4.4"
+		"typescript": "5.4.5"
 	}
 }

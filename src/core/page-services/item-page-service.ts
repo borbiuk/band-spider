@@ -3,17 +3,16 @@ import { logger, Source } from '../../common/logger';
 import { isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
-	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 1_500;
-
-	private readonly LOAD_ACCOUNTS_CONTAINER: string = '.more-thumbs'
-
-	private readonly ACCOUNT_URL_CONTAINER: string = 'a.fan.pic';
-
-	private readonly TAG_URL_CONTAINER: string = 'a.tag';
+	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 5_000;
+	private readonly LOAD_ALL_ACCOUNTS_SELECTOR: string = '.more-thumbs'
+	private readonly ACCOUNT_URL_SELECTOR: string = 'a.fan.pic';
 
 	private readonly ALBUM_URL_SELECTOR: string = '#buyAlbumLink';
+	private readonly ALBUM_TRACKS_SELECTOR: string = 'table.track_list#track_table a';
 
 	private readonly RELEASE_DATE_CONTAINER: string = '.tralbumData.tralbum-credits';
+
+	private readonly TAG_SELECTOR: string = 'a.tag';
 
 	private readonly releaseDateRegex: RegExp = /(?:released|releases) (\w+ \d{1,2}, \d{4})/;
 
@@ -34,7 +33,7 @@ export class ItemPageService {
 
 		const accounts: string[] = await page
 			.$$eval(
-				this.ACCOUNT_URL_CONTAINER,
+				this.ACCOUNT_URL_SELECTOR,
 				(elements) => elements
 					.map(x => x.getAttribute('href'))
 			)
@@ -53,7 +52,7 @@ export class ItemPageService {
 		const url: string = page.url();
 		return await page
 			.$$eval(
-				this.TAG_URL_CONTAINER,
+				this.TAG_SELECTOR,
 				tags => tags.map(x => x.textContent.trim())
 			)
 			.catch((error) => {
@@ -70,7 +69,7 @@ export class ItemPageService {
 
 		const tracks: string[] = await page
 			.$$eval(
-				'table.track_list#track_table a',
+				this.ALBUM_TRACKS_SELECTOR,
 				links => links.map(link => link.getAttribute('href'))
 			)
 			.catch(error => {
@@ -97,7 +96,7 @@ export class ItemPageService {
 				element => element.getAttribute('href')
 			)
 			.catch((error) => {
-				if (!this.isFoundSelectorErrorMessage(error.message, this.ALBUM_URL_SELECTOR)) {
+				if (!this.isFoundSelectorErrorMessage(error.message)) {
 					logger.error(error, logMessage(Source.Item, error.message, pageUrl));
 				}
 				return null;
@@ -109,15 +108,15 @@ export class ItemPageService {
 	}
 
 	public async readTrackReleaseDate(page: Page): Promise<Date> {
-		const pageUrl = page.url();
+		const pageUrl: string = page.url();
 
 		const content = await page
 			.$eval(
-				this.ALBUM_URL_SELECTOR,
+				this.RELEASE_DATE_CONTAINER,
 				element => element.textContent
 			)
 			.catch(error => {
-				if (!this.isFoundSelectorErrorMessage(error.message, this.RELEASE_DATE_CONTAINER)) {
+				if (!this.isFoundSelectorErrorMessage(error.message)) {
 					logger.error(error, logMessage(Source.Date, 'Item release date not found', pageUrl));
 				}
 				return null;
@@ -141,7 +140,7 @@ export class ItemPageService {
 			try {
 				const showMoreAccountsButton =
 					await page.waitForSelector(
-						this.LOAD_ACCOUNTS_CONTAINER,
+						this.LOAD_ALL_ACCOUNTS_SELECTOR,
 						{
 							timeout: this.LOAD_MORE_ACCOUNTS_DELAY
 						});
@@ -153,7 +152,7 @@ export class ItemPageService {
 		}
 	}
 
-	private isFoundSelectorErrorMessage(message: string, selector: string): boolean {
-		return message.includes(`Error: failed to find element matching selector "${selector}"`);
+	private isFoundSelectorErrorMessage(message: string): boolean {
+		return message.includes(`failed to find element matching selector`);
 	}
 }

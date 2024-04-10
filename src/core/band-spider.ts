@@ -1,11 +1,10 @@
 import { Page } from 'puppeteer';
 import { performInBrowser } from '../common/browser';
 import { logger, Source } from '../common/logger';
+import { Queue } from '../common/queue';
 import { isNullOrUndefined, isTrackOrAlbum, isValidUrl, logMessage, waitOn } from '../common/utils';
 import { Database } from '../data/db';
 import { readUrlsFromFile } from '../data/file';
-import { AccountPageService } from './page-services/account-page-service';
-import { ItemPageService } from './page-services/item-page-service';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
 
@@ -15,6 +14,7 @@ export enum InitType {
 }
 
 export class BandSpider {
+	private database: Database;
 
 	public async run(
 		pagesCount: number,
@@ -22,15 +22,16 @@ export class BandSpider {
 		type: InitType,
 		fromFile: boolean,
 	): Promise<void> {
-		const database: Database = await Database.initialize();
+		this.database = await Database.initialize();
 
-		const urls: string[] = (await this.getInitialUrlsToProcess(type, fromFile, database));
-		const processedUrls: Set<string> = new Set<string>();
 		const errors: { [url: string]: number } = {};
+		const queue: Queue = new Queue(
+			await this.getInitialUrlsToProcess(type, fromFile)
+		);
 
 		// scrap chunks
 		await performInBrowser(
-			this.pageFunctionWrapper(database, urls, processedUrls, errors),
+			this.pageFunctionWrapper(queue, errors, type),
 			pagesCount,
 			{ headless }
 		);
@@ -39,27 +40,26 @@ export class BandSpider {
 	private async getInitialUrlsToProcess(
 		type: InitType,
 		fromFile: boolean,
-		database: Database
 	): Promise<string[]> {
+		const database = await Database.initialize();
 		switch (type) {
 			case InitType.Account:
 				return fromFile
 					? readUrlsFromFile('accounts.txt')
-					: (await database.getAllAccounts()).map(({ url }) => url);
+					: (await database.getNotProcessedAccounts()).map(({ url }) => url);
 			case InitType.Item:
 				return fromFile
 					? readUrlsFromFile('items.txt')
-					: (await database.getAllItems()).map(({ url }) => url).reverse();
+					: (await database.getNotProcessedItems()).map(({ url }) => url);
 			default:
 				throw new Error('Scrapping Type is invalid!');
 		}
 	}
 
 	private pageFunctionWrapper = (
-		database: Database,
-		urls: string[],
-		processedUrls: Set<string>,
-		errors: { [url: string]: number; }
+		queue: Queue,
+		errors: { [url: string]: number; },
+		type: InitType,
 	) => {
 		return async (page: Page): Promise<void> => {
 
@@ -69,36 +69,59 @@ export class BandSpider {
 
 			// process while exists
 			while (true) {
-				if (urls.length === 0 && !await waitOn(() => urls.length > 0, 60_000 * 5)) {
-					break;
+				if (!await waitOn(() => queue.size > 0, 60_000 * 5)) {
+					queue.enqueueButch(
+						(type === InitType.Account
+							? await this.database.getNotProcessedAccounts()
+							: await this.database.getNotProcessedItems()).map(({ url }) => url)
+					);
+
+					if (queue.size === 0) {
+						break;
+					}
 				}
 
-				const url = urls.pop();
+				const url: string = queue.dequeue();
 
-				if (processedUrls.has(url)) {
+				// continue if already processed
+				const isAlreadyProcessed: boolean = await this.isAlreadyProcessed(url);
+				if (isAlreadyProcessed) {
 					continue;
 				}
 
+				// process
 				const extractedUrls: string[] = await this.processUrl(
 					page,
 					itemHandler,
 					accountHandler,
-					database,
 					url,
 					errors
 				);
-				extractedUrls.forEach(x => {
-					urls.push(x);
-				});
+
+				// add extracted urls to process
+				extractedUrls
+					.filter(async x => !await this.isAlreadyProcessed(x))
+					.forEach(x => {
+							queue.enqueue(x);
+						}
+					);
 			}
 		}
+	}
+
+	private async isAlreadyProcessed(
+		url: string,
+	): Promise<boolean> {
+		const database: Database = await Database.initialize();
+		return isTrackOrAlbum(url)
+			? await database.isItemAlreadyProcessed(url)
+			: await database.isAccountAlreadyProcessed(url);
 	}
 
 	private async processUrl(
 		page: Page,
 		itemHandler: ItemHandler,
 		accountHandler: AccountHandler,
-		database: Database,
 		url: string,
 		errors: { [p: string]: number }
 	): Promise<string[]> {
@@ -107,14 +130,12 @@ export class BandSpider {
 		const isItem = isTrackOrAlbum(url);
 		try {
 			if (isItem) {
-				//TODO: remove it
-				return [];
-				const itemAccountsUrls = await itemHandler.processItem(page, database, url);
+				const itemAccountsUrls = await itemHandler.processItem(page, url);
 				for (const accountUrl of itemAccountsUrls) {
 					extractedUrls.push(accountUrl);
 				}
 			} else if (isValidUrl(url)) {
-				const accountItemsUrls = await accountHandler.processAccount(page, database, url);
+				const accountItemsUrls = await accountHandler.processAccount(page, url);
 				for (const itemUrl of accountItemsUrls) {
 					extractedUrls.push(itemUrl);
 				}

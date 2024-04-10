@@ -17,6 +17,7 @@ const handlePage = async (
 	try {
 		// create a new page
 		page = await browser.newPage();
+		await page.setViewport({ width: 1920, height: 1080 });
 
 		logger.debug(logMessage(Source.Page, `Page ${pageIndex} was started`));
 
@@ -25,7 +26,7 @@ const handlePage = async (
 				return;
 			}
 
-			logger.error(response, logMessage(Source.Page, `Page ${pageIndex} was throw HTTP 429 Too Many Requests 📡`, response.url()));
+			logger.error(response, logMessage(Source.Page, `\t📡 Page ${pageIndex} \twas throw HTTP 429 TOO MANY REQUESTS`, response.url()));
 		});
 
 		// run task in page
