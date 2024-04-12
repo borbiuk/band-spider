@@ -3,7 +3,7 @@ import { logger, LogSource } from '../../common/logger';
 import { isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
-	private readonly DELAY: number = 3_000;
+	private readonly DELAY: number = 10_000;
 
 	private readonly loadAllAccountsSelector: string = '.more-thumbs'
 	private readonly accountUrlSelector: string = 'a.fan.pic';

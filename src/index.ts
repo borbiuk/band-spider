@@ -7,7 +7,7 @@ import { BandSpider, UrlType } from './core/band-spider';
 process.setMaxListeners(0);
 
 // 80 is good to avoid 429 response from bandcamp.com
-const PARALLEL_PAGES_COUNT: number = 1;
+const PARALLEL_PAGES_COUNT: number = 80;
 
 const main = async (): Promise<void> => {
 

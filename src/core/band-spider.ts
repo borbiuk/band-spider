@@ -1,10 +1,10 @@
+import * as fs from 'node:fs';
 import { Page } from 'puppeteer';
 import { BrowserOptions, performInBrowser } from '../common/browser';
 import { logger, LogSource } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
-import { isNullOrUndefined, logMessage, waitOn } from '../common/utils';
+import { isNullOrUndefined, logMessage, onlyUnique, waitOn } from '../common/utils';
 import { BandDatabase } from '../data/db';
-import { readUrlsFromFile } from '../data/file';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
 
@@ -22,7 +22,10 @@ export class BandSpider {
 		type: UrlType,
 		fromFile: boolean,
 	): Promise<void> {
+		// init database
 		this.database = await BandDatabase.initialize();
+		await this.database.account.clearAllBusy();
+		await this.database.item.clearAllBusy();
 
 		// init queue
 		const queue: ProcessingQueue = new ProcessingQueue(
@@ -30,17 +33,15 @@ export class BandSpider {
 			this.database
 		);
 
-		// scrap chunks
+		// scrap items
 		await performInBrowser(
-			this.pageFunctionWrapper(queue, type),
+			this.getPageHandler(queue, type),
 			pagesCount,
 			{ headless } as BrowserOptions
 		);
 	}
 
-
-
-	private pageFunctionWrapper = (
+	private getPageHandler = (
 		queue: ProcessingQueue,
 		type: UrlType,
 	) => {
@@ -83,14 +84,14 @@ export class BandSpider {
 		try {
 			switch (event.type) {
 				case UrlType.Account:
-					await this.database.updateAccountBusy(event.id, true);
+					await this.database.account.updateBusy(event.id, true);
 					await accountHandler.processAccount(event);
-					await this.database.updateAccountBusy(event.id, false);
+					await this.database.account.updateBusy(event.id, false);
 					break;
 				case UrlType.Item:
-					await this.database.updateItemBusy(event.id, true);
+					await this.database.item.updateBusy(event.id, true);
 					await itemHandler.processItem(event);
-					await this.database.updateItemBusy(event.id, false);
+					await this.database.item.updateBusy(event.id, false);
 					break;
 			}
 		} catch (error) {
@@ -98,13 +99,13 @@ export class BandSpider {
 			switch (event.type) {
 				case UrlType.Account:
 					source = LogSource.Account;
-					await this.database.updateAccountFailed(event.id)
-					await this.database.updateAccountBusy(event.id, false);
+					await this.database.account.updateFailed(event.id)
+					await this.database.account.updateBusy(event.id, false);
 					break;
 				case UrlType.Item:
 					source = LogSource.Item;
-					await this.database.updateItemFailed(event.id)
-					await this.database.updateItemBusy(event.id, false);
+					await this.database.item.updateFailed(event.id)
+					await this.database.item.updateBusy(event.id, false);
 					break;
 			}
 
@@ -123,12 +124,12 @@ export class BandSpider {
 		switch (type) {
 			case UrlType.Account:
 				return fromFile
-					? readUrlsFromFile('accounts.txt')
-					: (await database.getNotProcessedAccounts()).map(({ url }) => url);
+					? this.readUrlsFromFile('accounts.txt')
+					: (await database.account.getNotProcessed()).map(({ url }) => url);
 			case UrlType.Item:
 				return fromFile
-					? readUrlsFromFile('items.txt')
-					: (await database.getNotProcessedItems()).map(({ url }) => url);
+					? this.readUrlsFromFile('items.txt')
+					: (await database.item.getNotProcessed()).map(({ url }) => url);
 			default:
 				throw new Error('Scrapping Type is invalid!');
 		}
@@ -143,4 +144,11 @@ export class BandSpider {
 			await queue.enqueueButch(urls);
 		}
 	}
+
+	// Returns URLs from file
+	private readUrlsFromFile = (fileName: string): string[] => {
+		const fileContent: string = fs.readFileSync(fileName, 'utf8');
+		return fileContent.split('\n');
+	};
+
 }

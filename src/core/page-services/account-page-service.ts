@@ -3,7 +3,7 @@ import { scrollPageToBottom } from 'puppeteer-autoscroll-down';
 import { isNullOrUndefined, isValidUrl, originalUrl } from '../../common/utils';
 
 export class AccountPageService {
-	private readonly DELAY: number = 3_000;
+	private readonly DELAY: number = 10_000;
 
 	private readonly itemSelector: string = '.item-link';
 	private readonly loadMoreAccountsSelector: string = '.collection-items > .expand-container.show-button > .show-more';

@@ -8,7 +8,7 @@ import { ItemPageService } from '../page-services/item-page-service';
 export class ItemHandler {
 	private readonly pageService: ItemPageService = new ItemPageService();
 	private database: BandDatabase;
-	
+
 	constructor(
 		private readonly page: Page
 	) {
@@ -30,7 +30,7 @@ export class ItemHandler {
 		const urls: string[] = [];
 
 		// open Item url
-		await this.page.goto(url, { timeout: 30_000, waitUntil: 'networkidle0' });
+		await this.page.goto(url, { timeout: 60_000, waitUntil: 'networkidle0' });
 
 		// save Item release date
 		const releaseDateProcessingResult = await this.readAndSaveReleaseDate(id);
@@ -50,7 +50,7 @@ export class ItemHandler {
 		}
 
 		// save that item was processed now
-		await this.database.updateItemProcessingDate(id);
+		await this.database.item.updateProcessingDate(id);
 
 		logger.info(
 			logMessage(
@@ -74,7 +74,7 @@ export class ItemHandler {
 			const date: Date = await this.pageService.readTrackReleaseDate(this.page);
 			if (!isNullOrUndefined(date)) {
 				isDateExtracted = true;
-				isDateAlreadySaved = !await this.database.updateItemReleaseDate(itemId, date);
+				isDateAlreadySaved = !await this.database.item.updateReleaseDate(itemId, date);
 			}
 		} catch (error) {
 			logger.error(error, logMessage(LogSource.Date, `Processing failed: ${error.message}`, url));
@@ -97,13 +97,13 @@ export class ItemHandler {
 			// save Tags
 			const tagsIds: number[] = [];
 			for (const tag of tags) {
-				const { id } = await this.database.insertTag(tag);
+				const { id } = await this.database.tag.insert(tag);
 				tagsIds.push(id);
 			}
 
 			// save Tags relations
 			for (const tagId of tagsIds) {
-				const added = await this.database.insertItemToTag(itemId, tagId);
+				const added = await this.database.tag.addItem(tagId, itemId);
 				if (added) {
 					newTagsCount++;
 				}
@@ -131,7 +131,7 @@ export class ItemHandler {
 			const accountsIds: number[] = [];
 
 			for (const accountUrl of accounts) {
-				const { id, url } = await this.database.insertAccount(accountUrl);
+				const { id, url } = await this.database.account.insert(accountUrl);
 				if (id === 0) {
 					continue;
 				}
@@ -143,7 +143,7 @@ export class ItemHandler {
 
 			// save Accounts relations
 			for (const accountId of accountsIds) {
-				const added = await this.database.insertItemToAccount(itemId, accountId);
+				const added = await this.database.account.addItem(accountId, itemId);
 				if (added) {
 					newAccountCount++;
 				}
@@ -165,8 +165,9 @@ export class ItemHandler {
 			const tracksUrls: string[] = await this.pageService.readAllAlbumTracks(this.page);
 
 			let albumRelationAlreadyExist: number = 0;
+			const album = await this.database.item.insert(albumUrl);
 			for (const trackUrl of tracksUrls) {
-				if (!await this.database.insertTrackToAlbum(trackUrl, albumUrl)) {
+				if (!await this.database.insertTrackToAlbum(trackUrl, album)) {
 					albumRelationAlreadyExist++;
 				}
 
@@ -189,8 +190,9 @@ export class ItemHandler {
 		const url: string = this.page.url();
 		try {
 			const albumUrl: string = await this.pageService.readTrackAlbum(this.page);
+			const album = await this.database.item.insert(albumUrl);
 			if (!isNullOrUndefined(albumUrl)) {
-				const added = await this.database.insertTrackToAlbum(trackUrl, albumUrl);
+				const added = await this.database.insertTrackToAlbum(trackUrl, album);
 
 				// add to processing
 				urls.push(albumUrl);

@@ -17,7 +17,6 @@ const handlePage = async (
 	try {
 		// create a new page
 		page = await browser.newPage();
-		await page.setViewport({ width: 1920, height: 1080 });
 
 		logger.debug(logMessage(LogSource.Page, `Page ${pageIndex} was started`));
 
@@ -42,7 +41,7 @@ const handlePage = async (
 };
 
 export const performInBrowser = async (
-	pageFunction: (page: Page) => Promise<void>,
+	pageHandler: (page: Page) => Promise<void>,
 	pagesCount: number,
 	browserOptions: BrowserOptions
 ): Promise<void> => {
@@ -55,7 +54,7 @@ export const performInBrowser = async (
 		// create parallel tasks
 		const promises = Array.from({ length: pagesCount })
 			.map(async (_, index) => {
-				await handlePage(browser, index, pageFunction);
+				await handlePage(browser, index, pageHandler);
 				logger.info(logMessage(LogSource.Page, `Page ${index} was finished`));
 			});
 

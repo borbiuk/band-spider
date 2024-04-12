@@ -22,13 +22,13 @@ export class AccountHandler {
 		const urls: string[] = [];
 
 		// open url and show all accounts
-		await this.page.goto(url, { timeout: 30_000, waitUntil: 'networkidle0' });
+		await this.page.goto(url, { timeout: 60_000, waitUntil: 'networkidle0' });
 
 		// scrap and save Items
 		const processingResult = await this.readAndSaveAccountItems(id, urls);
 
 		// save that account was processed now
-		await this.database.updateAccountProcessingDate(id);
+		await this.database.account.updateProcessingDate(id);
 
 		logger.info(
 			logMessage(
@@ -49,7 +49,7 @@ export class AccountHandler {
 		const itemsIds: number[] = [];
 
 		for (const itemUrl of itemsUrls) {
-			const { id, url } = await this.database.insertItem(itemUrl);
+			const { id, url } = await this.database.item.insert(itemUrl);
 			itemsIds.push(id);
 
 			// add to processing
@@ -58,7 +58,7 @@ export class AccountHandler {
 
 		let newCount: number = 0;
 		for (const itemId of itemsIds) {
-			const added = await this.database.insertItemToAccount(itemId, accountId);
+			const added = await this.database.account.addItem(accountId, itemId);
 			if (added) {
 				newCount++;
 			}
