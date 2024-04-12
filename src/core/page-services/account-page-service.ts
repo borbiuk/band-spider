@@ -3,20 +3,12 @@ import { scrollPageToBottom } from 'puppeteer-autoscroll-down';
 import { isNullOrUndefined, isValidUrl, originalUrl } from '../../common/utils';
 
 export class AccountPageService {
+	private readonly DELAY: number = 3_000;
 
-	private readonly ALBUM_OR_TRACK_URL_CONTAINER: string = '.item-link';
-
-	private readonly LOAD_MORE_TRACKS_DELAY: number = 5_000;
-	private readonly LOAD_MORE_TRACKS_CONTAINER: string = '.show-more';
-
-	private readonly SCROLL_TO_END_RETRY: number = 2;
-	private readonly SCROLL_SIZE: number = 5_000;
-	private readonly SCROLL_REQUEST_ENDPOINT: string = 'collection_items';
-	private readonly SCROLL_REQUEST_TIMEOUT: number = 5_000;
-	private readonly SCROLL_CONTAINER: string = '.fan-container';
-
-	constructor() {
-	}
+	private readonly itemSelector: string = '.item-link';
+	private readonly loadMoreAccountsSelector: string = '.collection-items > .expand-container.show-button > .show-more';
+	private readonly scrollRequestEndpointPath: string = 'collection_items';
+	private readonly scrollContainer: string = '.fan-container';
 
 	public async readAllAccountItems(page: Page): Promise<string[]> {
 		// show all album or tracks
@@ -24,7 +16,7 @@ export class AccountPageService {
 		await this.scrollToEnd(page);
 
 		// read all album or tracks urls
-		return (await this.readHrefs(page, this.ALBUM_OR_TRACK_URL_CONTAINER))
+		return (await this.readHrefs(page, this.itemSelector))
 			.filter(x => isValidUrl(x))
 			.map(x => originalUrl(x))
 	}
@@ -34,9 +26,9 @@ export class AccountPageService {
 			try {
 				const showMorePurchasesButton =
 					await page.waitForSelector(
-						this.LOAD_MORE_TRACKS_CONTAINER,
+						this.loadMoreAccountsSelector,
 						{
-							timeout: this.LOAD_MORE_TRACKS_DELAY
+							timeout: this.DELAY
 						});
 
 				await showMorePurchasesButton.click();
@@ -49,7 +41,7 @@ export class AccountPageService {
 	private async scrollToEnd(page: Page): Promise<void> {
 		let isLoadingAvailable = true;
 
-		let container = await page.$(this.SCROLL_CONTAINER);
+		const container = await page.$(this.scrollContainer);
 		if (isNullOrUndefined(container)) {
 			return;
 		}
@@ -57,17 +49,17 @@ export class AccountPageService {
 		let height = (await container.boundingBox()).height;
 		let retry = 0;
 
-		while (isLoadingAvailable && retry < this.SCROLL_TO_END_RETRY) {
+		while (isLoadingAvailable && retry < 2) {
 			try {
 				// scroll page
 				// TODO: fix any
-				await scrollPageToBottom(page as any, { size: this.SCROLL_SIZE });
+				await scrollPageToBottom(page as any, { size: 5_000 });
 
 				// wait response
 				await page.waitForResponse(
-					response => response.url().includes(this.SCROLL_REQUEST_ENDPOINT) && response.status() === 200,
+					response => response.url().includes(this.scrollRequestEndpointPath) && response.status() === 200,
 					{
-						timeout: this.SCROLL_REQUEST_TIMEOUT
+						timeout: this.DELAY
 					}
 				)
 

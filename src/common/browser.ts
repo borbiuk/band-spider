@@ -1,5 +1,5 @@
 import puppeteer, { Browser, HTTPResponse, Page } from 'puppeteer';
-import { logger, Source } from './logger';
+import { logger, LogSource } from './logger';
 import { logMessage } from './utils';
 
 export interface BrowserOptions {
@@ -19,20 +19,20 @@ const handlePage = async (
 		page = await browser.newPage();
 		await page.setViewport({ width: 1920, height: 1080 });
 
-		logger.debug(logMessage(Source.Page, `Page ${pageIndex} was started`));
+		logger.debug(logMessage(LogSource.Page, `Page ${pageIndex} was started`));
 
 		page.on('response', async (response: HTTPResponse): Promise<void> => {
 			if (response.status() !== TOO_MANY_REQUESTS_STATUS_CODE) {
 				return;
 			}
 
-			logger.error(response, logMessage(Source.Page, `\t📡 Page ${pageIndex} \twas throw HTTP 429 TOO MANY REQUESTS`, response.url()));
+			logger.error(response, logMessage(LogSource.Page, `📡 Page ${pageIndex} \twas throw HTTP 429 TOO MANY REQUESTS`, response.url()));
 		});
 
 		// run task in page
 		await pageHandler(page);
 	} catch (error) {
-		logger.error(error, logMessage(Source.Page, `Page ${pageIndex} was throw an error: ${error.message}`));
+		logger.error(error, logMessage(LogSource.Page, `Page ${pageIndex} was throw an error: ${error.message}`));
 	}
 
 	// close page if exist
@@ -56,13 +56,13 @@ export const performInBrowser = async (
 		const promises = Array.from({ length: pagesCount })
 			.map(async (_, index) => {
 				await handlePage(browser, index, pageFunction);
-				logger.info(logMessage(Source.Page, `Page ${index} was finished`));
+				logger.info(logMessage(LogSource.Page, `Page ${index} was finished`));
 			});
 
 		// wait all tasks
 		await Promise.all(promises)
 	} catch (error) {
-		logger.error(error, logMessage(Source.Browser, `Browser was throw an error: ${error.message}`));
+		logger.error(error, logMessage(LogSource.Browser, `Browser was throw an error: ${error.message}`));
 	}
 
 	// close browser if exist

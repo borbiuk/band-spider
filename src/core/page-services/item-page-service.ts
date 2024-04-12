@@ -1,23 +1,17 @@
 import { Page } from 'puppeteer';
-import { logger, Source } from '../../common/logger';
+import { logger, LogSource } from '../../common/logger';
 import { isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
-	private readonly LOAD_MORE_ACCOUNTS_DELAY: number = 5_000;
-	private readonly LOAD_ALL_ACCOUNTS_SELECTOR: string = '.more-thumbs'
-	private readonly ACCOUNT_URL_SELECTOR: string = 'a.fan.pic';
+	private readonly DELAY: number = 3_000;
 
-	private readonly ALBUM_URL_SELECTOR: string = '#buyAlbumLink';
-	private readonly ALBUM_TRACKS_SELECTOR: string = 'table.track_list#track_table a';
-
-	private readonly RELEASE_DATE_CONTAINER: string = '.tralbumData.tralbum-credits';
-
-	private readonly TAG_SELECTOR: string = 'a.tag';
-
+	private readonly loadAllAccountsSelector: string = '.more-thumbs'
+	private readonly accountUrlSelector: string = 'a.fan.pic';
+	private readonly albumUrlSelector: string = '#buyAlbumLink';
+	private readonly albumTracksSelector: string = 'table.track_list#track_table a';
+	private readonly releaseDateContainerSelector: string = '.tralbumData.tralbum-credits';
+	private readonly tagSelector: string = 'a.tag';
 	private readonly releaseDateRegex: RegExp = /(?:released|releases) (\w+ \d{1,2}, \d{4})/;
-
-	constructor() {
-	}
 
 	/**
 	 * Retrieves account URLs from a page.
@@ -33,12 +27,12 @@ export class ItemPageService {
 
 		const accounts: string[] = await page
 			.$$eval(
-				this.ACCOUNT_URL_SELECTOR,
+				this.accountUrlSelector,
 				(elements) => elements
 					.map(x => x.getAttribute('href'))
 			)
 			.catch((error) => {
-				logger.error(error, logMessage(Source.Item, error.message, url));
+				logger.error(error, logMessage(LogSource.Item, error.message, url));
 				return [];
 			});
 
@@ -52,11 +46,11 @@ export class ItemPageService {
 		const url: string = page.url();
 		return await page
 			.$$eval(
-				this.TAG_SELECTOR,
+				this.tagSelector,
 				tags => tags.map(x => x.textContent.trim())
 			)
 			.catch((error) => {
-				logger.error(error, logMessage(Source.Item, error.message, url));
+				logger.error(error, logMessage(LogSource.Item, error.message, url));
 				return [];
 			});
 	};
@@ -69,12 +63,12 @@ export class ItemPageService {
 
 		const tracks: string[] = await page
 			.$$eval(
-				this.ALBUM_TRACKS_SELECTOR,
+				this.albumTracksSelector,
 				links => links.map(link => link.getAttribute('href'))
 			)
 			.catch(error => {
-				logger.error(error, logMessage(Source.Item, error.message, pageUrl));
-				return []
+				logger.error(error, logMessage(LogSource.Item, error.message, pageUrl));
+				return [];
 			});
 
 		return tracks
@@ -92,12 +86,12 @@ export class ItemPageService {
 
 		let albumPath = await page
 			.$eval(
-				this.ALBUM_URL_SELECTOR,
+				this.albumUrlSelector,
 				element => element.getAttribute('href')
 			)
 			.catch((error) => {
 				if (!this.isFoundSelectorErrorMessage(error.message)) {
-					logger.error(error, logMessage(Source.Item, error.message, pageUrl));
+					logger.error(error, logMessage(LogSource.Item, error.message, pageUrl));
 				}
 				return null;
 			});
@@ -112,12 +106,12 @@ export class ItemPageService {
 
 		const content = await page
 			.$eval(
-				this.RELEASE_DATE_CONTAINER,
+				this.releaseDateContainerSelector,
 				element => element.textContent
 			)
 			.catch(error => {
 				if (!this.isFoundSelectorErrorMessage(error.message)) {
-					logger.error(error, logMessage(Source.Date, 'Item release date not found', pageUrl));
+					logger.error(error, logMessage(LogSource.Date, 'Item release date not found', pageUrl));
 				}
 				return null;
 			});
@@ -136,18 +130,23 @@ export class ItemPageService {
 	}
 
 	private async loadAllAccount(page: Page): Promise<void> {
+		let retry: number = 0;
 		while (true) {
 			try {
 				const showMoreAccountsButton =
 					await page.waitForSelector(
-						this.LOAD_ALL_ACCOUNTS_SELECTOR,
+						this.loadAllAccountsSelector,
 						{
-							timeout: this.LOAD_MORE_ACCOUNTS_DELAY
+							timeout: this.DELAY
 						});
 
 				await showMoreAccountsButton.click();
+				retry = 0;
 			} catch {
-				break;
+				retry++;
+				if (retry >= 2) {
+					break;
+				}
 			}
 		}
 	}

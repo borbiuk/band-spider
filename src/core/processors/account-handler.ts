@@ -1,40 +1,40 @@
 import { Page } from 'puppeteer';
-import { logger, Source } from '../../common/logger';
-import { isNullOrUndefined, logMessage } from '../../common/utils';
-import { Database } from '../../data/db';
+import { logger, LogSource } from '../../common/logger';
+import { QueueEvent } from '../../common/processing-queue';
+import { logMessage } from '../../common/utils';
+import { BandDatabase } from '../../data/db';
 import { AccountPageService } from '../page-services/account-page-service';
 
 export class AccountHandler {
 	private readonly pageService: AccountPageService = new AccountPageService();
-	private database: Database;
+	private database: BandDatabase;
+
+	constructor(
+		private readonly page: Page
+	) {
+	}
 
 	public async processAccount(
-		page: Page,
-		accountUrl: string
+		{ id, url }: QueueEvent
 	): Promise<string[]> {
-		if (isNullOrUndefined(this.database)) {
-			this.database = await Database.initialize();
-		}
+		this.database = await BandDatabase.initialize();
 
 		const urls: string[] = [];
 
 		// open url and show all accounts
-		await page.goto(accountUrl, { timeout: 30_000, waitUntil: 'domcontentloaded' });
-
-		// save Account
-		const { id } = await this.database.insertAccount(accountUrl);
+		await this.page.goto(url, { timeout: 30_000, waitUntil: 'networkidle0' });
 
 		// scrap and save Items
-		const processingResult = await this.readAndSaveAccountItems(page, id, urls);
+		const processingResult = await this.readAndSaveAccountItems(id, urls);
 
 		// save that account was processed now
 		await this.database.updateAccountProcessingDate(id);
 
 		logger.info(
 			logMessage(
-				Source.Account,
+				LogSource.Account,
 				`Processing finished: ${JSON.stringify(processingResult)}`,
-				accountUrl
+				url
 			)
 		);
 
@@ -42,11 +42,10 @@ export class AccountHandler {
 	}
 
 	private async readAndSaveAccountItems(
-		page: Page,
 		accountId: number,
 		urls: string[]
 	): Promise<{ totalCount: number, newCount: number }> {
-		const itemsUrls: string[] = await this.pageService.readAllAccountItems(page);
+		const itemsUrls: string[] = await this.pageService.readAllAccountItems(this.page);
 		const itemsIds: number[] = [];
 
 		for (const itemUrl of itemsUrls) {

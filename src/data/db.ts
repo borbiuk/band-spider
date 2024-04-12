@@ -21,21 +21,21 @@ const appDataSource = new DataSource({
 	]
 });
 
-export class Database {
-	private static instance: Database;
+export class BandDatabase {
+	private static instance: BandDatabase;
 	public readonly dataSource: DataSource;
 
 	private constructor(dataSource: DataSource) {
 		this.dataSource = dataSource;
 	}
 
-	static async initialize(): Promise<Database> {
-		if (!Database.instance) {
+	static async initialize(): Promise<BandDatabase> {
+		if (isNullOrUndefined(BandDatabase.instance)) {
 			const dataSource = await appDataSource.initialize();
-			Database.instance = new Database(dataSource);
+			BandDatabase.instance = new BandDatabase(dataSource);
 		}
 
-		return Database.instance;
+		return BandDatabase.instance;
 	}
 
 	async insertAccount(accountUrl: string): Promise<AccountEntity> {
@@ -52,7 +52,7 @@ export class Database {
 	};
 
 	async getNotProcessedAccounts(): Promise<AccountEntity[]> {
-		return await this.dataSource.getRepository(AccountEntity).find({ where: { lastProcessingDate: IsNull() }, take: 100 });
+		return await this.dataSource.getRepository(AccountEntity).find({ where: { lastProcessingDate: IsNull(), isBusy: false }, take: 100 });
 	};
 
 	async getAccountByUrl(accountUrl: string): Promise<AccountEntity> {
@@ -82,7 +82,7 @@ export class Database {
 	};
 
 	async getNotProcessedItems(): Promise<ItemEntity[]> {
-		return await this.dataSource.getRepository(ItemEntity).find({ where: { lastProcessingDate: IsNull() }, take: 100 });
+		return await this.dataSource.getRepository(ItemEntity).find({ where: { lastProcessingDate: IsNull(), isBusy: false }, take: 100 });
 	};
 
 	async getItem(itemId: number): Promise<ItemEntity> {
@@ -94,14 +94,58 @@ export class Database {
 	}
 
 	async updateAccountProcessingDate(accountId: number): Promise<void> {
-		const item: AccountEntity = await this.getAccount(accountId);
-		item.lastProcessingDate = new Date();
-		await this.dataSource.getRepository(AccountEntity).save(item);
+		const account: AccountEntity = await this.getAccount(accountId);
+		account.lastProcessingDate = new Date();
+		await this.dataSource.getRepository(AccountEntity).save(account);
+	}
+
+	async updateAccountBusy(accountId: number, isBusy: boolean): Promise<void> {
+		const account: AccountEntity = await this.getAccount(accountId);
+		account.isBusy = isBusy;
+		await this.dataSource.getRepository(AccountEntity).save(account);
+	}
+
+	async updateItemBusy(itemId: number, isBusy: boolean): Promise<void> {
+		const item: ItemEntity = await this.getItem(itemId);
+		item.isBusy = isBusy;
+		await this.dataSource.getRepository(ItemEntity).save(item);
+	}
+
+	async updateAccountFailed(accountId: number, clear: boolean = false): Promise<void> {
+		const account: AccountEntity = await this.getAccount(accountId);
+		if (clear) {
+			account.failedCount = 0;
+		}
+		else {
+			account.failedCount = isNullOrUndefined(account.failedCount) ? 1 : (account.failedCount + 1);
+		}
+		await this.dataSource.getRepository(AccountEntity).save(account);
+	}
+
+	async updateItemFailed(itemId: number, clear: boolean = false): Promise<void> {
+		const item: ItemEntity = await this.getItem(itemId);
+		if (clear) {
+			item.failedCount = 0;
+		}
+		else {
+			item.failedCount = isNullOrUndefined(item.failedCount) ? 1 : (item.failedCount + 1);
+		}
+		await this.dataSource.getRepository(ItemEntity).save(item);
 	}
 
 	async isAccountAlreadyProcessed(url: string): Promise<boolean> {
-		const existed = await this.getAccountByUrl(url);
+		const existed: AccountEntity = await this.getAccountByUrl(url);
 		return isNullOrUndefined(existed) ? false : !isNullOrUndefined(existed.lastProcessingDate);
+	}
+
+	async isAccountBusy(accountId: number): Promise<boolean> {
+		const existed: AccountEntity = await this.getAccount(accountId);
+		return isNullOrUndefined(existed) ? false : existed.isBusy === true;
+	}
+
+	async isItemBusy(itemId: number): Promise<boolean> {
+		const existed: ItemEntity = await this.getItem(itemId);
+		return isNullOrUndefined(existed) ? false : existed.isBusy === true;
 	}
 
 	async getAllAlbums(): Promise<ItemEntity[]> {

@@ -1,53 +1,131 @@
 import { Page } from 'puppeteer';
-import { performInBrowser } from '../common/browser';
-import { logger, Source } from '../common/logger';
-import { Queue } from '../common/queue';
-import { isNullOrUndefined, isTrackOrAlbum, isValidUrl, logMessage, waitOn } from '../common/utils';
-import { Database } from '../data/db';
+import { BrowserOptions, performInBrowser } from '../common/browser';
+import { logger, LogSource } from '../common/logger';
+import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
+import { isNullOrUndefined, logMessage, waitOn } from '../common/utils';
+import { BandDatabase } from '../data/db';
 import { readUrlsFromFile } from '../data/file';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
 
-export enum InitType {
+export enum UrlType {
 	Account = 'account',
 	Item = 'item',
 }
 
 export class BandSpider {
-	private database: Database;
+	private database: BandDatabase;
 
 	public async run(
 		pagesCount: number,
 		headless: boolean,
-		type: InitType,
+		type: UrlType,
 		fromFile: boolean,
 	): Promise<void> {
-		this.database = await Database.initialize();
+		this.database = await BandDatabase.initialize();
 
-		const errors: { [url: string]: number } = {};
-		const queue: Queue = new Queue(
-			await this.getInitialUrlsToProcess(type, fromFile)
+		// init queue
+		const queue: ProcessingQueue = new ProcessingQueue(
+			await this.getInitialUrlsToProcess(type, fromFile),
+			this.database
 		);
 
 		// scrap chunks
 		await performInBrowser(
-			this.pageFunctionWrapper(queue, errors, type),
+			this.pageFunctionWrapper(queue, type),
 			pagesCount,
-			{ headless }
+			{ headless } as BrowserOptions
 		);
 	}
 
+
+
+	private pageFunctionWrapper = (
+		queue: ProcessingQueue,
+		type: UrlType,
+	) => {
+		return async (page: Page): Promise<void> => {
+
+			// create handlers
+			const accountHandler = new AccountHandler(page);
+			const itemHandler = new ItemHandler(page);
+
+			// process while exists
+			while (true) {
+				if (!await waitOn(() => queue.size > 0, 60_000 * 5)) {
+					await this.enqueueFromDb(queue, type);
+
+					if (queue.size === 0) {
+						break;
+					}
+				}
+
+				const event: QueueEvent = await queue.dequeue();
+				if (isNullOrUndefined(event)) {
+					continue;
+				}
+
+				// process
+				await this.processUrl(
+					event,
+					accountHandler,
+					itemHandler,
+				);
+			}
+		}
+	}
+
+	private async processUrl(
+		event: QueueEvent,
+		accountHandler: AccountHandler,
+		itemHandler: ItemHandler,
+	): Promise<void> {
+		try {
+			switch (event.type) {
+				case UrlType.Account:
+					await this.database.updateAccountBusy(event.id, true);
+					await accountHandler.processAccount(event);
+					await this.database.updateAccountBusy(event.id, false);
+					break;
+				case UrlType.Item:
+					await this.database.updateItemBusy(event.id, true);
+					await itemHandler.processItem(event);
+					await this.database.updateItemBusy(event.id, false);
+					break;
+			}
+		} catch (error) {
+			let source: LogSource = LogSource.Unknown;
+			switch (event.type) {
+				case UrlType.Account:
+					source = LogSource.Account;
+					await this.database.updateAccountFailed(event.id)
+					await this.database.updateAccountBusy(event.id, false);
+					break;
+				case UrlType.Item:
+					source = LogSource.Item;
+					await this.database.updateItemFailed(event.id)
+					await this.database.updateItemBusy(event.id, false);
+					break;
+			}
+
+			logger.error(
+				error,
+				logMessage(source, `Processing failed: ${error.message}`, event.url)
+			);
+		}
+	}
+
 	private async getInitialUrlsToProcess(
-		type: InitType,
+		type: UrlType,
 		fromFile: boolean,
 	): Promise<string[]> {
-		const database = await Database.initialize();
+		const database: BandDatabase = await BandDatabase.initialize();
 		switch (type) {
-			case InitType.Account:
+			case UrlType.Account:
 				return fromFile
 					? readUrlsFromFile('accounts.txt')
 					: (await database.getNotProcessedAccounts()).map(({ url }) => url);
-			case InitType.Item:
+			case UrlType.Item:
 				return fromFile
 					? readUrlsFromFile('items.txt')
 					: (await database.getNotProcessedItems()).map(({ url }) => url);
@@ -56,121 +134,13 @@ export class BandSpider {
 		}
 	}
 
-	private pageFunctionWrapper = (
-		queue: Queue,
-		errors: { [url: string]: number; },
-		type: InitType,
-	) => {
-		return async (page: Page): Promise<void> => {
-
-			// create handlers
-			const accountHandler = new AccountHandler();
-			const itemHandler = new ItemHandler();
-
-			// process while exists
-			while (true) {
-				if (!await waitOn(() => queue.size > 0, 60_000 * 5)) {
-					queue.enqueueButch(
-						(type === InitType.Account
-							? await this.database.getNotProcessedAccounts()
-							: await this.database.getNotProcessedItems()).map(({ url }) => url)
-					);
-
-					if (queue.size === 0) {
-						break;
-					}
-				}
-
-				const url: string = queue.dequeue();
-
-				// continue if already processed
-				const isAlreadyProcessed: boolean = await this.isAlreadyProcessed(url);
-				if (isAlreadyProcessed) {
-					continue;
-				}
-
-				// process
-				const extractedUrls: string[] = await this.processUrl(
-					page,
-					itemHandler,
-					accountHandler,
-					url,
-					errors
-				);
-
-				// add extracted urls to process
-				extractedUrls
-					.filter(async x => !await this.isAlreadyProcessed(x))
-					.forEach(x => {
-							queue.enqueue(x);
-						}
-					);
-			}
+	private async enqueueFromDb(
+		queue: ProcessingQueue,
+		type: UrlType
+	): Promise<void> {
+		let urls: string[] = await this.getInitialUrlsToProcess(type, false);
+		if (urls.length !== 0) {
+			await queue.enqueueButch(urls);
 		}
-	}
-
-	private async isAlreadyProcessed(
-		url: string,
-	): Promise<boolean> {
-		const database: Database = await Database.initialize();
-		return isTrackOrAlbum(url)
-			? await database.isItemAlreadyProcessed(url)
-			: await database.isAccountAlreadyProcessed(url);
-	}
-
-	private async processUrl(
-		page: Page,
-		itemHandler: ItemHandler,
-		accountHandler: AccountHandler,
-		url: string,
-		errors: { [p: string]: number }
-	): Promise<string[]> {
-		const extractedUrls: string[] = [];
-
-		const isItem = isTrackOrAlbum(url);
-		try {
-			if (isItem) {
-				const itemAccountsUrls = await itemHandler.processItem(page, url);
-				for (const accountUrl of itemAccountsUrls) {
-					extractedUrls.push(accountUrl);
-				}
-			} else if (isValidUrl(url)) {
-				const accountItemsUrls = await accountHandler.processAccount(page, url);
-				for (const itemUrl of accountItemsUrls) {
-					extractedUrls.push(itemUrl);
-				}
-			}
-		} catch (error) {
-			logger.error(
-				error,
-				logMessage(
-					isItem ? Source.Item : Source.Account,
-					`Processing failed: ${error.message}`,
-					url
-				)
-			);
-
-			// increase url errors count
-			if (isNullOrUndefined(errors[url])) {
-				errors[url] = 1;
-			} else {
-				errors[url] += 1;
-			}
-
-			if (errors[url] < 3) {
-				extractedUrls.push(url);
-			} else {
-				logger.fatal(
-					error,
-					logMessage(
-						isItem ? Source.Item : Source.Account,
-						`Cant be processed after retry: ${error.message}`,
-						url
-					)
-				);
-			}
-		}
-
-		return extractedUrls;
 	}
 }

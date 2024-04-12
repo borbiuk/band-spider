@@ -43,12 +43,13 @@ export const logger = {
 	},
 };
 
-export enum Source {
-	Main =    '[🚨️ MAIN___]',
+export enum LogSource {
+	Main =    '[🚨️ MAIN   ]',
 	Browser = '[🖥 BROWSER]',
-	Page =    '[📄 PAGE___]',
+	Page =    '[📄 PAGE   ]',
 	Account = '[💁 ACCOUNT]',
-	Item =    '[📀 ITEM___]',
-	Tag =     '[🏷 TAG____]',
-	Date =    '[📅 DATE___]',
+	Item =    '[📀 ITEM   ]',
+	Tag =     '[🏷 TAG    ]',
+	Date =    '[📅 DATE   ]',
+	Unknown = '[❓ UNKNOWN]',
 }

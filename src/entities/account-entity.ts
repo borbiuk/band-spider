@@ -21,4 +21,9 @@ export class AccountEntity implements BaseEntity {
 	@Column({ type: 'date', nullable: true })
 	lastProcessingDate?: Date;
 
+	@Column({ type: 'boolean', default: false })
+	isBusy: boolean;
+
+	@Column({ type: 'integer', default: 0 })
+	failedCount: number;
 }
