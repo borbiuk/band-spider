@@ -5,13 +5,13 @@
 	"main": "index.js",
 	"type": "commonjs",
 	"scripts": {
-		"file:account": "npx ts-node ./src/index.ts --file --headless --account",
+		"file:accounts": "npx ts-node ./src/index.ts --file --headless --account",
 		"file:items": "npx ts-node ./src/index.ts --file --headless",
-		"db:account": "npx ts-node ./src/index.ts --headless --account",
+		"db:accounts": "npx ts-node ./src/index.ts --headless --account",
 		"db:items": "npx ts-node ./src/index.ts --headless",
-		"debug:file:account": "npx ts-node ./src/index.ts --file --account",
+		"debug:file:accounts": "npx ts-node ./src/index.ts --file --account",
 		"debug:file:items": "npx ts-node ./src/index.ts --file",
-		"debug:db:account": "npx ts-node ./src/index.ts --account",
+		"debug:db:accounts": "npx ts-node ./src/index.ts --account",
 		"debug:db:items": "npx ts-node ./src/index.ts",
 		"build": "npx tsc",
 		"start": "node dist/index.js --headless"
