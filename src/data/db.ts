@@ -43,25 +43,10 @@ export class BandDatabase {
 
 	public static async initialize(): Promise<BandDatabase> {
 		if (isNullOrUndefined(BandDatabase.instance)) {
-			const dataSource = await appDataSource.initialize();
+			const dataSource: DataSource = await appDataSource.initialize();
 			BandDatabase.instance = new BandDatabase(dataSource);
 		}
 
 		return BandDatabase.instance;
-	}
-
-	async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
-		const repository = this.dataSource.getRepository(ItemEntity);
-
-		const track: ItemEntity = await this.item.insert(trackUrl);
-
-		if (track.albumId === album.id) {
-			return false;
-		}
-
-		track.albumId = album.id;
-		await repository.save(track);
-
-		return true;
 	}
 }

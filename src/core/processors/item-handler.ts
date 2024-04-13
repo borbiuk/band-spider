@@ -167,7 +167,7 @@ export class ItemHandler {
 			let albumRelationAlreadyExist: number = 0;
 			const album = await this.database.item.insert(albumUrl);
 			for (const trackUrl of tracksUrls) {
-				if (!await this.database.insertTrackToAlbum(trackUrl, album)) {
+				if (!await this.database.item.insertTrackToAlbum(trackUrl, album)) {
 					albumRelationAlreadyExist++;
 				}
 
@@ -192,7 +192,7 @@ export class ItemHandler {
 			const albumUrl: string = await this.pageService.readTrackAlbum(this.page);
 			const album = await this.database.item.insert(albumUrl);
 			if (!isNullOrUndefined(albumUrl)) {
-				const added = await this.database.insertTrackToAlbum(trackUrl, album);
+				const added = await this.database.item.insertTrackToAlbum(trackUrl, album);
 
 				// add to processing
 				urls.push(albumUrl);

@@ -9,7 +9,6 @@ export class ItemRepository {
 	) {
 	}
 
-
 	public async getNotProcessed(): Promise<ItemEntity[]> {
 		return await this.dataSource.getRepository(ItemEntity).find({ where: { lastProcessingDate: IsNull(), isBusy: false }, take: 100 });
 	};
@@ -94,5 +93,20 @@ export class ItemRepository {
 		const item: ItemEntity = await this.getById(itemId);
 		item.lastProcessingDate = new Date();
 		await this.dataSource.getRepository(ItemEntity).save(item);
+	}
+
+	async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
+		const repository = this.dataSource.getRepository(ItemEntity);
+
+		const track: ItemEntity = await this.insert(trackUrl);
+
+		if (track.albumId === album.id) {
+			return false;
+		}
+
+		track.albumId = album.id;
+		await repository.save(track);
+
+		return true;
 	}
 }
