@@ -21,9 +21,8 @@
 	"license": "ISC",
 	"dependencies": {
 		"pino": "8.20.0",
-		"puppeteer": "22.6.3",
+		"puppeteer": "22.6.5",
 		"puppeteer-autoscroll-down": "1.1.2",
-		"reflect-metadata": "0.2.2",
 		"sqlite3": "5.1.7",
 		"typeorm": "0.3.20"
 	},

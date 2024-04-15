@@ -80,7 +80,10 @@ export class ProcessingQueue {
 			return { id: account.id, url, type: UrlType.Account };
 		}
 
-		logger.error(logMessage(LogSource.Unknown, 'Invalid URL', url))
+		logger.error(logMessage(LogSource.Unknown, 'Invalid URL', url));
+
+		await this.database.account.removeByUrl(url);
+		await this.database.item.removeByUrl(url);
 
 		return null;
 	}

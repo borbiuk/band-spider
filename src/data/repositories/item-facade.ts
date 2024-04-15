@@ -38,11 +38,6 @@ export class ItemRepository {
 			.execute();
 	}
 
-	public async isBusy(itemId: number): Promise<boolean> {
-		const existed: ItemEntity = await this.getById(itemId);
-		return isNullOrUndefined(existed) ? false : existed.isBusy === true;
-	}
-
 	public async insert(itemUrl: string): Promise<ItemEntity> {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
@@ -97,7 +92,7 @@ export class ItemRepository {
 		await this.dataSource.getRepository(ItemEntity).save(item);
 	}
 
-	async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
+	public async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
 		const track: ItemEntity = await this.insert(trackUrl);
@@ -110,5 +105,13 @@ export class ItemRepository {
 		await repository.save(track);
 
 		return true;
+	}
+
+	public async removeByUrl(itemUrl: string): Promise<void> {
+		await this.dataSource.getRepository(ItemEntity)
+			.createQueryBuilder()
+			.where({ url: itemUrl })
+			.delete()
+			.execute();
 	}
 }

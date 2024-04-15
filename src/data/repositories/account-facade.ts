@@ -20,32 +20,25 @@ export class AccountRepository {
 		return await this.dataSource.getRepository(AccountEntity).findOne({ where: { id: accountId } });
 	}
 
-	public async getByUrl(accountUrl: string): Promise<AccountEntity> {
-		return await this.dataSource.getRepository(AccountEntity)
-			.findOne({ where: { url: accountUrl } });
-	};
-
-	public async isAlreadyProcessed(url: string): Promise<boolean> {
-		const existed: AccountEntity = await this.getByUrl(url);
-		return isNullOrUndefined(existed) ? false : !isNullOrUndefined(existed.lastProcessingDate);
-	}
-
-	public async isBusy(accountId: number): Promise<boolean> {
-		const existed: AccountEntity = await this.getById(accountId);
-		return isNullOrUndefined(existed) ? false : existed.isBusy === true;
-	}
-
 	public async insert(accountUrl: string): Promise<AccountEntity> {
 		const repository = this.dataSource.getRepository(AccountEntity);
 
-		const existingRecord: AccountEntity = await repository.findOne({ where: { url: accountUrl } });
+		let existingRecord: AccountEntity = await repository.findOne({ where: { url: accountUrl } });
 		if (existingRecord) {
 			return existingRecord;
 		}
 
-		const insertResult = await repository.insert({ url: accountUrl });
+		try {
+			const insertResult = await repository.insert({ url: accountUrl });
+			return insertResult.generatedMaps[0] as AccountEntity;
+		} catch (error) {
+			existingRecord = await repository.findOne({ where: { url: accountUrl } });
+			if (!existingRecord) {
+				throw error;
+			}
 
-		return insertResult.generatedMaps[0] as AccountEntity;
+			return existingRecord;
+		}
 	};
 
 	public async addItem(accountId: number, itemId: number): Promise<boolean> {
@@ -109,5 +102,13 @@ export class AccountRepository {
 		const account: AccountEntity = await this.getById(accountId);
 		account.lastProcessingDate = new Date();
 		await this.dataSource.getRepository(AccountEntity).save(account);
+	}
+
+	public async removeByUrl(accountUrl: string): Promise<void> {
+		await this.dataSource.getRepository(AccountEntity)
+			.createQueryBuilder()
+			.where({ url: accountUrl })
+			.delete()
+			.execute();
 	}
 }

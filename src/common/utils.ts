@@ -36,6 +36,6 @@ export const waitOn = async (condition: () => boolean, timeout: number): Promise
 
 export const logMessage = (source: LogSource, message: string, url?: string): string => {
 	return isEmptyString(url)
-		? `\t${source} ▶ ${message}; ⏺ ⏺ ⏺`
-		: `\t${source} ▶ 🔗 ${url} ⏺ ⏺ ⏺ ${message} ⏺ ⏺ ⏺`;
+		? `\t${source} ▶ ${message}`
+		: `\t${source} ▶ 🔗 ${url}\t⏺ ⏺ ⏺ ${message}`;
 }
