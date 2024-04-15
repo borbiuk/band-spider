@@ -16,16 +16,14 @@ export class AccountHandler {
 
 	public async processAccount(
 		{ id, url }: QueueEvent
-	): Promise<string[]> {
+	): Promise<void> {
 		this.database = await BandDatabase.initialize();
-
-		const urls: string[] = [];
 
 		// open url and show all accounts
 		await this.page.goto(url, { timeout: 60_000, waitUntil: 'networkidle0' });
 
 		// scrap and save Items
-		const processingResult = await this.readAndSaveAccountItems(id, urls);
+		const processingResult = await this.readAndSaveAccountItems(id);
 
 		// save that account was processed now
 		await this.database.account.updateProcessingDate(id);
@@ -37,23 +35,17 @@ export class AccountHandler {
 				url
 			)
 		);
-
-		return urls;
 	}
 
 	private async readAndSaveAccountItems(
-		accountId: number,
-		urls: string[]
+		accountId: number
 	): Promise<{ totalCount: number, newCount: number }> {
 		const itemsUrls: string[] = await this.pageService.readAllAccountItems(this.page);
 		const itemsIds: number[] = [];
 
 		for (const itemUrl of itemsUrls) {
-			const { id, url } = await this.database.item.insert(itemUrl);
+			const { id } = await this.database.item.insert(itemUrl);
 			itemsIds.push(id);
-
-			// add to processing
-			urls.push(url);
 		}
 
 		let newCount: number = 0;

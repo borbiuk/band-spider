@@ -3,7 +3,7 @@ import { Page } from 'puppeteer';
 import { BrowserOptions, performInBrowser } from '../common/browser';
 import { logger, LogSource } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
-import { isNullOrUndefined, logMessage, onlyUnique, waitOn } from '../common/utils';
+import { isNullOrUndefined, logMessage, waitOn } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
@@ -24,8 +24,8 @@ export class BandSpider {
 	): Promise<void> {
 		// init database
 		this.database = await BandDatabase.initialize();
-		await this.database.account.clearAllBusy();
-		await this.database.item.clearAllBusy();
+		await this.database.account.resetAllBusy();
+		await this.database.item.resetAllBusy();
 
 		// init queue
 		const queue: ProcessingQueue = new ProcessingQueue(

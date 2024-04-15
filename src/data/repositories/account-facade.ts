@@ -1,4 +1,4 @@
-import { DataSource, IsNull } from 'typeorm';
+import { DataSource, IsNull, LessThan } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
 import { AccountEntity } from '../../entities/account-entity';
 import { ItemToAccountEntity } from '../../entities/item-to-account-entity';
@@ -10,7 +10,10 @@ export class AccountRepository {
 	}
 
 	public async getNotProcessed(): Promise<AccountEntity[]> {
-		return await this.dataSource.getRepository(AccountEntity).find({ where: { lastProcessingDate: IsNull(), isBusy: false }, take: 100 });
+		return await this.dataSource.getRepository(AccountEntity).find({
+			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(4) },
+			take: 200
+		});
 	};
 
 	public async getById(accountId: number): Promise<AccountEntity> {
@@ -77,7 +80,7 @@ export class AccountRepository {
 		}
 	};
 
-	public async clearAllBusy(): Promise<void> {
+	public async resetAllBusy(): Promise<void> {
 		await this.dataSource.getRepository(AccountEntity)
 			.createQueryBuilder()
 			.update()

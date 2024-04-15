@@ -2,7 +2,8 @@ import { UrlType } from '../core/band-spider';
 import { BandDatabase } from '../data/db';
 import { AccountEntity } from '../entities/account-entity';
 import { ItemEntity } from '../entities/item-entity';
-import { isAccountUrl, isEmptyString, isItemUrl, isNullOrUndefined, onlyUnique, originalUrl } from './utils';
+import { logger, LogSource } from './logger';
+import { isAccountUrl, isEmptyString, isItemUrl, isNullOrUndefined, logMessage, onlyUnique, originalUrl } from './utils';
 
 export interface QueueEvent {
 	id: number,
@@ -17,6 +18,10 @@ export class ProcessingQueue {
 		private readonly capacity: number = 500
 	) {
 		this.urls = urls.filter(onlyUnique);
+	}
+
+	public get size(): number {
+		return this.urls.length;
 	}
 
 	public async enqueue(url: string): Promise<boolean> {
@@ -75,10 +80,8 @@ export class ProcessingQueue {
 			return { id: account.id, url, type: UrlType.Account };
 		}
 
-		return null;
-	}
+		logger.error(logMessage(LogSource.Unknown, 'Invalid URL', url))
 
-	public get size(): number {
-		return this.urls.length;
+		return null;
 	}
 }

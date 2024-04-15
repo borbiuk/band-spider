@@ -16,37 +16,36 @@ export class ItemHandler {
 
 	public async processItem(
 		{ id, url }: QueueEvent
-	): Promise<string[]> {
-		logger.info(
+	): Promise<void> {
+		logger.debug(
 			logMessage(
 				LogSource.Item,
-				`Start processing:`,
+				`Start processing`,
 				url
 			)
 		);
 
 		this.database = await BandDatabase.initialize();
 
-		const urls: string[] = [];
-
 		// open Item url
 		await this.page.goto(url, { timeout: 60_000, waitUntil: 'networkidle0' });
 
 		// save Item release date
-		const releaseDateProcessingResult = await this.readAndSaveReleaseDate(id);
+		const { extracted, alreadySaved } = await this.readAndSaveReleaseDate(id);
 
 		// scrap and save Tags
-		const tagsProcessingResult = await this.readAndSaveTags(id);
+		const { newTags, totalTags } = await this.readAndSaveTags(id);
 
 		// scrap and save Accounts
-		const accountsProcessingResult = await this.readAndSaveAccounts(id, urls);
+		const { newAccounts, totalAccounts } = await this.readAndSaveAccounts(id);
 
 		// extract album or tracks
-		let albumInfo: object = null;
+		let tracksInfo = null;
+		let albumInfo = null;
 		if (isAlbumUrl(url)) {
-			albumInfo = await this.readAndSaveAlbumTracks(url, urls);
+			tracksInfo = await this.readAndSaveAlbumTracks(url);
 		} else if (isTrackUrl(url)) {
-			albumInfo = await this.readAndSaveTrackAlbum(url, urls);
+			albumInfo = await this.readAndSaveTrackAlbum(url);
 		}
 
 		// save that item was processed now
@@ -55,17 +54,15 @@ export class ItemHandler {
 		logger.info(
 			logMessage(
 				LogSource.Item,
-				`Processing finished: ${JSON.stringify({ ...releaseDateProcessingResult, ...accountsProcessingResult, ...tagsProcessingResult, ...albumInfo })}`,
+				`Processing finished: album-[${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount}/${albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist}] date[${extracted}/${alreadySaved}]; account-[${newAccounts}/${totalAccounts}] tags-[${newTags}/${totalTags}]}`,
 				url
 			)
 		);
-
-		return urls;
 	}
 
 	private async readAndSaveReleaseDate(
 		itemId: number
-	): Promise<{ isDateExtracted: boolean, isDateAlreadySaved: boolean }> {
+	): Promise<{ extracted: boolean, alreadySaved: boolean }> {
 		let isDateExtracted: boolean = false;
 		let isDateAlreadySaved: boolean = false;
 
@@ -80,12 +77,12 @@ export class ItemHandler {
 			logger.error(error, logMessage(LogSource.Date, `Processing failed: ${error.message}`, url));
 		}
 
-		return { isDateExtracted, isDateAlreadySaved };
+		return { extracted: isDateExtracted, alreadySaved: isDateAlreadySaved };
 	}
 
 	private async readAndSaveTags(
 		itemId: number
-	): Promise<{ totalTagsCount: number, newTagsCount: number }> {
+	): Promise<{ totalTags: number, newTags: number }> {
 		let totalTagsCount: number = 0;
 		let newTagsCount: number = 0;
 
@@ -112,13 +109,12 @@ export class ItemHandler {
 			logger.error(error, logMessage(LogSource.Tag, `Processing failed: ${error.message}`, url));
 		}
 
-		return { totalTagsCount, newTagsCount };
+		return { totalTags: totalTagsCount, newTags: newTagsCount };
 	}
 
 	private async readAndSaveAccounts(
-		itemId: number,
-		urls: string[]
-	): Promise<{ totalAccountsCount: number, newAccountCount: number }> {
+		itemId: number
+	): Promise<{ totalAccounts: number, newAccounts: number }> {
 		let totalAccountsCount: number = 0;
 		let newAccountCount: number = 0;
 
@@ -131,14 +127,11 @@ export class ItemHandler {
 			const accountsIds: number[] = [];
 
 			for (const accountUrl of accounts) {
-				const { id, url } = await this.database.account.insert(accountUrl);
+				const { id } = await this.database.account.insert(accountUrl);
 				if (id === 0) {
 					continue;
 				}
 				accountsIds.push(id);
-
-				// add to processing
-				urls.push(url);
 			}
 
 			// save Accounts relations
@@ -152,13 +145,12 @@ export class ItemHandler {
 			logger.error(error, logMessage(LogSource.Item, `Accounts processing failed: ${error.message}`, url));
 		}
 
-		return { totalAccountsCount, newAccountCount };
+		return { totalAccounts: totalAccountsCount, newAccounts: newAccountCount };
 	}
 
 	private async readAndSaveAlbumTracks(
-		albumUrl: string,
-		urls: string[]
-	): Promise<{extractedTracksCount: number, albumRelationAlreadyExist: number}> {
+		albumUrl: string
+	): Promise<{ extractedTracksCount: number, albumRelationAlreadyExist: number }> {
 
 		const url: string = this.page.url();
 		try {
@@ -170,9 +162,6 @@ export class ItemHandler {
 				if (!await this.database.item.insertTrackToAlbum(trackUrl, album)) {
 					albumRelationAlreadyExist++;
 				}
-
-				// add to processing
-				urls.push(trackUrl);
 			}
 
 			return { extractedTracksCount: tracksUrls.length, albumRelationAlreadyExist }
@@ -185,7 +174,6 @@ export class ItemHandler {
 
 	private async readAndSaveTrackAlbum(
 		trackUrl: string,
-		urls: string[]
 	): Promise<{ albumExtracted: boolean, albumRelationAlreadyExist: boolean }> {
 		const url: string = this.page.url();
 		try {
@@ -193,9 +181,6 @@ export class ItemHandler {
 			const album = await this.database.item.insert(albumUrl);
 			if (!isNullOrUndefined(albumUrl)) {
 				const added = await this.database.item.insertTrackToAlbum(trackUrl, album);
-
-				// add to processing
-				urls.push(albumUrl);
 
 				return { albumExtracted: true, albumRelationAlreadyExist: !added };
 			}

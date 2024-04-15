@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
-import { isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
+import { isAccountUrl, isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
 	private readonly DELAY: number = 10_000;
@@ -37,8 +37,8 @@ export class ItemPageService {
 			});
 
 		return accounts
-			.filter(x => !isNullOrUndefined(x))
 			.map(x => originalUrl(x))
+			.filter(x => isAccountUrl(x))
 			.filter(onlyUnique);
 	}
 

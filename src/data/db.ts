@@ -26,12 +26,10 @@ const appDataSource: DataSource = new DataSource({
 
 export class BandDatabase {
 	private static instance: BandDatabase;
-
-	private readonly dataSource: DataSource;
-
 	public readonly account: AccountRepository;
 	public readonly item: ItemRepository;
 	public readonly tag: TagRepository;
+	private readonly dataSource: DataSource;
 
 	private constructor(dataSource: DataSource) {
 		this.dataSource = dataSource;

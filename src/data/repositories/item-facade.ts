@@ -1,6 +1,5 @@
-import { DataSource, IsNull } from 'typeorm';
+import { DataSource, IsNull, LessThan } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
-import { AccountEntity } from '../../entities/account-entity';
 import { ItemEntity } from '../../entities/item-entity';
 
 export class ItemRepository {
@@ -10,7 +9,10 @@ export class ItemRepository {
 	}
 
 	public async getNotProcessed(): Promise<ItemEntity[]> {
-		return await this.dataSource.getRepository(ItemEntity).find({ where: { lastProcessingDate: IsNull(), isBusy: false }, take: 100 });
+		return await this.dataSource.getRepository(ItemEntity).find({
+			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(1) },
+			take: 200
+		});
 	};
 
 	public async getById(itemId: number): Promise<ItemEntity> {
@@ -27,7 +29,7 @@ export class ItemRepository {
 		return isNullOrUndefined(existed) ? false : !isNullOrUndefined(existed.lastProcessingDate);
 	}
 
-	public async clearAllBusy(): Promise<void> {
+	public async resetAllBusy(): Promise<void> {
 		await this.dataSource.getRepository(ItemEntity)
 			.createQueryBuilder()
 			.update()
