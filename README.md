@@ -43,7 +43,7 @@ To start process saved albums/tracks:
 node run db:items
 ```
 
-## 🕵️ Debug mode
+## 🕵️ Debug Mode
 
 By default browser will be running in `headless` mode, to run a browser with GUI use the `debug:` prefix in the command:
 - `node run debug:file:accounts`
@@ -51,7 +51,7 @@ By default browser will be running in `headless` mode, to run a browser with GUI
 - `node run debug:db:accounts`
 - `node run debug:db:items`
 
-## 📀 What data are scattered
+## 📀 How&What data we store
 
 <img src="./assets/db.jpg" alt="database schema">
 
