@@ -1,6 +1,5 @@
 import { Page } from 'puppeteer';
-import { scrollPageToBottom } from 'puppeteer-autoscroll-down';
-import { isNullOrUndefined, isValidUrl, originalUrl } from '../../common/utils';
+import { delay, isNullOrUndefined, isValidUrl, originalUrl } from '../../common/utils';
 
 export class AccountPageService {
 	private readonly DELAY: number = 10_000;
@@ -22,19 +21,19 @@ export class AccountPageService {
 	}
 
 	private async clickShowAllItemsButton(page: Page): Promise<void> {
-		while (true) {
-			try {
-				const showMorePurchasesButton =
-					await page.waitForSelector(
-						this.loadMoreAccountsSelector,
-						{
-							timeout: this.DELAY
-						});
+		try {
+			const showMorePurchasesButton =
+				await page.waitForSelector(
+					this.loadMoreAccountsSelector,
+					{
+						timeout: 5_000,
+						visible: true
+					});
 
-				await showMorePurchasesButton.click();
-			} catch {
-				break;
-			}
+			await showMorePurchasesButton.click();
+			await delay();
+		}
+		catch (e) {
 		}
 	}
 
@@ -47,21 +46,25 @@ export class AccountPageService {
 		}
 
 		let height = (await container.boundingBox()).height;
+
 		let retry = 0;
 
 		while (isLoadingAvailable && retry < 2) {
 			try {
-				// scroll page
-				// TODO: fix any
-				await scrollPageToBottom(page as any, { size: 5_000 });
+				// scroll to end
+				await page.evaluate((height: number) => {
+					window.scrollTo(0, height * 10);
+				}, height);
 
 				// wait response
 				await page.waitForResponse(
 					response => response.url().includes(this.scrollRequestEndpointPath) && response.status() === 200,
 					{
-						timeout: this.DELAY
+						timeout: 5_000
 					}
-				)
+				);
+
+				await delay();
 
 				// check is more scroll needed
 				const currentHeight = (await container.boundingBox()).height;
@@ -71,6 +74,7 @@ export class AccountPageService {
 				}
 
 				height = currentHeight;
+				retry = 0;
 			} catch (e) {
 				retry++;
 			}

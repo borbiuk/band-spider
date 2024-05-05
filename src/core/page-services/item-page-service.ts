@@ -1,11 +1,9 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
-import { isAccountUrl, isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
+import { delay, isAccountUrl, isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
-	private readonly DELAY: number = 10_000;
-
-	private readonly loadAllAccountsSelector: string = '.more-thumbs'
+	private readonly loadAllAccountsSelector: string = 'a.more-thumbs'
 	private readonly accountUrlSelector: string = 'a.fan.pic';
 	private readonly albumUrlSelector: string = '#buyAlbumLink';
 	private readonly albumTracksSelector: string = 'table.track_list#track_table a';
@@ -131,22 +129,20 @@ export class ItemPageService {
 
 	private async loadAllAccount(page: Page): Promise<void> {
 		let retry: number = 0;
-		while (true) {
+		while (retry < 2) {
 			try {
 				const showMoreAccountsButton =
 					await page.waitForSelector(
 						this.loadAllAccountsSelector,
 						{
-							timeout: this.DELAY
+							timeout: 6_000
 						});
 
 				await showMoreAccountsButton.click();
+				await delay()
 				retry = 0;
 			} catch {
 				retry++;
-				if (retry >= 2) {
-					break;
-				}
 			}
 		}
 	}

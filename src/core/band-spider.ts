@@ -1,9 +1,9 @@
 import * as fs from 'node:fs';
-import { Page } from 'puppeteer';
-import { BrowserOptions, performInBrowser } from '../common/browser';
+import { Page, PuppeteerNodeLaunchOptions } from 'puppeteer';
+import { Cluster } from 'puppeteer-cluster';
 import { logger, LogSource } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
-import { isNullOrUndefined, logMessage, waitOn } from '../common/utils';
+import { delay, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
@@ -14,6 +14,9 @@ export enum UrlType {
 }
 
 export class BandSpider {
+	private readonly accountHandler: AccountHandler = new AccountHandler();
+	private readonly itemHandler: ItemHandler = new ItemHandler();
+
 	private database: BandDatabase;
 
 	public async run(
@@ -33,64 +36,70 @@ export class BandSpider {
 			this.database
 		);
 
-		// scrap items
-		await performInBrowser(
-			this.getPageHandler(queue, type),
-			pagesCount,
-			{ headless } as BrowserOptions
-		);
-	}
+		// create parallel runner
+		const cluster: Cluster<QueueEvent, void> = await Cluster.launch({
+			concurrency: Cluster.CONCURRENCY_CONTEXT,
+			maxConcurrency: pagesCount,
+			puppeteerOptions: { headless, args: ['--no-sandbox'] } as PuppeteerNodeLaunchOptions,
+			monitor: true
+		});
 
-	private getPageHandler = (
-		queue: ProcessingQueue,
-		type: UrlType,
-	) => {
-		return async (page: Page): Promise<void> => {
+		let count = 0;
+
+		await cluster.task(async ({ page, data: event, worker: { id } }) => {
 
 			// create handlers
-			const accountHandler = new AccountHandler(page);
-			const itemHandler = new ItemHandler(page);
 
-			// process while exists
-			while (true) {
-				if (!await waitOn(() => queue.size > 0, 60_000 * 5)) {
-					await this.enqueueFromDb(queue, type);
+			// process
+			await this.processUrl(
+				event,
+				page,
+				id,
+			);
+			count--;
+		});
 
-					if (queue.size === 0) {
-						break;
-					}
+		await cluster.idle();
+
+		// fill cluster
+		while (true) {
+			if (count > pagesCount * 2) {
+				await delay();
+				continue;
+			}
+
+			if (queue.size < pagesCount * 2) {
+				await this.enqueueFromDb(queue, type);
+				if (queue.size === 0) {
+					break;
 				}
+			}
 
-				const event: QueueEvent = await queue.dequeue();
-				if (isNullOrUndefined(event)) {
-					continue;
-				}
-
-				// process
-				await this.processUrl(
-					event,
-					accountHandler,
-					itemHandler,
-				);
+			const event: QueueEvent = await queue.dequeue();
+			if (!isNullOrUndefined(event)) {
+				await cluster.queue(event);
+				count++;
 			}
 		}
+
+		await cluster.close();
 	}
 
 	private async processUrl(
 		event: QueueEvent,
-		accountHandler: AccountHandler,
-		itemHandler: ItemHandler,
+		page: Page,
+		pageIndex: number
 	): Promise<void> {
 		try {
 			switch (event.type) {
 				case UrlType.Account:
 					await this.database.account.updateBusy(event.id, true);
-					await accountHandler.processAccount(event);
+					await this.accountHandler.processAccount(page, event, pageIndex);
 					await this.database.account.updateBusy(event.id, false);
 					break;
 				case UrlType.Item:
 					await this.database.item.updateBusy(event.id, true);
-					await itemHandler.processItem(event);
+					await this.itemHandler.processItem(page, event, pageIndex);
 					await this.database.item.updateBusy(event.id, false);
 					break;
 			}
@@ -111,7 +120,7 @@ export class BandSpider {
 
 			logger.error(
 				error,
-				logMessage(source, `Processing failed: ${error.message}`, event.url)
+				logMessage(source, `[${pageIndex}}] Processing failed: ${error.message}`, event.url)
 			);
 		}
 	}

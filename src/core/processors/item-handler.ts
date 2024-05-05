@@ -1,7 +1,7 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
-import { isAlbumUrl, isNullOrUndefined, isTrackUrl, logMessage } from '../../common/utils';
+import { delay, isAlbumUrl, isNullOrUndefined, isTrackUrl, logMessage } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { ItemPageService } from '../page-services/item-page-service';
 
@@ -10,42 +10,36 @@ export class ItemHandler {
 	private database: BandDatabase;
 
 	constructor(
-		private readonly page: Page
 	) {
 	}
 
 	public async processItem(
-		{ id, url }: QueueEvent
+	page: Page,
+		{ id, url }: QueueEvent,
+		pageIndex: number,
 	): Promise<void> {
-		logger.debug(
-			logMessage(
-				LogSource.Item,
-				`Start processing`,
-				url
-			)
-		);
-
 		this.database = await BandDatabase.initialize();
 
 		// open Item url
-		await this.page.goto(url, { timeout: 60_000, waitUntil: 'networkidle0' });
+		await page.goto(url, { timeout: 60_000, waitUntil: 'domcontentloaded' });
+		await delay();
 
 		// save Item release date
-		const { extracted, alreadySaved } = await this.readAndSaveReleaseDate(id);
+		const { extracted, alreadySaved } = await this.readAndSaveReleaseDate(page, id);
 
 		// scrap and save Tags
-		const { newTags, totalTags } = await this.readAndSaveTags(id);
+		const { newTags, totalTags } = await this.readAndSaveTags(page, id);
 
 		// scrap and save Accounts
-		const { newAccounts, totalAccounts } = await this.readAndSaveAccounts(id);
+		const { newAccounts, totalAccounts } = await this.readAndSaveAccounts(page, id);
 
 		// extract album or tracks
 		let tracksInfo = null;
 		let albumInfo = null;
 		if (isAlbumUrl(url)) {
-			tracksInfo = await this.readAndSaveAlbumTracks(url);
+			tracksInfo = await this.readAndSaveAlbumTracks(page, url);
 		} else if (isTrackUrl(url)) {
-			albumInfo = await this.readAndSaveTrackAlbum(url);
+			albumInfo = await this.readAndSaveTrackAlbum(page, url);
 		}
 
 		// save that item was processed now
@@ -54,21 +48,22 @@ export class ItemHandler {
 		logger.info(
 			logMessage(
 				LogSource.Item,
-				`Processing finished: album-[${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount}/${albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist}] date[${extracted}/${alreadySaved}]; account-[${newAccounts}/${totalAccounts}] tags-[${newTags}/${totalTags}]}`,
+				`[${pageIndex}] Processing finished: [${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount ?? 0}/${albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist ?? 0}/${extracted}/${alreadySaved}/${newAccounts}/${totalAccounts}/${newTags}/${totalTags}]/t`,
 				url
 			)
 		);
 	}
 
 	private async readAndSaveReleaseDate(
+		page: Page,
 		itemId: number
 	): Promise<{ extracted: boolean, alreadySaved: boolean }> {
 		let isDateExtracted: boolean = false;
 		let isDateAlreadySaved: boolean = false;
 
-		const url: string = this.page.url();
+		const url: string = page.url();
 		try {
-			const date: Date = await this.pageService.readTrackReleaseDate(this.page);
+			const date: Date = await this.pageService.readTrackReleaseDate(page);
 			if (!isNullOrUndefined(date)) {
 				isDateExtracted = true;
 				isDateAlreadySaved = !await this.database.item.updateReleaseDate(itemId, date);
@@ -81,14 +76,15 @@ export class ItemHandler {
 	}
 
 	private async readAndSaveTags(
+		page: Page,
 		itemId: number
 	): Promise<{ totalTags: number, newTags: number }> {
 		let totalTagsCount: number = 0;
 		let newTagsCount: number = 0;
 
-		const url: string = this.page.url();
+		const url: string = page.url();
 		try {
-			const tags: string[] = await this.pageService.readAllPageTags(this.page);
+			const tags: string[] = await this.pageService.readAllPageTags(page);
 			totalTagsCount = tags.length;
 
 			// save Tags
@@ -113,14 +109,15 @@ export class ItemHandler {
 	}
 
 	private async readAndSaveAccounts(
+		page: Page,
 		itemId: number
 	): Promise<{ totalAccounts: number, newAccounts: number }> {
 		let totalAccountsCount: number = 0;
 		let newAccountCount: number = 0;
 
-		const url: string = this.page.url();
+		const url: string = page.url();
 		try {
-			const accounts: string[] = await this.pageService.readAllPageAccounts(this.page);
+			const accounts: string[] = await this.pageService.readAllPageAccounts(page);
 			totalAccountsCount = accounts.length;
 
 			// save Accounts
@@ -149,12 +146,13 @@ export class ItemHandler {
 	}
 
 	private async readAndSaveAlbumTracks(
+		page: Page,
 		albumUrl: string
 	): Promise<{ extractedTracksCount: number, albumRelationAlreadyExist: number }> {
 
-		const url: string = this.page.url();
+		const url: string = page.url();
 		try {
-			const tracksUrls: string[] = await this.pageService.readAllAlbumTracks(this.page);
+			const tracksUrls: string[] = await this.pageService.readAllAlbumTracks(page);
 
 			let albumRelationAlreadyExist: number = 0;
 			const album = await this.database.item.insert(albumUrl);
@@ -173,11 +171,12 @@ export class ItemHandler {
 	}
 
 	private async readAndSaveTrackAlbum(
+		page: Page,
 		trackUrl: string,
 	): Promise<{ albumExtracted: boolean, albumRelationAlreadyExist: boolean }> {
-		const url: string = this.page.url();
+		const url: string = page.url();
 		try {
-			const albumUrl: string = await this.pageService.readTrackAlbum(this.page);
+			const albumUrl: string = await this.pageService.readTrackAlbum(page);
 			const album = await this.database.item.insert(albumUrl);
 			if (!isNullOrUndefined(albumUrl)) {
 				const added = await this.database.item.insertTrackToAlbum(trackUrl, album);

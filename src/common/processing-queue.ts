@@ -8,7 +8,7 @@ import { isAccountUrl, isEmptyString, isItemUrl, isNullOrUndefined, logMessage, 
 export interface QueueEvent {
 	id: number,
 	url: string,
-	type: UrlType
+	type: UrlType,
 }
 
 export class ProcessingQueue {

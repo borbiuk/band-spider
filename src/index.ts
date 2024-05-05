@@ -3,11 +3,9 @@ import { logger, LogSource } from './common/logger';
 import { logMessage } from './common/utils';
 import { BandSpider, UrlType } from './core/band-spider';
 
-// Set maximum listeners to unlimited
-process.setMaxListeners(0);
-
-// 80 is good to avoid 429 response from bandcamp.com
-const PARALLEL_PAGES_COUNT: number = 85;
+// Count of parallel URL workers.
+// Use less then 7-8 is max to avoid 429 response from bandcamp.com
+const PARALLEL_PAGES_COUNT: number = 7;
 
 const main = async (): Promise<void> => {
 

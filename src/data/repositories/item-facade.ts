@@ -1,6 +1,7 @@
 import { DataSource, IsNull, LessThan } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
 import { ItemEntity } from '../../entities/item-entity';
+import { ItemToAccountEntity } from '../../entities/item-to-account-entity';
 
 export class ItemRepository {
 	constructor(
@@ -11,7 +12,7 @@ export class ItemRepository {
 	public async getNotProcessed(): Promise<ItemEntity[]> {
 		return await this.dataSource.getRepository(ItemEntity).find({
 			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(1) },
-			take: 200
+			take: 400
 		});
 	};
 
@@ -108,10 +109,16 @@ export class ItemRepository {
 	}
 
 	public async removeByUrl(itemUrl: string): Promise<void> {
-		await this.dataSource.getRepository(ItemEntity)
-			.createQueryBuilder()
-			.where({ url: itemUrl })
-			.delete()
-			.execute();
+		const repository = this.dataSource.getRepository(ItemEntity)
+
+		const existingRecord = await repository.findOne({ where: { url: itemUrl } });
+		if (isNullOrUndefined(existingRecord)) {
+			return;
+		}
+
+		await this.dataSource.getRepository(ItemToAccountEntity)
+			.delete({ itemId: existingRecord.id });
+
+		await repository.delete(existingRecord);
 	}
 }

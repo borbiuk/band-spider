@@ -1,7 +1,7 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
-import { logMessage } from '../../common/utils';
+import { delay, logMessage } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { AccountPageService } from '../page-services/account-page-service';
 
@@ -10,37 +10,36 @@ export class AccountHandler {
 	private database: BandDatabase;
 
 	constructor(
-		private readonly page: Page
 	) {
 	}
 
 	public async processAccount(
-		{ id, url }: QueueEvent
+		page: Page,
+		{ id, url }: QueueEvent,
+		pageIndex: number
 	): Promise<void> {
 		this.database = await BandDatabase.initialize();
 
 		// open url and show all accounts
-		await this.page.goto(url, { timeout: 60_000, waitUntil: 'networkidle0' });
+		await page.goto(url, { timeout: 60_000, waitUntil: 'domcontentloaded' });
+		await delay();
 
 		// scrap and save Items
-		const processingResult = await this.readAndSaveAccountItems(id);
+		const { newCount, totalCount } = await this.readAndSaveAccountItems(page, id);
 
 		// save that account was processed now
 		await this.database.account.updateProcessingDate(id);
 
 		logger.info(
-			logMessage(
-				LogSource.Account,
-				`Processing finished: ${JSON.stringify(processingResult)}`,
-				url
-			)
+			logMessage(LogSource.Account, `[${pageIndex}] Processing finished: [${newCount}/${totalCount}]}\t\t`, url)
 		);
 	}
 
 	private async readAndSaveAccountItems(
+		page: Page,
 		accountId: number
 	): Promise<{ totalCount: number, newCount: number }> {
-		const itemsUrls: string[] = await this.pageService.readAllAccountItems(this.page);
+		const itemsUrls: string[] = await this.pageService.readAllAccountItems(page);
 		const itemsIds: number[] = [];
 
 		for (const itemUrl of itemsUrls) {

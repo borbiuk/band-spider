@@ -11,8 +11,8 @@ export class AccountRepository {
 
 	public async getNotProcessed(): Promise<AccountEntity[]> {
 		return await this.dataSource.getRepository(AccountEntity).find({
-			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(4) },
-			take: 200
+			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(1) },
+			take: 400
 		});
 	};
 
@@ -105,10 +105,16 @@ export class AccountRepository {
 	}
 
 	public async removeByUrl(accountUrl: string): Promise<void> {
-		await this.dataSource.getRepository(AccountEntity)
-			.createQueryBuilder()
-			.where({ url: accountUrl })
-			.delete()
-			.execute();
+		const repository = this.dataSource.getRepository(AccountEntity)
+
+		const existingRecord = await repository.findOne({ where: { url: accountUrl } });
+		if (isNullOrUndefined(existingRecord)) {
+			return;
+		}
+
+		await this.dataSource.getRepository(ItemToAccountEntity)
+			.delete({ accountId: existingRecord.id });
+
+		await repository.delete(existingRecord);
 	}
 }

@@ -20,20 +20,20 @@ export class ItemEntity implements BaseEntity {
 	@Column({ nullable: true })
 	albumId?: number;
 
-	@ManyToOne(() => ItemEntity, (album) => album.albumId, { onDelete: 'SET NULL' })
+	@ManyToOne(() => ItemEntity, (album) => album.albumId)
 	@JoinColumn()
 	album?: ItemEntity;
 
 	@ManyToMany(() => AccountEntity)
 	accounts: AccountEntity[];
 
-	@OneToMany(() => ItemToAccountEntity, (itemToAccount) => itemToAccount.item, { onDelete: 'CASCADE' })
+	@OneToMany(() => ItemToAccountEntity, (itemToAccount) => itemToAccount.item)
 	itemToAccount: ItemToAccountEntity[]
 
 	@ManyToMany(() => TagEntity)
 	tags: TagEntity[];
 
-	@OneToMany(() => ItemToTagEntity, (itemToTag) => itemToTag.item, { onDelete: 'CASCADE' })
+	@OneToMany(() => ItemToTagEntity, (itemToTag) => itemToTag.item)
 	itemToTag: ItemToTagEntity[];
 
 	@Column({ type: 'date', nullable: true })

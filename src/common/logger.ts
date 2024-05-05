@@ -13,11 +13,13 @@ const prettyStream = pretty({
 	ignore: 'pid,hostname',
 });
 
+const level = 'info'
+
 // Log to console with pretty formatting
-const consoleLogger = pino({ level: 'debug' }, prettyStream);
+const consoleLogger = pino({ level }, prettyStream);
 
 // Log to file
-const fileLogger = pino({ level: 'debug' }, fileStream);
+const fileLogger = pino({ level }, fileStream);
 
 // Create a custom logger object to log to both console and file
 export const logger = {
