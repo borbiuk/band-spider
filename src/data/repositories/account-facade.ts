@@ -115,6 +115,6 @@ export class AccountRepository {
 		await this.dataSource.getRepository(ItemToAccountEntity)
 			.delete({ accountId: existingRecord.id });
 
-		await repository.delete(existingRecord);
+		await repository.delete({ url: existingRecord.url });
 	}
 }

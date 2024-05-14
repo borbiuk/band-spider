@@ -31,7 +31,7 @@ export class AccountHandler {
 		await this.database.account.updateProcessingDate(id);
 
 		logger.info(
-			logMessage(LogSource.Account, `[${pageIndex}] Processing finished: [${newCount}/${totalCount}]}\t\t`, url)
+			logMessage(LogSource.Account, `[${pageIndex}] Processing finished: [${newCount}/${totalCount}]`, url)
 		);
 	}
 

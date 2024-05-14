@@ -48,7 +48,7 @@ export class ItemHandler {
 		logger.info(
 			logMessage(
 				LogSource.Item,
-				`[${pageIndex}] Processing finished: [${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount ?? 0}/${albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist ?? 0}/${extracted}/${alreadySaved}/${newAccounts}/${totalAccounts}/${newTags}/${totalTags}]/t`,
+				`[${pageIndex}] Processing finished: [${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 1 : 0}/${extracted}/${alreadySaved}/${newAccounts}/${totalAccounts}/${newTags}/${totalTags}]`,
 				url
 			)
 		);
