@@ -4,8 +4,8 @@ import { logMessage } from './common/utils';
 import { BandSpider, UrlType } from './core/band-spider';
 
 // Count of parallel URL workers.
-// Use less then 7-8 is max to avoid 429 response from bandcamp.com
-const PARALLEL_PAGES_COUNT: number = 7;
+// Use less then 3-4 is max to avoid 429 response from bandcamp.com
+const PARALLEL_PAGES_COUNT: number = 1;
 
 const main = async (): Promise<void> => {
 

@@ -1,12 +1,16 @@
 import * as fs from 'node:fs';
-import { Page, PuppeteerNodeLaunchOptions } from 'puppeteer';
-import { Cluster } from 'puppeteer-cluster';
+import { Page, ResourceType } from 'puppeteer';
 import { logger, LogSource } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
-import { delay, isNullOrUndefined, logMessage } from '../common/utils';
+import { isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+// import ProxyPlugin from 'puppeteer-extra-plugin-proxy'
+import AnonymizeUAPlugin from 'puppeteer-extra-plugin-anonymize-ua';
+import BlockResourcesPlugin from 'puppeteer-extra-plugin-block-resources';
 
 export enum UrlType {
 	Account = 'account',
@@ -36,53 +40,59 @@ export class BandSpider {
 			this.database
 		);
 
-		// create parallel runner
-		const cluster: Cluster<QueueEvent, void> = await Cluster.launch({
-			concurrency: Cluster.CONCURRENCY_CONTEXT,
-			maxConcurrency: pagesCount,
-			puppeteerOptions: { headless, args: ['--no-sandbox'] } as PuppeteerNodeLaunchOptions,
-			monitor: true
-		});
+		puppeteer.use(StealthPlugin());
+		// puppeteer.use(ProxyPlugin()); need to add a proxy
+		puppeteer.use(AnonymizeUAPlugin());
+		puppeteer.use(BlockResourcesPlugin({
+			blockedTypes: new Set<ResourceType>(['image', 'media', 'stylesheet', 'font', 'document'])
+		}));
 
-		let count = 0;
-
-		await cluster.task(async ({ page, data: event, worker: { id } }) => {
-
-			// create handlers
-
-			// process
-			await this.processUrl(
-				event,
-				page,
-				id,
-			);
-			count--;
-		});
-
-		await cluster.idle();
-
+		const promises: Promise<void>[] = Array.from({length: pagesCount})
+			.map(async (_, id: number) => {
+				const browser = await puppeteer.launch({
+					headless: headless
+				});
+				const pages = await browser.pages();
+				const page = isNullOrUndefined(pages) || pages.length === 0
+					? await browser.newPage()
+					: pages[0];
+				
+				return this.processPage(
+					page,
+					queue,
+					type,
+					id
+				);
+			});
+		await Promise.all(promises)
+	}
+	
+	private async processPage(
+		page: Page,
+		queue: ProcessingQueue,
+		type: UrlType,
+		id: number,
+	) {
 		// fill cluster
 		while (true) {
-			if (count > pagesCount * 2) {
-				await delay();
-				continue;
-			}
-
-			if (queue.size < pagesCount * 2) {
+			// fill queue
+			if (queue.size === 0) {
 				await this.enqueueFromDb(queue, type);
 				if (queue.size === 0) {
 					break;
 				}
 			}
 
+			// dequeue and process
 			const event: QueueEvent = await queue.dequeue();
 			if (!isNullOrUndefined(event)) {
-				await cluster.queue(event);
-				count++;
+				await this.processUrl(
+					event,
+					page,
+					id,
+				);
 			}
 		}
-
-		await cluster.close();
 	}
 
 	private async processUrl(

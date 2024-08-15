@@ -21,7 +21,7 @@ export class ItemHandler {
 		this.database = await BandDatabase.initialize();
 
 		// open Item url
-		await page.goto(url, { timeout: 60_000, waitUntil: 'domcontentloaded' });
+		await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
 		await delay();
 
 		// save Item release date
@@ -48,7 +48,7 @@ export class ItemHandler {
 		logger.info(
 			logMessage(
 				LogSource.Item,
-				`[${pageIndex}] Processing finished: [${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 1 : 0}/${extracted}/${alreadySaved}/${newAccounts}/${totalAccounts}/${newTags}/${totalTags}]`,
+				`[${pageIndex}] Processing finished: [${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 1 : 0}|${extracted}/${alreadySaved}|${newAccounts}/${totalAccounts}|${newTags}/${totalTags}]`,
 				url
 			)
 		);

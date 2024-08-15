@@ -26,8 +26,7 @@ export class AccountPageService {
 				await page.waitForSelector(
 					this.loadMoreAccountsSelector,
 					{
-						timeout: 5_000,
-						visible: true
+						timeout: 5_000
 					});
 
 			await showMorePurchasesButton.click();
@@ -56,15 +55,16 @@ export class AccountPageService {
 					window.scrollTo(0, height * 10);
 				}, height);
 
-				// wait response
-				await page.waitForResponse(
-					response => response.url().includes(this.scrollRequestEndpointPath) && response.status() === 200,
-					{
-						timeout: 5_000
-					}
-				);
+				// wait on loader
+				await page.waitForSelector('#collection-items .expand-container:not(.show-loading)', { timeout: 10_000 });
 
-				await delay();
+				// wait response
+				// await page.waitForResponse(
+				// 	response => response.url().includes(this.scrollRequestEndpointPath) && response.status() === 200,
+				// 	{
+				// 		timeout: 5_000
+				// 	}
+				// );
 
 				// check is more scroll needed
 				const currentHeight = (await container.boundingBox()).height;

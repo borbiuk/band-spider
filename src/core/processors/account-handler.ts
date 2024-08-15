@@ -20,8 +20,8 @@ export class AccountHandler {
 	): Promise<void> {
 		this.database = await BandDatabase.initialize();
 
-		// open url and show all accounts
-		await page.goto(url, { timeout: 60_000, waitUntil: 'domcontentloaded' });
+		// open Account url
+		await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
 		await delay();
 
 		// scrap and save Items
