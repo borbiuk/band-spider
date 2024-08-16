@@ -23,9 +23,6 @@
 		"pino": "9.3.2",
 		"puppeteer": "22.15.0",
 		"puppeteer-extra": "3.3.6",
-		"puppeteer-extra-plugin-anonymize-ua": "^2.4.6",
-		"puppeteer-extra-plugin-block-resources": "^2.4.3",
-		"puppeteer-extra-plugin-proxy": "1.0.2",
 		"puppeteer-extra-plugin-stealth": "2.11.2",
 		"sqlite3": "5.1.7",
 		"typeorm": "0.3.20"

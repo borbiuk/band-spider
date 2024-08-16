@@ -1,16 +1,17 @@
 import * as fs from 'node:fs';
-import { Page, ResourceType } from 'puppeteer';
+import process from 'node:process';
+import { Browser, Page } from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger, LogSource } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
 import { isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 // import ProxyPlugin from 'puppeteer-extra-plugin-proxy'
-import AnonymizeUAPlugin from 'puppeteer-extra-plugin-anonymize-ua';
-import BlockResourcesPlugin from 'puppeteer-extra-plugin-block-resources';
+// import AnonymizeUAPlugin from 'puppeteer-extra-plugin-anonymize-ua';
+// import BlockResourcesPlugin from 'puppeteer-extra-plugin-block-resources';
 
 export enum UrlType {
 	Account = 'account',
@@ -29,6 +30,19 @@ export class BandSpider {
 		type: UrlType,
 		fromFile: boolean,
 	): Promise<void> {
+		puppeteer.use(StealthPlugin());
+		// puppeteer.use(ProxyPlugin()); need to add a proxy
+		// puppeteer.use(AnonymizeUAPlugin());
+		// puppeteer.use(BlockResourcesPlugin({
+		// 	blockedTypes: new Set<ResourceType>(['image', 'media', 'stylesheet', 'font', 'document'])
+		// }));
+
+		const browsers: Browser[] = [];
+		process.on('SIGINT', () => {
+			browsers.forEach(x => (x.close()));
+			console.log('Browsers closed');
+		});
+
 		// init database
 		this.database = await BandDatabase.initialize();
 		await this.database.account.resetAllBusy();
@@ -40,23 +54,18 @@ export class BandSpider {
 			this.database
 		);
 
-		puppeteer.use(StealthPlugin());
-		// puppeteer.use(ProxyPlugin()); need to add a proxy
-		puppeteer.use(AnonymizeUAPlugin());
-		puppeteer.use(BlockResourcesPlugin({
-			blockedTypes: new Set<ResourceType>(['image', 'media', 'stylesheet', 'font', 'document'])
-		}));
-
-		const promises: Promise<void>[] = Array.from({length: pagesCount})
+		const promises: Promise<void>[] = Array.from({ length: pagesCount })
 			.map(async (_, id: number) => {
 				const browser = await puppeteer.launch({
 					headless: headless
 				});
+				browsers.push(browser);
+
 				const pages = await browser.pages();
 				const page = isNullOrUndefined(pages) || pages.length === 0
 					? await browser.newPage()
 					: pages[0];
-				
+
 				return this.processPage(
 					page,
 					queue,
@@ -66,7 +75,7 @@ export class BandSpider {
 			});
 		await Promise.all(promises)
 	}
-	
+
 	private async processPage(
 		page: Page,
 		queue: ProcessingQueue,
