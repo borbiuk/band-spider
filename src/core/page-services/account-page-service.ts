@@ -1,23 +1,39 @@
 import { Page } from 'puppeteer';
-import { delay, isNullOrUndefined, isValidUrl, originalUrl } from '../../common/utils';
+import { isNullOrUndefined, isValidUrl, originalUrl } from '../../common/utils';
 
 export class AccountPageService {
-	private readonly DELAY: number = 10_000;
-
 	private readonly itemSelector: string = '.item-link';
 	private readonly loadMoreAccountsSelector: string = '.collection-items > .expand-container.show-button > .show-more';
-	private readonly scrollRequestEndpointPath: string = 'collection_items';
 	private readonly scrollContainer: string = '.fan-container';
+	private readonly collectionCountSelector = 'li[data-tab="collection"] .count';
 
-	public async readAllAccountItems(page: Page): Promise<string[]> {
+	public async readAllAccountItems(page: Page): Promise<{ totalCount: number, itemsUrls: string[] }> {
+		const totalCount = await this.getCollectionCount(page);
+
 		// show all album or tracks
-		await this.clickShowAllItemsButton(page);
-		await this.scrollToEnd(page);
+		if (totalCount > 40) {
+			await this.clickShowAllItemsButton(page);
+			await this.scrollToEnd(page);
+		}
+
+		const urls = (await this.readHrefs(page, this.itemSelector))
+			.filter(x => isValidUrl(x))
+			.map(x => originalUrl(x));
 
 		// read all album or tracks urls
-		return (await this.readHrefs(page, this.itemSelector))
-			.filter(x => isValidUrl(x))
-			.map(x => originalUrl(x))
+		return {
+			totalCount: isNullOrUndefined(totalCount) || isNaN(totalCount) ? urls.length : totalCount,
+			itemsUrls: urls
+		};
+	}
+
+	private async getCollectionCount(page: Page): Promise<number> {
+		try {
+			const count = await page.$eval(this.collectionCountSelector, element => element.textContent.trim());
+			return Number(count);
+		} catch {
+			return null;
+		}
 	}
 
 	private async clickShowAllItemsButton(page: Page): Promise<void> {
@@ -26,13 +42,11 @@ export class AccountPageService {
 				await page.waitForSelector(
 					this.loadMoreAccountsSelector,
 					{
-						timeout: 5_000
+						timeout: 2_000
 					});
 
 			await showMorePurchasesButton.click();
-			await delay();
-		}
-		catch (e) {
+		} catch (e) {
 		}
 	}
 
@@ -56,15 +70,7 @@ export class AccountPageService {
 				}, height);
 
 				// wait on loader
-				await page.waitForSelector('#collection-items .expand-container:not(.show-loading)', { timeout: 10_000 });
-
-				// wait response
-				// await page.waitForResponse(
-				// 	response => response.url().includes(this.scrollRequestEndpointPath) && response.status() === 200,
-				// 	{
-				// 		timeout: 5_000
-				// 	}
-				// );
+				await page.waitForSelector('#collection-items .expand-container:not(.show-loading)', { timeout: 2_000 });
 
 				// check is more scroll needed
 				const currentHeight = (await container.boundingBox()).height;

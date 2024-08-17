@@ -1,17 +1,15 @@
 import * as fs from 'node:fs';
 import process from 'node:process';
-import { Browser, Page } from 'puppeteer';
+import { Browser, HTTPResponse, Page } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger, LogSource } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
-import { isNullOrUndefined, logMessage } from '../common/utils';
+import { delay, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
-// import ProxyPlugin from 'puppeteer-extra-plugin-proxy'
-// import AnonymizeUAPlugin from 'puppeteer-extra-plugin-anonymize-ua';
-// import BlockResourcesPlugin from 'puppeteer-extra-plugin-block-resources';
+import { ProxyClient } from './proxy/proxy-client';
 
 export enum UrlType {
 	Account = 'account',
@@ -21,6 +19,10 @@ export enum UrlType {
 export class BandSpider {
 	private readonly accountHandler: AccountHandler = new AccountHandler();
 	private readonly itemHandler: ItemHandler = new ItemHandler();
+	private readonly statistic = {
+		processed: 0,
+		failed: 0
+	};
 
 	private database: BandDatabase;
 
@@ -31,11 +33,6 @@ export class BandSpider {
 		fromFile: boolean,
 	): Promise<void> {
 		puppeteer.use(StealthPlugin());
-		// puppeteer.use(ProxyPlugin()); need to add a proxy
-		// puppeteer.use(AnonymizeUAPlugin());
-		// puppeteer.use(BlockResourcesPlugin({
-		// 	blockedTypes: new Set<ResourceType>(['image', 'media', 'stylesheet', 'font', 'document'])
-		// }));
 
 		const browsers: Browser[] = [];
 		process.on('SIGINT', () => {
@@ -57,7 +54,19 @@ export class BandSpider {
 		const promises: Promise<void>[] = Array.from({ length: pagesCount })
 			.map(async (_, id: number) => {
 				const browser = await puppeteer.launch({
-					headless: headless
+					headless: headless,
+					devtools: false,
+					args: [
+						'--no-sandbox',
+						'--disable-setuid-sandbox',
+						'--disable-dev-shm-usage',
+						'--disable-accelerated-2d-canvas',
+						'--no-first-run',
+						'--no-zygote',
+						'--single-process',
+						'--disable-gpu',
+						'--ignore-certificate-errors',
+					]
 				});
 				browsers.push(browser);
 
@@ -65,6 +74,20 @@ export class BandSpider {
 				const page = isNullOrUndefined(pages) || pages.length === 0
 					? await browser.newPage()
 					: pages[0];
+
+				await page.setRequestInterception(true);
+				page.on('request', (req) => {
+					if (['font', 'image', 'stylesheet', 'media'].includes(req.resourceType())) {
+						return req.abort();
+					}
+
+					req.continue();
+				});
+				page.on('response', (httpResponse: HTTPResponse) => {
+					if (httpResponse.status() === 429) {
+						ProxyClient.initialize.changeIp();
+					}
+				});
 
 				return this.processPage(
 					page,
@@ -92,14 +115,35 @@ export class BandSpider {
 				}
 			}
 
-			// dequeue and process
+			// do not make a call if changing of IP is in progress
+			if (ProxyClient.initialize.isProcessing) {
+				await delay();
+				continue;
+			}
+
+			// dequeue 
 			const event: QueueEvent = await queue.dequeue();
-			if (!isNullOrUndefined(event)) {
-				await this.processUrl(
-					event,
-					page,
-					id,
-				);
+			if (isNullOrUndefined(event)) {
+				continue;
+			}
+
+			// process
+			const isProcessed = await this.processUrl(
+				event,
+				page,
+				id,
+			);
+
+			// update statistic
+			if (isProcessed) {
+				this.statistic.processed++;
+			}
+			else {
+				this.statistic.failed++;
+			}
+
+			if ((this.statistic.processed + this.statistic.failed) % 1_000 === 0){
+				logger.info(JSON.stringify(this.statistic));
 			}
 		}
 	}
@@ -108,7 +152,7 @@ export class BandSpider {
 		event: QueueEvent,
 		page: Page,
 		pageIndex: number
-	): Promise<void> {
+	): Promise<boolean> {
 		try {
 			switch (event.type) {
 				case UrlType.Account:
@@ -122,6 +166,7 @@ export class BandSpider {
 					await this.database.item.updateBusy(event.id, false);
 					break;
 			}
+			return true;
 		} catch (error) {
 			let source: LogSource = LogSource.Unknown;
 			switch (event.type) {
@@ -141,6 +186,8 @@ export class BandSpider {
 				error,
 				logMessage(source, `[${pageIndex}}] Processing failed: ${error.message}`, event.url)
 			);
+
+			return false;
 		}
 	}
 

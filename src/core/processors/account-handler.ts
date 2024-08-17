@@ -1,7 +1,7 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
-import { delay, logMessage } from '../../common/utils';
+import { logMessage } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { AccountPageService } from '../page-services/account-page-service';
 
@@ -9,8 +9,7 @@ export class AccountHandler {
 	private readonly pageService: AccountPageService = new AccountPageService();
 	private database: BandDatabase;
 
-	constructor(
-	) {
+	constructor() {
 	}
 
 	public async processAccount(
@@ -22,7 +21,6 @@ export class AccountHandler {
 
 		// open Account url
 		await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
-		await delay();
 
 		// scrap and save Items
 		const { newCount, totalCount } = await this.readAndSaveAccountItems(page, id);
@@ -31,7 +29,7 @@ export class AccountHandler {
 		await this.database.account.updateProcessingDate(id);
 
 		logger.info(
-			logMessage(LogSource.Account, `[${pageIndex}] Processing finished: [${newCount}/${totalCount}]`, url)
+			logMessage(LogSource.Account, `[${pageIndex}]\tProcessing finished: [${newCount}/${totalCount}]\t`, url)
 		);
 	}
 
@@ -39,7 +37,7 @@ export class AccountHandler {
 		page: Page,
 		accountId: number
 	): Promise<{ totalCount: number, newCount: number }> {
-		const itemsUrls: string[] = await this.pageService.readAllAccountItems(page);
+		const { totalCount, itemsUrls } = await this.pageService.readAllAccountItems(page);
 		const itemsIds: number[] = [];
 
 		for (const itemUrl of itemsUrls) {
@@ -55,7 +53,7 @@ export class AccountHandler {
 			}
 		}
 
-		return { totalCount: itemsUrls.length, newCount };
+		return { totalCount: totalCount, newCount };
 	}
 
 }

@@ -1,10 +1,11 @@
 import { DataSource } from 'typeorm';
-import { isNullOrUndefined } from '../common/utils';
-import { AccountEntity } from '../entities/account-entity';
-import { ItemEntity } from '../entities/item-entity';
-import { ItemToAccountEntity } from '../entities/item-to-account-entity';
-import { ItemToTagEntity } from '../entities/item-to-tag-entity';
-import { TagEntity } from '../entities/tag-entity';
+import { logger, LogSource } from '../common/logger';
+import { isNullOrUndefined, logMessage } from '../common/utils';
+import { AccountEntity } from './entities/account-entity';
+import { ItemEntity } from './entities/item-entity';
+import { ItemToAccountEntity } from './entities/item-to-account-entity';
+import { ItemToTagEntity } from './entities/item-to-tag-entity';
+import { TagEntity } from './entities/tag-entity';
 import { AccountRepository } from './repositories/account-facade';
 import { ItemRepository } from './repositories/item-facade';
 import { TagRepository } from './repositories/tag-repository';
@@ -26,9 +27,11 @@ const appDataSource: DataSource = new DataSource({
 
 export class BandDatabase {
 	private static instance: BandDatabase;
+
 	public readonly account: AccountRepository;
 	public readonly item: ItemRepository;
 	public readonly tag: TagRepository;
+
 	private readonly dataSource: DataSource;
 
 	private constructor(dataSource: DataSource) {
@@ -42,7 +45,12 @@ export class BandDatabase {
 	public static async initialize(): Promise<BandDatabase> {
 		if (isNullOrUndefined(BandDatabase.instance)) {
 			const dataSource: DataSource = await appDataSource.initialize();
-			BandDatabase.instance = new BandDatabase(dataSource);
+			if (!isNullOrUndefined(BandDatabase.instance)) {
+				logger.error(logMessage(LogSource.Data, 'Singleton failed'));
+			}
+			else {
+				BandDatabase.instance = new BandDatabase(dataSource);
+			}
 		}
 
 		return BandDatabase.instance;

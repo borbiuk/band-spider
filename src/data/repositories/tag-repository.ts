@@ -1,6 +1,6 @@
 import { DataSource } from 'typeorm';
-import { ItemToTagEntity } from '../../entities/item-to-tag-entity';
-import { TagEntity } from '../../entities/tag-entity';
+import { ItemToTagEntity } from '../entities/item-to-tag-entity';
+import { TagEntity } from '../entities/tag-entity';
 
 export class TagRepository {
 	constructor(

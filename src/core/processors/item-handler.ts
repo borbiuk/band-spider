@@ -14,7 +14,7 @@ export class ItemHandler {
 	}
 
 	public async processItem(
-	page: Page,
+		page: Page,
 		{ id, url }: QueueEvent,
 		pageIndex: number,
 	): Promise<void> {
@@ -22,7 +22,6 @@ export class ItemHandler {
 
 		// open Item url
 		await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
-		await delay();
 
 		// save Item release date
 		const { extracted, alreadySaved } = await this.readAndSaveReleaseDate(page, id);
@@ -48,7 +47,7 @@ export class ItemHandler {
 		logger.info(
 			logMessage(
 				LogSource.Item,
-				`[${pageIndex}] Processing finished: [${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 1 : 0}|${extracted}/${alreadySaved}|${newAccounts}/${totalAccounts}|${newTags}/${totalTags}]`,
+				`[${pageIndex}]\tProcessing finished: [${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 'y' : 'n'}\t|${extracted ? 'y': 'n'}/${alreadySaved ? 'y': 'n'}\t|${newAccounts}/${totalAccounts}\t|${newTags}/${totalTags}\t]`,
 				url
 			)
 		);

@@ -1,7 +1,7 @@
 import { UrlType } from '../core/band-spider';
 import { BandDatabase } from '../data/db';
-import { AccountEntity } from '../entities/account-entity';
-import { ItemEntity } from '../entities/item-entity';
+import { AccountEntity } from '../data/entities/account-entity';
+import { ItemEntity } from '../data/entities/item-entity';
 import { logger, LogSource } from './logger';
 import { isAccountUrl, isEmptyString, isItemUrl, isNullOrUndefined, logMessage, onlyUnique, originalUrl } from './utils';
 

@@ -1,6 +1,6 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
-import { delay, isAccountUrl, isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
+import { isAccountUrl, isEmptyString, isNullOrUndefined, isValidDate, isValidUrl, logMessage, onlyUnique, originalUrl } from '../../common/utils';
 
 export class ItemPageService {
 	private readonly loadAllAccountsSelector: string = 'a.more-thumbs'
@@ -21,23 +21,20 @@ export class ItemPageService {
 	public async readAllPageAccounts(page: Page): Promise<string[]> {
 		const url: string = page.url();
 
-		await this.loadAllAccount(page);
+		try {
+			let accounts = await this.getPageAccounts(page);
+			if (accounts.length === 60) {
+				await this.loadAllAccount(page);
+				accounts = await this.getPageAccounts(page);
+			}
 
-		const accounts: string[] = await page
-			.$$eval(
-				this.accountUrlSelector,
-				(elements) => elements
-					.map(x => x.getAttribute('href'))
-			)
-			.catch((error) => {
-				logger.error(error, logMessage(LogSource.Item, error.message, url));
-				return [];
-			});
-
-		return accounts
-			.map(x => originalUrl(x))
-			.filter(x => isAccountUrl(x))
-			.filter(onlyUnique);
+			return accounts
+				.map(x => originalUrl(x))
+				.filter(x => isAccountUrl(x));
+		} catch (error) {
+			logger.error(error, logMessage(LogSource.Item, error.message, url));
+			return [];
+		}
 	}
 
 	public async readAllPageTags(page: Page): Promise<string[]> {
@@ -54,7 +51,6 @@ export class ItemPageService {
 	};
 
 	public async readAllAlbumTracks(page: Page): Promise<string[]> {
-
 		const pageUrl = page.url();
 		const url = new URL(pageUrl);
 		const domain = url.protocol + '//' + url.hostname;
@@ -127,23 +123,25 @@ export class ItemPageService {
 		return isValidDate(date) ? date : null;
 	}
 
-	private async loadAllAccount(page: Page): Promise<void> {
-		let retry: number = 0;
-		while (retry < 2) {
-			try {
-				const showMoreAccountsButton =
-					await page.waitForSelector(
-						this.loadAllAccountsSelector,
-						{
-							timeout: 6_000
-						});
+	private async getPageAccounts(page: Page): Promise<string[]> {
+		return await page.$$eval(
+			this.accountUrlSelector,
+			(elements) => elements
+				.map(x => x.getAttribute('href'))
+		);
+	}
 
-				await showMoreAccountsButton.click();
-				await delay()
-				retry = 0;
-			} catch {
-				retry++;
-			}
+	private async loadAllAccount(page: Page): Promise<void> {
+		try {
+			const showMoreAccountsButton =
+				await page.waitForSelector(
+					this.loadAllAccountsSelector,
+					{
+						timeout: 2_000
+					});
+
+			await showMoreAccountsButton?.click();
+		} catch {
 		}
 	}
 

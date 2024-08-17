@@ -1,7 +1,7 @@
 import { DataSource, IsNull, LessThan } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
-import { AccountEntity } from '../../entities/account-entity';
-import { ItemToAccountEntity } from '../../entities/item-to-account-entity';
+import { AccountEntity } from '../entities/account-entity';
+import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 
 export class AccountRepository {
 	constructor(
