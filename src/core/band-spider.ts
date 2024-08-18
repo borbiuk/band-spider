@@ -1,12 +1,12 @@
 import * as fs from 'node:fs';
-import process from 'node:process';
-import { Browser, HTTPResponse, Page } from 'puppeteer';
+import { Browser, HTTPResponse, Page, PuppeteerLaunchOptions } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger, LogSource } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
 import { delay, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
+import { BandSpiderOptions } from '../index';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
 import { ProxyClient } from './proxy/proxy-client';
@@ -27,18 +27,15 @@ export class BandSpider {
 	private database: BandDatabase;
 
 	public async run(
-		pagesCount: number,
-		headless: boolean,
-		type: UrlType,
-		fromFile: boolean,
+		{
+			concurrencyBrowsers,
+			headless,
+			type,
+			fromFile,
+			docker,
+		}: BandSpiderOptions
 	): Promise<void> {
 		puppeteer.use(StealthPlugin());
-
-		const browsers: Browser[] = [];
-		process.on('SIGINT', () => {
-			browsers.forEach(x => (x.close()));
-			console.log('Browsers closed');
-		});
 
 		// init database
 		this.database = await BandDatabase.initialize();
@@ -51,37 +48,21 @@ export class BandSpider {
 			this.database
 		);
 
-		const promises: Promise<void>[] = Array.from({ length: pagesCount })
+		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
-				const browser = await puppeteer.launch({
-					headless: headless,
-					devtools: false,
-					args: [
-						'--no-sandbox',
-						'--disable-setuid-sandbox',
-						'--disable-dev-shm-usage',
-						'--disable-accelerated-2d-canvas',
-						'--no-first-run',
-						'--no-zygote',
-						'--single-process',
-						'--disable-gpu',
-						'--ignore-certificate-errors',
-					]
-				});
-				browsers.push(browser);
-
+				const browser = await this.getBrowser(docker, headless);
 				const pages = await browser.pages();
 				const page = isNullOrUndefined(pages) || pages.length === 0
 					? await browser.newPage()
 					: pages[0];
 
 				await page.setRequestInterception(true);
-				page.on('request', (req) => {
-					if (['font', 'image', 'stylesheet', 'media'].includes(req.resourceType())) {
-						return req.abort();
+				page.on('request', (request) => {
+					if (['font', 'image', 'stylesheet', 'media'].includes(request.resourceType())) {
+						request.abort();
+					} else {
+						request.continue();
 					}
-
-					req.continue();
 				});
 				page.on('response', (httpResponse: HTTPResponse) => {
 					if (httpResponse.status() === 429) {
@@ -137,12 +118,11 @@ export class BandSpider {
 			// update statistic
 			if (isProcessed) {
 				this.statistic.processed++;
-			}
-			else {
+			} else {
 				this.statistic.failed++;
 			}
 
-			if ((this.statistic.processed + this.statistic.failed) % 1_000 === 0){
+			if ((this.statistic.processed + this.statistic.failed) % 1_000 === 0) {
 				logger.info(JSON.stringify(this.statistic));
 			}
 		}
@@ -195,16 +175,15 @@ export class BandSpider {
 		type: UrlType,
 		fromFile: boolean,
 	): Promise<string[]> {
-		const database: BandDatabase = await BandDatabase.initialize();
 		switch (type) {
 			case UrlType.Account:
 				return fromFile
 					? this.readUrlsFromFile('accounts.txt')
-					: (await database.account.getNotProcessed()).map(({ url }) => url);
+					: (await this.database.account.getNotProcessed()).map(({ url }) => url);
 			case UrlType.Item:
 				return fromFile
 					? this.readUrlsFromFile('items.txt')
-					: (await database.item.getNotProcessed()).map(({ url }) => url);
+					: (await this.database.item.getNotProcessed()).map(({ url }) => url);
 			default:
 				throw new Error('Scrapping Type is invalid!');
 		}
@@ -225,5 +204,29 @@ export class BandSpider {
 		const fileContent: string = fs.readFileSync(fileName, 'utf8');
 		return fileContent.split('\n');
 	};
+
+	private async getBrowser(docker: boolean, headless: boolean): Promise<Browser> {
+		if (docker) {
+			return await puppeteer.connect({
+				browserWSEndpoint: 'ws://localhost:3000',
+			});
+		} else {
+			return await puppeteer.launch({
+				headless: headless,
+				devtools: false,
+				args: [
+					'--no-sandbox',
+					'--disable-setuid-sandbox',
+					'--disable-dev-shm-usage',
+					'--disable-accelerated-2d-canvas',
+					'--no-first-run',
+					'--no-zygote',
+					'--single-process',
+					'--disable-gpu',
+					'--ignore-certificate-errors',
+				]
+			} as PuppeteerLaunchOptions);
+		}
+	}
 
 }
