@@ -1,9 +1,10 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
-import { delay, isAlbumUrl, isNullOrUndefined, isTrackUrl, logMessage } from '../../common/utils';
+import { isAlbumUrl, isNullOrUndefined, isTrackUrl, logMessage } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { ItemPageService } from '../page-services/item-page-service';
+import { ProxyClient } from '../proxy/proxy-client';
 
 export class ItemHandler {
 	private readonly pageService: ItemPageService = new ItemPageService();
@@ -20,8 +21,14 @@ export class ItemHandler {
 	): Promise<void> {
 		this.database = await BandDatabase.initialize();
 
-		// open Item url
-		await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
+		try {
+			// open Item url
+			await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
+		}
+		catch (error){
+			ProxyClient.initialize.changeIp();
+			throw error;
+		}
 
 		// save Item release date
 		const { extracted, alreadySaved } = await this.readAndSaveReleaseDate(page, id);
@@ -47,7 +54,7 @@ export class ItemHandler {
 		logger.info(
 			logMessage(
 				LogSource.Item,
-				`[${pageIndex}]\tProcessing finished: [${albumInfo?.albumExtracted ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 'y' : 'n'}\t|${extracted ? 'y': 'n'}/${alreadySaved ? 'y': 'n'}\t|${newAccounts}/${totalAccounts}\t|${newTags}/${totalTags}\t]`,
+				`[${pageIndex}]\tProcessing finished: [${(isNullOrUndefined(albumInfo?.albumExtracted) ? null : albumInfo.albumExtracted ? 't': 'f') ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 'y' : 'n'}\t|${extracted ? 'y': 'n'}/${alreadySaved ? 'y': 'n'}\t|${newAccounts}/${totalAccounts}\t|${newTags}/${totalTags}\t]`,
 				url
 			)
 		);

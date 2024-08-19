@@ -1,4 +1,5 @@
-import { DataSource, IsNull, LessThan } from 'typeorm';
+import { DataSource, IsNull, LessThan, Or } from 'typeorm';
+import { ILike } from 'typeorm/find-options/operator/ILike';
 import { isNullOrUndefined } from '../../common/utils';
 import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
@@ -11,7 +12,7 @@ export class ItemRepository {
 
 	public async getNotProcessed(): Promise<ItemEntity[]> {
 		return await this.dataSource.getRepository(ItemEntity).find({
-			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(1) },
+			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(1), url: Or(ILike('%/album/%'), ILike('%/track/%')) },
 			take: 400
 		});
 	};

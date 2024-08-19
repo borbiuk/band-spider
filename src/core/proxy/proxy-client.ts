@@ -5,10 +5,10 @@ import { isNullOrUndefined, logMessage } from '../../common/utils';
 export class ProxyClient {
 	private static instance: ProxyClient;
 
-	private lastIndex: number = null;
-	private inProgress: boolean = false;
-
 	private readonly ids: number[] = [1, 2, 4, 5, 6, 7, 8, 9, 90, 15, 16, 18, 19, 22, 25, 26, 29, 35, 45, 53, 54, 70, 71, 74, 75, 79, 92, 94, 95, 103, 104, 150, 153, 155, 157, 161, 165, 166, 168, 169, 172, 178, 181, 182, 202, 204, 207, 210, 211, 212,];
+
+	private lastIndex: number = null;
+	private lastChangeTime: Date = null;
 
 	private constructor() {
 	}
@@ -22,33 +22,38 @@ export class ProxyClient {
 	}
 
 	public get isProcessing(): boolean {
-		return this.inProgress;
+		if (isNullOrUndefined(this.lastChangeTime)) {
+			return false;
+		}
+
+		const timeDiff = (this.now.getTime() - this.lastChangeTime.getTime()) / 1000;
+		return timeDiff < 10;
+	}
+
+	private get now(): Date {
+		return new Date();
 	}
 
 	public changeIp(): boolean {
-		// TODO: how to implement the double-check pattern?
-		if (!this.isProcessing) {
-			if (!this.isProcessing) {
-				this.inProgress = true;
-
-				this.lastIndex = isNullOrUndefined(this.lastIndex) || this.lastIndex - 1 === this.ids.length
-					? 0
-					: this.lastIndex + 1;
-
-				const id = this.ids[this.lastIndex];
-				logger.info(logMessage(LogSource.Proxy, 'IP Changing'));
-				try {
-					const commandOutput = execSync(`expresso connect -c ${id}`, { encoding: 'utf8' });
-					logger.info(logMessage(LogSource.Proxy, `IP Changed: ${commandOutput}`));
-				} catch (e) {
-					logger.error(e, logMessage(LogSource.Proxy, 'IP Changing failed'));
-				}
-
-				this.inProgress = false;
-				return true;
-			}
+		if (this.isProcessing) {
+			return false;
 		}
 
-		return false;
+		this.lastChangeTime = this.now;
+
+		this.lastIndex = isNullOrUndefined(this.lastIndex) || this.lastIndex - 1 === this.ids.length
+			? 0
+			: this.lastIndex + 1;
+
+		const id = this.ids[this.lastIndex];
+		try {
+			logger.info(logMessage(LogSource.Proxy, 'IP Changing'));
+			const commandOutput = execSync(`expresso connect -c ${id}`, { encoding: 'utf8' });
+			logger.info(logMessage(LogSource.Proxy, `IP Changed: ${commandOutput}`));
+		} catch (e) {
+			logger.error(e, logMessage(LogSource.Proxy, 'IP Changing failed'));
+		}
+
+		return true;
 	}
 }

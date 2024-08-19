@@ -7,7 +7,7 @@ export const isEmptyString = (x: string): boolean => isNullOrUndefined(x) || x =
 export const isAlbumUrl = (url: string): boolean => isValidUrl(url) && url.includes('/album/');
 export const isTrackUrl = (url: string): boolean => isValidUrl(url) && url.includes('/track/');
 export const isItemUrl = (url: string): boolean => isValidUrl(url) && (url.includes('/album/') || url.includes('/track/'));
-export const isAccountUrl = (url: string): boolean => isValidUrl(url) && url.includes('bandcamp.com') && !(url.includes('/album/') || url.includes('/track/'));
+export const isAccountUrl = (url: string): boolean => isValidUrl(url) && url.startsWith('https://bandcamp.com/') && !(url.includes('/album/') || url.includes('/track/'));
 export const originalUrl = (url: string): string => isEmptyString(url) ? null : url.split('?')[0];
 export const isValidDate = (date: Date): boolean => !isNullOrUndefined(date) && !isNaN(date.getTime());
 export const isValidUrl = (urlString: string): boolean => {
