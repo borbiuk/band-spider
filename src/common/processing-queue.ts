@@ -64,7 +64,7 @@ export class ProcessingQueue {
 
 		if (isItemUrl(url)) {
 			const item: ItemEntity = await this.database.item.insert(url);
-			if (item.isBusy || !isNullOrUndefined(item.lastProcessingDate) || item.failedCount > 3) {
+			if (item.isBusy) {
 				return null;
 			}
 
@@ -73,7 +73,7 @@ export class ProcessingQueue {
 
 		if (isAccountUrl(url)) {
 			const account: AccountEntity = await this.database.account.insert(url);
-			if (account.isBusy || !isNullOrUndefined(account.lastProcessingDate) || account.failedCount > 3) {
+			if (account.isBusy) {
 				return null;
 			}
 

@@ -21,7 +21,8 @@ export class BandSpider {
 	private readonly itemHandler: ItemHandler = new ItemHandler();
 	private readonly statistic = {
 		processed: 0,
-		failed: 0
+		failed: 0,
+		start: new Date().getTime()
 	};
 
 	private database: BandDatabase;
@@ -38,19 +39,31 @@ export class BandSpider {
 		puppeteer.use(StealthPlugin());
 
 		// init database
+		logger.info('DB creating...')
 		this.database = await BandDatabase.initialize();
 		await this.database.account.resetAllBusy();
 		await this.database.item.resetAllBusy();
+		logger.info('DB created');
 
 		// init queue
+		logger.info('Queue init...');
 		const queue: ProcessingQueue = new ProcessingQueue(
 			await this.getInitialUrlsToProcess(type, fromFile),
 			this.database
 		);
+		logger.info('Queue ready!');
+
+		const browsers: Browser[] = [];
+		process.on('SIGINT', () => {
+			browsers.forEach(x => (x.close()));
+			logger.warn('Browsers closed');
+		});
 
 		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
 				const browser = await this.getBrowser(docker, headless);
+				browsers.push(browser);
+
 				const pages = await browser.pages();
 				const page = isNullOrUndefined(pages) || pages.length === 0
 					? await browser.newPage()
@@ -60,9 +73,28 @@ export class BandSpider {
 				page.on('request', (request) => {
 					if (['font', 'image', 'stylesheet', 'media'].includes(request.resourceType())) {
 						request.abort();
-					} else {
-						request.continue();
+						return;
 					}
+
+					if (request.method() === 'POST') {
+						request.abort();
+						return;
+					}
+
+					const url = request.url();
+					if (
+						url.includes('recaptcha')
+						|| url.includes('bcbits.com')
+						|| url.includes('gstatic.com')
+						|| url.includes('googletagmanager.com')
+						|| url.includes('google.com')
+						|| url.includes('bandcamp.com/api/currency_data')
+					) {
+						request.abort();
+						return;
+					}
+
+					request.continue();
 				});
 				page.on('response', (httpResponse: HTTPResponse) => {
 					if (httpResponse.status() === 429) {
@@ -86,20 +118,19 @@ export class BandSpider {
 		type: UrlType,
 		id: number,
 	) {
-		// fill cluster
 		while (true) {
+			// do not make a call if changing of IP is in progress
+			if (ProxyClient.initialize.isProcessing) {
+				await delay();
+				continue;
+			}
+
 			// fill queue
 			if (queue.size === 0) {
 				await this.enqueueFromDb(queue, type);
 				if (queue.size === 0) {
 					break;
 				}
-			}
-
-			// do not make a call if changing of IP is in progress
-			if (ProxyClient.initialize.isProcessing) {
-				await delay();
-				continue;
 			}
 
 			// dequeue 
@@ -122,8 +153,13 @@ export class BandSpider {
 				this.statistic.failed++;
 			}
 
-			if ((this.statistic.processed + this.statistic.failed) % 1_000 === 0) {
-				logger.info(JSON.stringify(this.statistic));
+			if ((this.statistic.processed + this.statistic.failed) % 200 === 0) {
+				logger.info(
+					logMessage(
+						LogSource.Main,
+						`Processed: ${this.statistic.processed}; Failed: ${this.statistic.failed}; Speed: ${this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)}`
+					)
+				);
 			}
 		}
 	}
@@ -134,37 +170,32 @@ export class BandSpider {
 		pageIndex: number
 	): Promise<boolean> {
 		try {
-			switch (event.type) {
-				case UrlType.Account:
-					await this.database.account.updateBusy(event.id, true);
-					await this.accountHandler.processAccount(page, event, pageIndex);
-					await this.database.account.updateBusy(event.id, false);
-					break;
-				case UrlType.Item:
-					await this.database.item.updateBusy(event.id, true);
-					await this.itemHandler.processItem(page, event, pageIndex);
-					await this.database.item.updateBusy(event.id, false);
-					break;
+			let processed = false;
+			if (event.type === UrlType.Account) {
+				await this.database.account.updateBusy(event.id, true);
+				processed = await this.accountHandler.processAccount(page, event, pageIndex);
+				await this.database.account.updateBusy(event.id, false);
+			} else if (event.type === UrlType.Item) {
+				await this.database.item.updateBusy(event.id, true);
+				processed = await this.itemHandler.processItem(page, event, pageIndex);
+				await this.database.item.updateBusy(event.id, false);
 			}
-			return true;
+			return processed;
 		} catch (error) {
 			let source: LogSource = LogSource.Unknown;
-			switch (event.type) {
-				case UrlType.Account:
-					source = LogSource.Account;
-					await this.database.account.updateFailed(event.id)
-					await this.database.account.updateBusy(event.id, false);
-					break;
-				case UrlType.Item:
-					source = LogSource.Item;
-					await this.database.item.updateFailed(event.id)
-					await this.database.item.updateBusy(event.id, false);
-					break;
+			if (event.type === UrlType.Account) {
+				source = LogSource.Account;
+				await this.database.account.updateFailed(event.id)
+				await this.database.account.updateBusy(event.id, false);
+			} else if (event.type === UrlType.Item) {
+				source = LogSource.Item;
+				await this.database.item.updateFailed(event.id)
+				await this.database.item.updateBusy(event.id, false);
 			}
 
 			logger.error(
 				error,
-				logMessage(source, `[${pageIndex}}] Processing failed: ${error.message}`, event.url)
+				logMessage(source, `[${pageIndex}] Processing failed: ${error.message}`, event.url)
 			);
 
 			return false;
@@ -179,11 +210,13 @@ export class BandSpider {
 			case UrlType.Account:
 				return fromFile
 					? this.readUrlsFromFile('accounts.txt')
-					: (await this.database.account.getNotProcessed()).map(({ url }) => url);
+					: //(await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
+					(await this.database.account.getNotProcessed()).map(({ url }) => url);
 			case UrlType.Item:
 				return fromFile
 					? this.readUrlsFromFile('items.txt')
-					: (await this.database.item.getNotProcessed()).map(({ url }) => url);
+					: //(await this.database.item.getUserItems(1)).map(({ url }) => url)
+					(await this.database.item.getNotProcessed()).map(({ url }) => url);
 			default:
 				throw new Error('Scrapping Type is invalid!');
 		}

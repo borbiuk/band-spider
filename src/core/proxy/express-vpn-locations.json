@@ -1,0 +1,3469 @@
+{
+	"items": [
+		{
+			"uid": "154",
+			"title": "Singapore - Jurong",
+			"subtitle": "Asia Pacific - Singapore",
+			"arg": "connect --change 154",
+			"icon": {
+				"path": "./flags/SG.png"
+			},
+			"valid": true,
+			"match": "Singapore - Jurong Asia Pacific SG",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "107",
+			"title": "Singapore - CBD",
+			"subtitle": "Asia Pacific - Singapore",
+			"arg": "connect --change 107",
+			"icon": {
+				"path": "./flags/SG.png"
+			},
+			"valid": true,
+			"match": "Singapore - CBD Asia Pacific SG",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "37",
+			"title": "Singapore - Marina Bay",
+			"subtitle": "Asia Pacific - Singapore",
+			"arg": "connect --change 37",
+			"icon": {
+				"path": "./flags/SG.png"
+			},
+			"valid": true,
+			"match": "Singapore - Marina Bay Asia Pacific SG",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "114",
+			"title": "Hong Kong - 2",
+			"subtitle": "Asia Pacific - Hong Kong",
+			"arg": "connect --change 114",
+			"icon": {
+				"path": "./flags/HK.png"
+			},
+			"valid": true,
+			"match": "Hong Kong - 2 Asia Pacific HK",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "160",
+			"title": "Hong Kong - 1",
+			"subtitle": "Asia Pacific - Hong Kong",
+			"arg": "connect --change 160",
+			"icon": {
+				"path": "./flags/HK.png"
+			},
+			"valid": true,
+			"match": "Hong Kong - 1 Asia Pacific HK",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "224",
+			"title": "Japan - Tokyo",
+			"subtitle": "Asia Pacific - Japan",
+			"arg": "connect --change 224",
+			"icon": {
+				"path": "./flags/JP.png"
+			},
+			"valid": true,
+			"match": "Japan - Tokyo Asia Pacific JP",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "57",
+			"title": "Japan - Shibuya",
+			"subtitle": "Asia Pacific - Japan",
+			"arg": "connect --change 57",
+			"icon": {
+				"path": "./flags/JP.png"
+			},
+			"valid": true,
+			"match": "Japan - Shibuya Asia Pacific JP",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "223",
+			"title": "Japan - Yokohama",
+			"subtitle": "Asia Pacific - Japan",
+			"arg": "connect --change 223",
+			"icon": {
+				"path": "./flags/JP.png"
+			},
+			"valid": true,
+			"match": "Japan - Yokohama Asia Pacific JP",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "80",
+			"title": "Japan - Osaka",
+			"subtitle": "Asia Pacific - Japan",
+			"arg": "connect --change 80",
+			"icon": {
+				"path": "./flags/JP.png"
+			},
+			"valid": true,
+			"match": "Japan - Osaka Asia Pacific JP",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "156",
+			"title": "Australia - Melbourne",
+			"subtitle": "Asia Pacific - Australia",
+			"arg": "connect --change 156",
+			"icon": {
+				"path": "./flags/AU.png"
+			},
+			"valid": true,
+			"match": "Australia - Melbourne Asia Pacific AU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "219",
+			"title": "Australia - Woolloomooloo",
+			"subtitle": "Asia Pacific - Australia",
+			"arg": "connect --change 219",
+			"icon": {
+				"path": "./flags/AU.png"
+			},
+			"valid": true,
+			"match": "Australia - Woolloomooloo Asia Pacific AU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "81",
+			"title": "Australia - Sydney",
+			"subtitle": "Asia Pacific - Australia",
+			"arg": "connect --change 81",
+			"icon": {
+				"path": "./flags/AU.png"
+			},
+			"valid": true,
+			"match": "Australia - Sydney Asia Pacific AU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "209",
+			"title": "Australia - Perth",
+			"subtitle": "Asia Pacific - Australia",
+			"arg": "connect --change 209",
+			"icon": {
+				"path": "./flags/AU.png"
+			},
+			"valid": true,
+			"match": "Australia - Perth Asia Pacific AU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "208",
+			"title": "Australia - Brisbane",
+			"subtitle": "Asia Pacific - Australia",
+			"arg": "connect --change 208",
+			"icon": {
+				"path": "./flags/AU.png"
+			},
+			"valid": true,
+			"match": "Australia - Brisbane Asia Pacific AU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "93",
+			"title": "Australia - Adelaide",
+			"subtitle": "Asia Pacific - Australia",
+			"arg": "connect --change 93",
+			"icon": {
+				"path": "./flags/AU.png"
+			},
+			"valid": true,
+			"match": "Australia - Adelaide Asia Pacific AU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "162",
+			"title": "Australia - Sydney - 2",
+			"subtitle": "Asia Pacific - Australia",
+			"arg": "connect --change 162",
+			"icon": {
+				"path": "./flags/AU.png"
+			},
+			"valid": true,
+			"match": "Australia - Sydney - 2 Asia Pacific AU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "58",
+			"title": "South Korea - 2",
+			"subtitle": "Asia Pacific - South Korea",
+			"arg": "connect --change 58",
+			"icon": {
+				"path": "./flags/KR.png"
+			},
+			"valid": true,
+			"match": "South Korea - 2 Asia Pacific KR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "164",
+			"title": "Philippines",
+			"subtitle": "Asia Pacific - Philippines",
+			"arg": "connect --change 164",
+			"icon": {
+				"path": "./flags/PH.png"
+			},
+			"valid": true,
+			"match": "Philippines Asia Pacific PH",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "111",
+			"title": "Malaysia",
+			"subtitle": "Asia Pacific - Malaysia",
+			"arg": "connect --change 111",
+			"icon": {
+				"path": "./flags/MY.png"
+			},
+			"valid": true,
+			"match": "Malaysia Asia Pacific MY",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "152",
+			"title": "India (via UK)",
+			"subtitle": "Asia Pacific - India",
+			"arg": "connect --change 152",
+			"icon": {
+				"path": "./flags/IN.png"
+			},
+			"valid": true,
+			"match": "India (via UK) Asia Pacific IN",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "63",
+			"title": "India (via Singapore)",
+			"subtitle": "Asia Pacific - India",
+			"arg": "connect --change 63",
+			"icon": {
+				"path": "./flags/IN.png"
+			},
+			"valid": true,
+			"match": "India (via Singapore) Asia Pacific IN",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "199",
+			"title": "Sri Lanka",
+			"subtitle": "Asia Pacific - Sri Lanka",
+			"arg": "connect --change 199",
+			"icon": {
+				"path": "./flags/LK.png"
+			},
+			"valid": true,
+			"match": "Sri Lanka Asia Pacific LK",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "198",
+			"title": "Pakistan",
+			"subtitle": "Asia Pacific - Pakistan",
+			"arg": "connect --change 198",
+			"icon": {
+				"path": "./flags/PK.png"
+			},
+			"valid": true,
+			"match": "Pakistan Asia Pacific PK",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "133",
+			"title": "Kazakhstan",
+			"subtitle": "Asia Pacific - Kazakhstan",
+			"arg": "connect --change 133",
+			"icon": {
+				"path": "./flags/KZ.png"
+			},
+			"valid": true,
+			"match": "Kazakhstan Asia Pacific KZ",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "101",
+			"title": "Thailand",
+			"subtitle": "Asia Pacific - Thailand",
+			"arg": "connect --change 101",
+			"icon": {
+				"path": "./flags/TH.png"
+			},
+			"valid": true,
+			"match": "Thailand Asia Pacific TH",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "112",
+			"title": "Indonesia",
+			"subtitle": "Asia Pacific - Indonesia",
+			"arg": "connect --change 112",
+			"icon": {
+				"path": "./flags/ID.png"
+			},
+			"valid": true,
+			"match": "Indonesia Asia Pacific ID",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "113",
+			"title": "New Zealand",
+			"subtitle": "Asia Pacific - New Zealand",
+			"arg": "connect --change 113",
+			"icon": {
+				"path": "./flags/NZ.png"
+			},
+			"valid": true,
+			"match": "New Zealand Asia Pacific NZ",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "108",
+			"title": "Taiwan - 3",
+			"subtitle": "Asia Pacific - Taiwan",
+			"arg": "connect --change 108",
+			"icon": {
+				"path": "./flags/TW.png"
+			},
+			"valid": true,
+			"match": "Taiwan - 3 Asia Pacific TW",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "117",
+			"title": "Vietnam",
+			"subtitle": "Asia Pacific - Vietnam",
+			"arg": "connect --change 117",
+			"icon": {
+				"path": "./flags/VN.png"
+			},
+			"valid": true,
+			"match": "Vietnam Asia Pacific VN",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "174",
+			"title": "Macau",
+			"subtitle": "Asia Pacific - Macau",
+			"arg": "connect --change 174",
+			"icon": {
+				"path": "./flags/MO.png"
+			},
+			"valid": true,
+			"match": "Macau Asia Pacific MO",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "175",
+			"title": "Cambodia",
+			"subtitle": "Asia Pacific - Cambodia",
+			"arg": "connect --change 175",
+			"icon": {
+				"path": "./flags/KH.png"
+			},
+			"valid": true,
+			"match": "Cambodia Asia Pacific KH",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "137",
+			"title": "Mongolia",
+			"subtitle": "Asia Pacific - Mongolia",
+			"arg": "connect --change 137",
+			"icon": {
+				"path": "./flags/MN.png"
+			},
+			"valid": true,
+			"match": "Mongolia Asia Pacific MN",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "195",
+			"title": "Laos",
+			"subtitle": "Asia Pacific - Laos",
+			"arg": "connect --change 195",
+			"icon": {
+				"path": "./flags/LA.png"
+			},
+			"valid": true,
+			"match": "Laos Asia Pacific LA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "196",
+			"title": "Myanmar",
+			"subtitle": "Asia Pacific - Myanmar",
+			"arg": "connect --change 196",
+			"icon": {
+				"path": "./flags/MM.png"
+			},
+			"valid": true,
+			"match": "Myanmar Asia Pacific MM",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "197",
+			"title": "Nepal",
+			"subtitle": "Asia Pacific - Nepal",
+			"arg": "connect --change 197",
+			"icon": {
+				"path": "./flags/NP.png"
+			},
+			"valid": true,
+			"match": "Nepal Asia Pacific NP",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "238",
+			"title": "Guam",
+			"subtitle": "Asia Pacific - Guam",
+			"arg": "connect --change 238",
+			"icon": {
+				"path": "./flags/GU.png"
+			},
+			"valid": true,
+			"match": "Guam Asia Pacific GU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "128",
+			"title": "Uzbekistan",
+			"subtitle": "Asia Pacific - Uzbekistan",
+			"arg": "connect --change 128",
+			"icon": {
+				"path": "./flags/UZ.png"
+			},
+			"valid": true,
+			"match": "Uzbekistan Asia Pacific UZ",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "192",
+			"title": "Bangladesh",
+			"subtitle": "Asia Pacific - Bangladesh",
+			"arg": "connect --change 192",
+			"icon": {
+				"path": "./flags/BD.png"
+			},
+			"valid": true,
+			"match": "Bangladesh Asia Pacific BD",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "193",
+			"title": "Bhutan",
+			"subtitle": "Asia Pacific - Bhutan",
+			"arg": "connect --change 193",
+			"icon": {
+				"path": "./flags/BT.png"
+			},
+			"valid": true,
+			"match": "Bhutan Asia Pacific BT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "194",
+			"title": "Brunei",
+			"subtitle": "Asia Pacific - Brunei Darussalam",
+			"arg": "connect --change 194",
+			"icon": {
+				"path": "./flags/BN.png"
+			},
+			"valid": true,
+			"match": "Brunei Asia Pacific BN",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "190",
+			"title": "Pick for Me",
+			"subtitle": "Asia Pacific - Pick for Me",
+			"arg": "connect --change 190",
+			"icon": {
+				"path": "./flags/XV.png"
+			},
+			"valid": true,
+			"match": "Pick for Me Asia Pacific XV",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "26",
+			"title": "USA - New Jersey - 1",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 26",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - New Jersey - 1 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "168",
+			"title": "USA - New Jersey - 3",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 168",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - New Jersey - 3 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "75",
+			"title": "USA - New York",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 75",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - New York Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "19",
+			"title": "USA - Atlanta",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 19",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Atlanta Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "166",
+			"title": "USA - Tampa - 1",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 166",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Tampa - 1 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "202",
+			"title": "USA - Miami - 2",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 202",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Miami - 2 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "54",
+			"title": "USA - Miami",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 54",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Miami Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "165",
+			"title": "USA - Houston",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 165",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Houston Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "25",
+			"title": "USA - Washington DC",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 25",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Washington DC Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "18",
+			"title": "USA - Dallas",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 18",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Dallas Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "172",
+			"title": "USA - Denver",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 172",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Denver Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "9",
+			"title": "USA - Chicago",
+			"subtitle": "🕙 Americas - United States",
+			"arg": "connect --change 9",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Chicago Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "161",
+			"title": "USA - Lincoln Park",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 161",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Lincoln Park Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "95",
+			"title": "USA - Albuquerque",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 95",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Albuquerque Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "1",
+			"title": "USA - San Francisco",
+			"subtitle": "⚡️ Americas - United States",
+			"arg": "disconnect",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - San Francisco Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "74",
+			"title": "USA - Los Angeles - 3",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 74",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Los Angeles - 3 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "70",
+			"title": "USA - Los Angeles - 2",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 70",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Los Angeles - 2 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "2",
+			"title": "USA - Seattle",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 2",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Seattle Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "204",
+			"title": "USA - Salt Lake City",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 204",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Salt Lake City Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "94",
+			"title": "USA - Phoenix",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 94",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Phoenix Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "155",
+			"title": "USA - New Jersey - 2",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 155",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - New Jersey - 2 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "6",
+			"title": "USA - Los Angeles - 1",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 6",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Los Angeles - 1 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "71",
+			"title": "USA - Los Angeles - 5",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 71",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Los Angeles - 5 Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "207",
+			"title": "USA - Santa Monica",
+			"subtitle": "Americas - United States",
+			"arg": "connect --change 207",
+			"icon": {
+				"path": "./flags/US.png"
+			},
+			"valid": true,
+			"match": "USA - Santa Monica Americas US",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "79",
+			"title": "Canada - Toronto",
+			"subtitle": "Americas - Canada",
+			"arg": "connect --change 79",
+			"icon": {
+				"path": "./flags/CA.png"
+			},
+			"valid": true,
+			"match": "Canada - Toronto Americas CA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "181",
+			"title": "Canada - Vancouver",
+			"subtitle": "Americas - Canada",
+			"arg": "connect --change 181",
+			"icon": {
+				"path": "./flags/CA.png"
+			},
+			"valid": true,
+			"match": "Canada - Vancouver Americas CA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "169",
+			"title": "Canada - Toronto - 2",
+			"subtitle": "Americas - Canada",
+			"arg": "connect --change 169",
+			"icon": {
+				"path": "./flags/CA.png"
+			},
+			"valid": true,
+			"match": "Canada - Toronto - 2 Americas CA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "45",
+			"title": "Canada - Montreal",
+			"subtitle": "Americas - Canada",
+			"arg": "connect --change 45",
+			"icon": {
+				"path": "./flags/CA.png"
+			},
+			"valid": true,
+			"match": "Canada - Montreal Americas CA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "132",
+			"title": "Mexico",
+			"subtitle": "Americas - Mexico",
+			"arg": "connect --change 132",
+			"icon": {
+				"path": "./flags/MX.png"
+			},
+			"valid": true,
+			"match": "Mexico Americas MX",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "163",
+			"title": "Brazil - 2",
+			"subtitle": "Americas - Brazil",
+			"arg": "connect --change 163",
+			"icon": {
+				"path": "./flags/BR.png"
+			},
+			"valid": true,
+			"match": "Brazil - 2 Americas BR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "91",
+			"title": "Brazil",
+			"subtitle": "Americas - Brazil",
+			"arg": "connect --change 91",
+			"icon": {
+				"path": "./flags/BR.png"
+			},
+			"valid": true,
+			"match": "Brazil Americas BR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "20",
+			"title": "Panama",
+			"subtitle": "Americas - Panama",
+			"arg": "connect --change 20",
+			"icon": {
+				"path": "./flags/PA.png"
+			},
+			"valid": true,
+			"match": "Panama Americas PA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "125",
+			"title": "Chile",
+			"subtitle": "Americas - Chile",
+			"arg": "connect --change 125",
+			"icon": {
+				"path": "./flags/CL.png"
+			},
+			"valid": true,
+			"match": "Chile Americas CL",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "88",
+			"title": "Argentina",
+			"subtitle": "Americas - Argentina",
+			"arg": "connect --change 88",
+			"icon": {
+				"path": "./flags/AR.png"
+			},
+			"valid": true,
+			"match": "Argentina Americas AR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "232",
+			"title": "Bolivia",
+			"subtitle": "Americas - Bolivia",
+			"arg": "connect --change 232",
+			"icon": {
+				"path": "./flags/BO.png"
+			},
+			"valid": true,
+			"match": "Bolivia Americas BO",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "100",
+			"title": "Costa Rica",
+			"subtitle": "Americas - Costa Rica",
+			"arg": "connect --change 100",
+			"icon": {
+				"path": "./flags/CR.png"
+			},
+			"valid": true,
+			"match": "Costa Rica Americas CR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "131",
+			"title": "Colombia",
+			"subtitle": "Americas - Colombia",
+			"arg": "connect --change 131",
+			"icon": {
+				"path": "./flags/CO.png"
+			},
+			"valid": true,
+			"match": "Colombia Americas CO",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "143",
+			"title": "Venezuela",
+			"subtitle": "Americas - Venezuela",
+			"arg": "connect --change 143",
+			"icon": {
+				"path": "./flags/VE.png"
+			},
+			"valid": true,
+			"match": "Venezuela Americas VE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "144",
+			"title": "Ecuador",
+			"subtitle": "Americas - Ecuador",
+			"arg": "connect --change 144",
+			"icon": {
+				"path": "./flags/EC.png"
+			},
+			"valid": true,
+			"match": "Ecuador Americas EC",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "141",
+			"title": "Guatemala",
+			"subtitle": "Americas - Guatemala",
+			"arg": "connect --change 141",
+			"icon": {
+				"path": "./flags/GT.png"
+			},
+			"valid": true,
+			"match": "Guatemala Americas GT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "142",
+			"title": "Peru",
+			"subtitle": "Americas - Peru",
+			"arg": "connect --change 142",
+			"icon": {
+				"path": "./flags/PE.png"
+			},
+			"valid": true,
+			"match": "Peru Americas PE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "140",
+			"title": "Uruguay",
+			"subtitle": "Americas - Uruguay",
+			"arg": "connect --change 140",
+			"icon": {
+				"path": "./flags/UY.png"
+			},
+			"valid": true,
+			"match": "Uruguay Americas UY",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "115",
+			"title": "Bahamas",
+			"subtitle": "Americas - Bahamas",
+			"arg": "connect --change 115",
+			"icon": {
+				"path": "./flags/BS.png"
+			},
+			"valid": true,
+			"match": "Bahamas Americas BS",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "240",
+			"title": "Dominican Republic",
+			"subtitle": "Americas - Dominican Republic",
+			"arg": "connect --change 240",
+			"icon": {
+				"path": "./flags/DO.png"
+			},
+			"valid": true,
+			"match": "Dominican Republic Americas DO",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "241",
+			"title": "Jamaica",
+			"subtitle": "Americas - Jamaica",
+			"arg": "connect --change 241",
+			"icon": {
+				"path": "./flags/JM.png"
+			},
+			"valid": true,
+			"match": "Jamaica Americas JM",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "242",
+			"title": "Puerto Rico",
+			"subtitle": "Americas - Puerto Rico",
+			"arg": "connect --change 242",
+			"icon": {
+				"path": "./flags/PR.png"
+			},
+			"valid": true,
+			"match": "Puerto Rico Americas PR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "243",
+			"title": "Bermuda",
+			"subtitle": "Americas - Bermuda",
+			"arg": "connect --change 243",
+			"icon": {
+				"path": "./flags/BM.png"
+			},
+			"valid": true,
+			"match": "Bermuda Americas BM",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "244",
+			"title": "Trinidad and Tobago",
+			"subtitle": "Americas - Trinidad and Tobago",
+			"arg": "connect --change 244",
+			"icon": {
+				"path": "./flags/TT.png"
+			},
+			"valid": true,
+			"match": "Trinidad and Tobago Americas TT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "245",
+			"title": "Cayman Islands",
+			"subtitle": "Americas - Cayman Islands",
+			"arg": "connect --change 245",
+			"icon": {
+				"path": "./flags/KY.png"
+			},
+			"valid": true,
+			"match": "Cayman Islands Americas KY",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "246",
+			"title": "Cuba",
+			"subtitle": "Americas - Cuba",
+			"arg": "connect --change 246",
+			"icon": {
+				"path": "./flags/CU.png"
+			},
+			"valid": true,
+			"match": "Cuba Americas CU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "247",
+			"title": "Honduras",
+			"subtitle": "Americas - Honduras",
+			"arg": "connect --change 247",
+			"icon": {
+				"path": "./flags/HN.png"
+			},
+			"valid": true,
+			"match": "Honduras Americas HN",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "87",
+			"title": "Ukraine",
+			"subtitle": "Europe - Ukraine",
+			"arg": "connect --change 87",
+			"icon": {
+				"path": "./flags/UA.png"
+			},
+			"valid": true,
+			"match": "Ukraine Europe UA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "32",
+			"title": "Poland",
+			"subtitle": "Europe - Poland",
+			"arg": "connect --change 32",
+			"icon": {
+				"path": "./flags/PL.png"
+			},
+			"valid": true,
+			"match": "Poland Europe PL",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "153",
+			"title": "France - Marseille",
+			"subtitle": "Europe - France",
+			"arg": "connect --change 153",
+			"icon": {
+				"path": "./flags/FR.png"
+			},
+			"valid": true,
+			"match": "France - Marseille Europe FR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "103",
+			"title": "France - Strasbourg",
+			"subtitle": "Europe - France",
+			"arg": "connect --change 103",
+			"icon": {
+				"path": "./flags/FR.png"
+			},
+			"valid": true,
+			"match": "France - Strasbourg Europe FR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "8",
+			"title": "France - Paris - 2",
+			"subtitle": "Europe - France",
+			"arg": "connect --change 8",
+			"icon": {
+				"path": "./flags/FR.png"
+			},
+			"valid": true,
+			"match": "France - Paris - 2 Europe FR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "104",
+			"title": "France - Paris - 1",
+			"subtitle": "Europe - France",
+			"arg": "connect --change 104",
+			"icon": {
+				"path": "./flags/FR.png"
+			},
+			"valid": true,
+			"match": "France - Paris - 1 Europe FR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "150",
+			"title": "France - Alsace",
+			"subtitle": "Europe - France",
+			"arg": "connect --change 150",
+			"icon": {
+				"path": "./flags/FR.png"
+			},
+			"valid": true,
+			"match": "France - Alsace Europe FR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "5",
+			"title": "UK - London",
+			"subtitle": "Europe - United Kingdom",
+			"arg": "connect --change 5",
+			"icon": {
+				"path": "./flags/GB.png"
+			},
+			"valid": true,
+			"match": "UK - London Europe GB",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "53",
+			"title": "UK - Docklands",
+			"subtitle": "Europe - United Kingdom",
+			"arg": "connect --change 53",
+			"icon": {
+				"path": "./flags/GB.png"
+			},
+			"valid": true,
+			"match": "UK - Docklands Europe GB",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "178",
+			"title": "UK - East London",
+			"subtitle": "Europe - United Kingdom",
+			"arg": "connect --change 178",
+			"icon": {
+				"path": "./flags/GB.png"
+			},
+			"valid": true,
+			"match": "UK - East London Europe GB",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "15",
+			"title": "UK - Midlands",
+			"subtitle": "Europe - United Kingdom",
+			"arg": "connect --change 15",
+			"icon": {
+				"path": "./flags/GB.png"
+			},
+			"valid": true,
+			"match": "UK - Midlands Europe GB",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "90",
+			"title": "UK - Wembley",
+			"subtitle": "Europe - United Kingdom",
+			"arg": "connect --change 90",
+			"icon": {
+				"path": "./flags/GB.png"
+			},
+			"valid": true,
+			"match": "UK - Wembley Europe GB",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "212",
+			"title": "Netherlands - The Hague",
+			"subtitle": "Europe - Netherlands",
+			"arg": "connect --change 212",
+			"icon": {
+				"path": "./flags/NL.png"
+			},
+			"valid": true,
+			"match": "Netherlands - The Hague Europe NL",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "4",
+			"title": "Netherlands - Amsterdam",
+			"subtitle": "🕙 Europe - Netherlands",
+			"arg": "connect --change 4",
+			"icon": {
+				"path": "./flags/NL.png"
+			},
+			"valid": true,
+			"match": "Netherlands - Amsterdam Europe NL",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "16",
+			"title": "Netherlands - Rotterdam",
+			"subtitle": "Europe - Netherlands",
+			"arg": "connect --change 16",
+			"icon": {
+				"path": "./flags/NL.png"
+			},
+			"valid": true,
+			"match": "Netherlands - Rotterdam Europe NL",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "23",
+			"title": "Sweden",
+			"subtitle": "Europe - Sweden",
+			"arg": "connect --change 23",
+			"icon": {
+				"path": "./flags/SE.png"
+			},
+			"valid": true,
+			"match": "Sweden Europe SE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "203",
+			"title": "Sweden - 2",
+			"subtitle": "Europe - Sweden",
+			"arg": "connect --change 203",
+			"icon": {
+				"path": "./flags/SE.png"
+			},
+			"valid": true,
+			"match": "Sweden - 2 Europe SE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "201",
+			"title": "Switzerland - 2",
+			"subtitle": "Europe - Switzerland",
+			"arg": "connect --change 201",
+			"icon": {
+				"path": "./flags/CH.png"
+			},
+			"valid": true,
+			"match": "Switzerland - 2 Europe CH",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "11",
+			"title": "Switzerland",
+			"subtitle": "Europe - Switzerland",
+			"arg": "connect --change 11",
+			"icon": {
+				"path": "./flags/CH.png"
+			},
+			"valid": true,
+			"match": "Switzerland Europe CH",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "182",
+			"title": "Italy - Cosenza",
+			"subtitle": "Europe - Italy",
+			"arg": "connect --change 182",
+			"icon": {
+				"path": "./flags/IT.png"
+			},
+			"valid": true,
+			"match": "Italy - Cosenza Europe IT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "157",
+			"title": "Italy - Milan",
+			"subtitle": "Europe - Italy",
+			"arg": "connect --change 157",
+			"icon": {
+				"path": "./flags/IT.png"
+			},
+			"valid": true,
+			"match": "Italy - Milan Europe IT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "29",
+			"title": "Italy - Naples",
+			"subtitle": "Europe - Italy",
+			"arg": "connect --change 29",
+			"icon": {
+				"path": "./flags/IT.png"
+			},
+			"valid": true,
+			"match": "Italy - Naples Europe IT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "7",
+			"title": "Germany - Frankfurt - 1",
+			"subtitle": "👍 Europe - Germany",
+			"arg": "connect --change 7",
+			"icon": {
+				"path": "./flags/DE.png"
+			},
+			"valid": true,
+			"match": "Germany - Frankfurt - 1 Europe DE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "210",
+			"title": "Germany - Nuremberg",
+			"subtitle": "Europe - Germany",
+			"arg": "connect --change 210",
+			"icon": {
+				"path": "./flags/DE.png"
+			},
+			"valid": true,
+			"match": "Germany - Nuremberg Europe DE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "92",
+			"title": "Germany - Frankfurt - 3",
+			"subtitle": "Europe - Germany",
+			"arg": "connect --change 92",
+			"icon": {
+				"path": "./flags/DE.png"
+			},
+			"valid": true,
+			"match": "Germany - Frankfurt - 3 Europe DE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "86",
+			"title": "Romania",
+			"subtitle": "Europe - Romania",
+			"arg": "connect --change 86",
+			"icon": {
+				"path": "./flags/RO.png"
+			},
+			"valid": true,
+			"match": "Romania Europe RO",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "129",
+			"title": "Isle of Man",
+			"subtitle": "Europe - Isle of Man",
+			"arg": "connect --change 129",
+			"icon": {
+				"path": "./flags/IM.png"
+			},
+			"valid": true,
+			"match": "Isle of Man Europe IM",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "22",
+			"title": "Spain - Madrid",
+			"subtitle": "Europe - Spain",
+			"arg": "connect --change 22",
+			"icon": {
+				"path": "./flags/ES.png"
+			},
+			"valid": true,
+			"match": "Spain - Madrid Europe ES",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "211",
+			"title": "Spain - Barcelona",
+			"subtitle": "Europe - Spain",
+			"arg": "connect --change 211",
+			"icon": {
+				"path": "./flags/ES.png"
+			},
+			"valid": true,
+			"match": "Spain - Barcelona Europe ES",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "35",
+			"title": "Spain - Barcelona - 2",
+			"subtitle": "Europe - Spain",
+			"arg": "connect --change 35",
+			"icon": {
+				"path": "./flags/ES.png"
+			},
+			"valid": true,
+			"match": "Spain - Barcelona - 2 Europe ES",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "89",
+			"title": "Turkey",
+			"subtitle": "Europe - Turkey",
+			"arg": "connect --change 89",
+			"icon": {
+				"path": "./flags/TR.png"
+			},
+			"valid": true,
+			"match": "Turkey Europe TR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "33",
+			"title": "Ireland",
+			"subtitle": "Europe - Ireland",
+			"arg": "connect --change 33",
+			"icon": {
+				"path": "./flags/IE.png"
+			},
+			"valid": true,
+			"match": "Ireland Europe IE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "106",
+			"title": "Iceland",
+			"subtitle": "Europe - Iceland",
+			"arg": "connect --change 106",
+			"icon": {
+				"path": "./flags/IS.png"
+			},
+			"valid": true,
+			"match": "Iceland Europe IS",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "96",
+			"title": "Norway",
+			"subtitle": "Europe - Norway",
+			"arg": "connect --change 96",
+			"icon": {
+				"path": "./flags/NO.png"
+			},
+			"valid": true,
+			"match": "Norway Europe NO",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "78",
+			"title": "Denmark",
+			"subtitle": "Europe - Denmark",
+			"arg": "connect --change 78",
+			"icon": {
+				"path": "./flags/DK.png"
+			},
+			"valid": true,
+			"match": "Denmark Europe DK",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "85",
+			"title": "Belgium",
+			"subtitle": "Europe - Belgium",
+			"arg": "connect --change 85",
+			"icon": {
+				"path": "./flags/BE.png"
+			},
+			"valid": true,
+			"match": "Belgium Europe BE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "34",
+			"title": "Finland",
+			"subtitle": "Europe - Finland",
+			"arg": "connect --change 34",
+			"icon": {
+				"path": "./flags/FI.png"
+			},
+			"valid": true,
+			"match": "Finland Europe FI",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "102",
+			"title": "Greece",
+			"subtitle": "Europe - Greece",
+			"arg": "connect --change 102",
+			"icon": {
+				"path": "./flags/GR.png"
+			},
+			"valid": true,
+			"match": "Greece Europe GR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "31",
+			"title": "Portugal",
+			"subtitle": "Europe - Portugal",
+			"arg": "connect --change 31",
+			"icon": {
+				"path": "./flags/PT.png"
+			},
+			"valid": true,
+			"match": "Portugal Europe PT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "21",
+			"title": "Austria",
+			"subtitle": "Europe - Austria",
+			"arg": "connect --change 21",
+			"icon": {
+				"path": "./flags/AT.png"
+			},
+			"valid": true,
+			"match": "Austria Europe AT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "185",
+			"title": "Armenia",
+			"subtitle": "Europe - Armenia",
+			"arg": "connect --change 185",
+			"icon": {
+				"path": "./flags/AM.png"
+			},
+			"valid": true,
+			"match": "Armenia Europe AM",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "36",
+			"title": "Lithuania",
+			"subtitle": "Europe - Lithuania",
+			"arg": "connect --change 36",
+			"icon": {
+				"path": "./flags/LT.png"
+			},
+			"valid": true,
+			"match": "Lithuania Europe LT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "122",
+			"title": "Latvia",
+			"subtitle": "Europe - Latvia",
+			"arg": "connect --change 122",
+			"icon": {
+				"path": "./flags/LV.png"
+			},
+			"valid": true,
+			"match": "Latvia Europe LV",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "130",
+			"title": "Estonia",
+			"subtitle": "Europe - Estonia",
+			"arg": "connect --change 130",
+			"icon": {
+				"path": "./flags/EE.png"
+			},
+			"valid": true,
+			"match": "Estonia Europe EE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "56",
+			"title": "Czech Republic",
+			"subtitle": "Europe - Czech Republic",
+			"arg": "connect --change 56",
+			"icon": {
+				"path": "./flags/CZ.png"
+			},
+			"valid": true,
+			"match": "Czech Republic Europe CZ",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "184",
+			"title": "Andorra",
+			"subtitle": "Europe - Andorra",
+			"arg": "connect --change 184",
+			"icon": {
+				"path": "./flags/AD.png"
+			},
+			"valid": true,
+			"match": "Andorra Europe AD",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "189",
+			"title": "Montenegro",
+			"subtitle": "Europe - Montenegro",
+			"arg": "connect --change 189",
+			"icon": {
+				"path": "./flags/ME.png"
+			},
+			"valid": true,
+			"match": "Montenegro Europe ME",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "147",
+			"title": "Bosnia and Herzegovina",
+			"subtitle": "Europe - Bosnia and Herzegovina",
+			"arg": "connect --change 147",
+			"icon": {
+				"path": "./flags/BA.png"
+			},
+			"valid": true,
+			"match": "Bosnia and Herzegovina Europe BA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "12",
+			"title": "Luxembourg",
+			"subtitle": "Europe - Luxembourg",
+			"arg": "connect --change 12",
+			"icon": {
+				"path": "./flags/LU.png"
+			},
+			"valid": true,
+			"match": "Luxembourg Europe LU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "99",
+			"title": "Hungary",
+			"subtitle": "Europe - Hungary",
+			"arg": "connect --change 99",
+			"icon": {
+				"path": "./flags/HU.png"
+			},
+			"valid": true,
+			"match": "Hungary Europe HU",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "110",
+			"title": "Bulgaria",
+			"subtitle": "Europe - Bulgaria",
+			"arg": "connect --change 110",
+			"icon": {
+				"path": "./flags/BG.png"
+			},
+			"valid": true,
+			"match": "Bulgaria Europe BG",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "186",
+			"title": "Belarus",
+			"subtitle": "Europe - Belarus",
+			"arg": "connect --change 186",
+			"icon": {
+				"path": "./flags/BY.png"
+			},
+			"valid": true,
+			"match": "Belarus Europe BY",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "134",
+			"title": "Malta",
+			"subtitle": "Europe - Malta",
+			"arg": "connect --change 134",
+			"icon": {
+				"path": "./flags/MT.png"
+			},
+			"valid": true,
+			"match": "Malta Europe MT",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "119",
+			"title": "Liechtenstein",
+			"subtitle": "Europe - Liechtenstein",
+			"arg": "connect --change 119",
+			"icon": {
+				"path": "./flags/LI.png"
+			},
+			"valid": true,
+			"match": "Liechtenstein Europe LI",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "124",
+			"title": "Cyprus",
+			"subtitle": "Europe - Cyprus",
+			"arg": "connect --change 124",
+			"icon": {
+				"path": "./flags/CY.png"
+			},
+			"valid": true,
+			"match": "Cyprus Europe CY",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "126",
+			"title": "Albania",
+			"subtitle": "Europe - Albania",
+			"arg": "connect --change 126",
+			"icon": {
+				"path": "./flags/AL.png"
+			},
+			"valid": true,
+			"match": "Albania Europe AL",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "118",
+			"title": "Croatia",
+			"subtitle": "Europe - Croatia",
+			"arg": "connect --change 118",
+			"icon": {
+				"path": "./flags/HR.png"
+			},
+			"valid": true,
+			"match": "Croatia Europe HR",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "121",
+			"title": "Slovenia",
+			"subtitle": "Europe - Slovenia",
+			"arg": "connect --change 121",
+			"icon": {
+				"path": "./flags/SI.png"
+			},
+			"valid": true,
+			"match": "Slovenia Europe SI",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "127",
+			"title": "Slovakia",
+			"subtitle": "Europe - Slovakia",
+			"arg": "connect --change 127",
+			"icon": {
+				"path": "./flags/SK.png"
+			},
+			"valid": true,
+			"match": "Slovakia Europe SK",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "187",
+			"title": "Monaco",
+			"subtitle": "Europe - Monaco",
+			"arg": "connect --change 187",
+			"icon": {
+				"path": "./flags/MC.png"
+			},
+			"valid": true,
+			"match": "Monaco Europe MC",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "188",
+			"title": "Jersey",
+			"subtitle": "Europe - Jersey",
+			"arg": "connect --change 188",
+			"icon": {
+				"path": "./flags/JE.png"
+			},
+			"valid": true,
+			"match": "Jersey Europe JE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "146",
+			"title": "North Macedonia",
+			"subtitle": "Europe - North Macedonia",
+			"arg": "connect --change 146",
+			"icon": {
+				"path": "./flags/MK.png"
+			},
+			"valid": true,
+			"match": "North Macedonia Europe MK",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "120",
+			"title": "Moldova",
+			"subtitle": "Europe - Moldova",
+			"arg": "connect --change 120",
+			"icon": {
+				"path": "./flags/MD.png"
+			},
+			"valid": true,
+			"match": "Moldova Europe MD",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "145",
+			"title": "Serbia",
+			"subtitle": "Europe - Serbia",
+			"arg": "connect --change 145",
+			"icon": {
+				"path": "./flags/RS.png"
+			},
+			"valid": true,
+			"match": "Serbia Europe RS",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "136",
+			"title": "Georgia",
+			"subtitle": "Europe - Georgia",
+			"arg": "connect --change 136",
+			"icon": {
+				"path": "./flags/GE.png"
+			},
+			"valid": true,
+			"match": "Georgia Europe GE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "239",
+			"title": "Ghana",
+			"subtitle": "Middle East and Africa - Ghana",
+			"arg": "connect --change 239",
+			"icon": {
+				"path": "./flags/GH.png"
+			},
+			"valid": true,
+			"match": "Ghana Middle East and Africa GH",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "248",
+			"title": "Lebanon",
+			"subtitle": "Middle East and Africa - Lebanon",
+			"arg": "connect --change 248",
+			"icon": {
+				"path": "./flags/LB.png"
+			},
+			"valid": true,
+			"match": "Lebanon Middle East and Africa LB",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "249",
+			"title": "Morocco",
+			"subtitle": "Middle East and Africa - Morocco",
+			"arg": "connect --change 249",
+			"icon": {
+				"path": "./flags/MA.png"
+			},
+			"valid": true,
+			"match": "Morocco Middle East and Africa MA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "109",
+			"title": "South Africa",
+			"subtitle": "Middle East and Africa - South Africa",
+			"arg": "connect --change 109",
+			"icon": {
+				"path": "./flags/ZA.png"
+			},
+			"valid": true,
+			"match": "South Africa Middle East and Africa ZA",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "105",
+			"title": "Israel",
+			"subtitle": "Middle East and Africa - Israel",
+			"arg": "connect --change 105",
+			"icon": {
+				"path": "./flags/IL.png"
+			},
+			"valid": true,
+			"match": "Israel Middle East and Africa IL",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "84",
+			"title": "Egypt",
+			"subtitle": "Middle East and Africa - Egypt",
+			"arg": "connect --change 84",
+			"icon": {
+				"path": "./flags/EG.png"
+			},
+			"valid": true,
+			"match": "Egypt Middle East and Africa EG",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "139",
+			"title": "Algeria",
+			"subtitle": "Middle East and Africa - Algeria",
+			"arg": "connect --change 139",
+			"icon": {
+				"path": "./flags/DZ.png"
+			},
+			"valid": true,
+			"match": "Algeria Middle East and Africa DZ",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		},
+		{
+			"uid": "176",
+			"title": "Kenya",
+			"subtitle": "Middle East and Africa - Kenya",
+			"arg": "connect --change 176",
+			"icon": {
+				"path": "./flags/KE.png"
+			},
+			"valid": true,
+			"match": "Kenya Middle East and Africa KE",
+			"mods": {
+				"alt": {
+					"valid": false,
+					"icon": {}
+				},
+				"cmd": {
+					"valid": false,
+					"icon": {}
+				}
+			}
+		}
+	]
+}

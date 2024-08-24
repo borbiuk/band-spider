@@ -4,6 +4,7 @@ import { QueueEvent } from '../../common/processing-queue';
 import { logMessage } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { AccountPageService } from '../page-services/account-page-service';
+import { ProxyClient } from '../proxy/proxy-client';
 
 export class AccountHandler {
 	private readonly pageService: AccountPageService = new AccountPageService();
@@ -16,11 +17,22 @@ export class AccountHandler {
 		page: Page,
 		{ id, url }: QueueEvent,
 		pageIndex: number
-	): Promise<void> {
+	): Promise<boolean> {
 		this.database = await BandDatabase.initialize();
 
 		// open Account url
-		await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
+		try {
+			await page.goto(url, { timeout: 3_000, waitUntil: 'domcontentloaded' });
+		}
+		catch (error){
+			const proxyChanged = ProxyClient.initialize.changeIp();
+			if (proxyChanged) {
+				throw error;
+			}
+
+			logger.warn(logMessage(LogSource.Account, `[${pageIndex}]\tProcessing stopped`, url));
+			return false;
+		}
 
 		// scrap and save Items
 		const { newCount, totalCount } = await this.readAndSaveAccountItems(page, id);
@@ -31,6 +43,8 @@ export class AccountHandler {
 		logger.info(
 			logMessage(LogSource.Account, `[${pageIndex}]\tProcessing finished: [${newCount}/${totalCount}]\t`, url)
 		);
+
+		return true;
 	}
 
 	private async readAndSaveAccountItems(

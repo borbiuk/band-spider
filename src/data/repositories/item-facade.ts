@@ -1,4 +1,4 @@
-import { DataSource, IsNull, LessThan, Or } from 'typeorm';
+import { DataSource, IsNull, LessThan, MoreThan, Or } from 'typeorm';
 import { ILike } from 'typeorm/find-options/operator/ILike';
 import { isNullOrUndefined } from '../../common/utils';
 import { ItemEntity } from '../entities/item-entity';
@@ -16,6 +16,14 @@ export class ItemRepository {
 			take: 400
 		});
 	};
+
+	public async getUserItems(accountId: number): Promise<ItemEntity[]> {
+		return  await this.dataSource.getRepository(ItemEntity).createQueryBuilder('item')
+			.innerJoin('item.itemToAccount', 'itemToAccount')
+			.where('itemToAccount.accountId = :accountId', { accountId: accountId })
+			//.where({ ailedCount: MoreThan(0) })
+			.getMany();
+	}
 
 	public async getById(itemId: number): Promise<ItemEntity> {
 		return await this.dataSource.getRepository(ItemEntity).findOne({ where: { id: itemId } });

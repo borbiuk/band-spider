@@ -1,4 +1,4 @@
-import { DataSource, IsNull, LessThan } from 'typeorm';
+import { DataSource, IsNull, LessThan, MoreThan } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
 import { AccountEntity } from '../entities/account-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
@@ -11,10 +11,30 @@ export class AccountRepository {
 
 	public async getNotProcessed(): Promise<AccountEntity[]> {
 		return await this.dataSource.getRepository(AccountEntity).find({
-			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(1) },
+			where: { lastProcessingDate: IsNull(), isBusy: false },
 			take: 400
 		});
-	};
+	}
+
+	public async getAccountRelated(accountId: number): Promise<AccountEntity[]> {
+		const itemIdsQuery = this.dataSource.getRepository(ItemToAccountEntity)
+			.createQueryBuilder('itemToAccount')
+			.select('itemToAccount.itemId')
+			.where('itemToAccount.accountId = :accountId', { accountId })
+			.getQuery();
+
+		// Step 2: Get related accounts based on the retrieved item IDs
+		const relatedAccounts = await this.dataSource.getRepository(AccountEntity)
+			.createQueryBuilder('account')
+			.innerJoin('account.itemToAccount', 'itemToAccount')
+			.where(`itemToAccount.itemId IN (${itemIdsQuery})`)
+			.andWhere('account.id != :accountId', { accountId })
+			.andWhere({ lastProcessingDate: LessThan('2024-08-21') })
+			//.limit(100)
+			.getMany();
+
+		return relatedAccounts;
+	}
 
 	public async getById(accountId: number): Promise<AccountEntity> {
 		return await this.dataSource.getRepository(AccountEntity).findOne({ where: { id: accountId } });

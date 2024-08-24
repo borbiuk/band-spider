@@ -18,16 +18,21 @@ export class ItemHandler {
 		page: Page,
 		{ id, url }: QueueEvent,
 		pageIndex: number,
-	): Promise<void> {
+	): Promise<boolean> {
 		this.database = await BandDatabase.initialize();
 
+		// open Item url
 		try {
-			// open Item url
-			await page.goto(url, { timeout: 30_000, waitUntil: 'domcontentloaded' });
+			await page.goto(url, { timeout: 5_000, waitUntil: 'domcontentloaded' });
 		}
 		catch (error){
-			ProxyClient.initialize.changeIp();
-			throw error;
+			const proxyChanged = ProxyClient.initialize.changeIp();
+			if (proxyChanged) {
+				throw error;
+			}
+
+			logger.warn(logMessage(LogSource.Item, `[${pageIndex}]\tProcessing stopped`, url));
+			return false;
 		}
 
 		// save Item release date
@@ -54,10 +59,17 @@ export class ItemHandler {
 		logger.info(
 			logMessage(
 				LogSource.Item,
-				`[${pageIndex}]\tProcessing finished: [${(isNullOrUndefined(albumInfo?.albumExtracted) ? null : albumInfo.albumExtracted ? 't': 'f') ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 'y' : 'n'}\t|${extracted ? 'y': 'n'}/${alreadySaved ? 'y': 'n'}\t|${newAccounts}/${totalAccounts}\t|${newTags}/${totalTags}\t]`,
+				`[${pageIndex}]\tProcessing finished: [${(isNullOrUndefined(albumInfo?.albumExtracted) ? null : albumInfo.albumExtracted ? 'y': 'n') ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 'y' : 'n'}\t|${extracted ? 'y': 'n'}/${alreadySaved ? 'y': 'n'}\t|${newAccounts}/${totalAccounts}\t|${newTags}/${totalTags}\t]`,
 				url
 			)
 		);
+
+		// invalid handling of page
+		if (totalTags === 0 && totalAccounts === 0 && !extracted && !alreadySaved) {
+			ProxyClient.initialize.changeIp();
+		}
+
+		return true;
 	}
 
 	private async readAndSaveReleaseDate(
