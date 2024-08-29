@@ -20,7 +20,7 @@ export class ItemEntity implements BaseEntity {
 	@Column({ nullable: true })
 	albumId?: number;
 
-	@ManyToOne(() => ItemEntity, (album) => album.albumId)
+	@ManyToOne(() => ItemEntity, (item) => item.albumId)
 	@JoinColumn()
 	album?: ItemEntity;
 

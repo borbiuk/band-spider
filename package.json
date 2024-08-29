@@ -15,12 +15,14 @@
 		"debug:db:accounts": "npx ts-node ./src/index.ts --account",
 		"debug:db:items": "npx ts-node ./src/index.ts",
 		"docker:db:accounts": "npx ts-node ./src/index.ts --headless --account --docker",
-		"docker:db:items": "npx ts-node ./src/index.ts --headless --docker"
+		"docker:db:items": "npx ts-node ./src/index.ts --headless --docker",
+		"superTag": "npx ts-node ./src/index.ts --superTag"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
+		"fuse.js": "^7.0.0",
 		"pino": "9.3.2",
 		"puppeteer": "23.1.1",
 		"puppeteer-extra": "3.3.6",

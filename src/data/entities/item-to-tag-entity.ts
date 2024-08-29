@@ -16,7 +16,6 @@ export class ItemToTagEntity implements BaseEntity {
 	@PrimaryColumn()
 	tagId: number;
 
-	@ManyToOne(() => TagEntity, (item) => item.itemToTag)
+	@ManyToOne(() => TagEntity, (tag) => tag.itemToTag)
 	tag: TagEntity;
-
 }

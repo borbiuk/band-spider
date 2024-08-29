@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { logger, LogSource } from './common/logger';
 import { logMessage } from './common/utils';
 import { BandSpider, UrlType } from './core/band-spider';
+import { SuperTagUpdate } from './core/super-tag-update';
 
 export interface BandSpiderOptions {
 	concurrencyBrowsers: number,
@@ -9,10 +10,11 @@ export interface BandSpiderOptions {
 	type: UrlType,
 	fromFile: boolean,
 	docker: boolean,
+	superTag: boolean,
 }
 
 // Count of parallel URL workers (Browsers).
-const PARALLEL_BROWSERS_COUNT: number = 14;
+const PARALLEL_BROWSERS_COUNT: number = 12;
 
 const main = async (): Promise<void> => {
 
@@ -24,10 +26,16 @@ const main = async (): Promise<void> => {
 		type: args.includes('--account') ? UrlType.Account : UrlType.Item,
 		fromFile: args.includes('--file'),
 		docker: args.includes('--docker'),
+		superTag: args.includes('--superTag'),
 	};
 
 	// Run
-	await new BandSpider().run(options);
+	if (options.superTag) {
+		await new SuperTagUpdate().run(options);
+	}
+	else {
+		await new BandSpider().run(options);
+	}
 };
 
 

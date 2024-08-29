@@ -1,4 +1,4 @@
-import { DataSource, IsNull, LessThan, MoreThan } from 'typeorm';
+import { DataSource, IsNull, LessThan } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
 import { AccountEntity } from '../entities/account-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
@@ -30,7 +30,6 @@ export class AccountRepository {
 			.where(`itemToAccount.itemId IN (${itemIdsQuery})`)
 			.andWhere('account.id != :accountId', { accountId })
 			.andWhere({ lastProcessingDate: LessThan('2024-08-21') })
-			//.limit(100)
 			.getMany();
 
 		return relatedAccounts;

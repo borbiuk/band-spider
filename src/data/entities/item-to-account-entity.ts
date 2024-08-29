@@ -16,7 +16,7 @@ export class ItemToAccountEntity implements BaseEntity {
 	@PrimaryColumn()
 	accountId: number;
 
-	@ManyToOne(() => AccountEntity, (item) => item.itemToAccount)
+	@ManyToOne(() => AccountEntity, (account) => account.itemToAccount)
 	account: AccountEntity;
 
 }

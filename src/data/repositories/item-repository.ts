@@ -21,7 +21,7 @@ export class ItemRepository {
 		return  await this.dataSource.getRepository(ItemEntity).createQueryBuilder('item')
 			.innerJoin('item.itemToAccount', 'itemToAccount')
 			.where('itemToAccount.accountId = :accountId', { accountId: accountId })
-			//.where({ ailedCount: MoreThan(0) })
+			//.where({ failedCount: MoreThan(0) })
 			.getMany();
 	}
 
