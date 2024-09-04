@@ -41,7 +41,7 @@ export class AccountHandler {
 		await this.database.account.updateProcessingDate(id);
 
 		logger.info(
-			logMessage(LogSource.Account, `[${pageIndex}]\tProcessing finished: [${newCount}/${totalCount}]\t`, url)
+			logMessage(LogSource.Account, `[${pageIndex}]\tAccount finished: [${newCount}/${totalCount}]\t`, url)
 		);
 
 		return true;
@@ -55,7 +55,7 @@ export class AccountHandler {
 		const itemsIds: number[] = [];
 
 		for (const itemUrl of itemsUrls) {
-			const { id } = await this.database.item.insert(itemUrl);
+			const { entity: {  id} } = await this.database.item.insert(itemUrl);
 			itemsIds.push(id);
 		}
 

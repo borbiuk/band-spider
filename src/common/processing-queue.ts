@@ -1,7 +1,5 @@
 import { UrlType } from '../core/band-spider';
 import { BandDatabase } from '../data/db';
-import { AccountEntity } from '../data/entities/account-entity';
-import { ItemEntity } from '../data/entities/item-entity';
 import { logger, LogSource } from './logger';
 import { isAccountUrl, isEmptyString, isItemUrl, isNullOrUndefined, logMessage, onlyUnique, originalUrl } from './utils';
 
@@ -57,27 +55,27 @@ export class ProcessingQueue {
 	}
 
 	public async dequeue(): Promise<QueueEvent> {
-		const url: string = this.urls.shift();
+		const url: string = this.shiftRandom(this.urls);
 		if (isEmptyString(url)) {
 			return null;
 		}
 
 		if (isItemUrl(url)) {
-			const item: ItemEntity = await this.database.item.insert(url);
-			if (item.isBusy) {
+			const { entity } = await this.database.item.insert(url);
+			if (entity.isBusy) {
 				return null;
 			}
 
-			return { id: item.id, url, type: UrlType.Item };
+			return { id: entity.id, url, type: UrlType.Item };
 		}
 
 		if (isAccountUrl(url)) {
-			const account: AccountEntity = await this.database.account.insert(url);
-			if (account.isBusy) {
+			const { entity } = await this.database.account.insert(url);
+			if (isNullOrUndefined(entity) || entity.isBusy) {
 				return null;
 			}
 
-			return { id: account.id, url, type: UrlType.Account };
+			return { id: entity.id, url, type: UrlType.Account };
 		}
 
 		logger.error(logMessage(LogSource.Unknown, 'Invalid URL', url));
@@ -87,4 +85,14 @@ export class ProcessingQueue {
 
 		return null;
 	}
+
+	private shiftRandom(array: string[]): string {
+		if (array.length === 0) {
+			return null;
+		}
+
+		const randomIndex = Math.floor(Math.random() * array.length);
+		const [removedElement] = array.splice(randomIndex, 1);
+		return removedElement;
+	} 
 }

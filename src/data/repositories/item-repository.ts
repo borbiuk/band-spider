@@ -1,6 +1,7 @@
 import { DataSource, IsNull, LessThan, MoreThan, Or } from 'typeorm';
 import { ILike } from 'typeorm/find-options/operator/ILike';
 import { isNullOrUndefined } from '../../common/utils';
+import { InsertResult } from '../../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 
@@ -48,24 +49,24 @@ export class ItemRepository {
 			.execute();
 	}
 
-	public async insert(itemUrl: string): Promise<ItemEntity> {
+	public async insert(itemUrl: string): Promise<InsertResult<ItemEntity>> {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
 		let existingRecord = await repository.findOne({ where: { url: itemUrl } });
 		if (existingRecord) {
-			return existingRecord;
+			return { entity: existingRecord, isInserted: false };
 		}
 
 		try {
 			const insertResult = await repository.insert({ url: itemUrl });
-			return insertResult.generatedMaps[0] as ItemEntity;
+			return {entity: insertResult.generatedMaps[0] as ItemEntity, isInserted: true };
 		} catch (error) {
 			existingRecord = await repository.findOne({ where: { url: itemUrl } });
-			if (!existingRecord) {
+			if (isNullOrUndefined(existingRecord)) {
 				throw error;
 			}
 
-			return existingRecord;
+			return {entity: null, isInserted: false };
 		}
 	};
 
@@ -105,14 +106,14 @@ export class ItemRepository {
 	public async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
-		const track: ItemEntity = await this.insert(trackUrl);
+		const { entity } = await this.insert(trackUrl);
 
-		if (track.albumId === album.id) {
+		if (entity.albumId === album.id) {
 			return false;
 		}
 
-		track.albumId = album.id;
-		await repository.save(track);
+		entity.albumId = album.id;
+		await repository.save(entity);
 
 		return true;
 	}

@@ -59,7 +59,7 @@ export class ItemHandler {
 		logger.info(
 			logMessage(
 				LogSource.Item,
-				`[${pageIndex}]\tProcessing finished: [${(isNullOrUndefined(albumInfo?.albumExtracted) ? null : albumInfo.albumExtracted ? 'y': 'n') ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 'y' : 'n'}\t|${extracted ? 'y': 'n'}/${alreadySaved ? 'y': 'n'}\t|${newAccounts}/${totalAccounts}\t|${newTags}/${totalTags}\t]`,
+				`[${pageIndex}]\tItem finished: [${(isNullOrUndefined(albumInfo?.albumExtracted) ? null : albumInfo.albumExtracted ? 'y': 'n') ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 'y' : 'n'}\t|${extracted ? 'y': 'n'}/${alreadySaved ? 'y': 'n'}\t|${newAccounts}/${totalAccounts}\t|${newTags}/${totalTags}\t]`,
 				url
 			)
 		);
@@ -132,6 +132,7 @@ export class ItemHandler {
 	): Promise<{ totalAccounts: number, newAccounts: number }> {
 		let totalAccountsCount: number = 0;
 		let newAccountCount: number = 0;
+		let newRelationsCount: number = 0;
 
 		const url: string = page.url();
 		try {
@@ -142,18 +143,18 @@ export class ItemHandler {
 			const accountsIds: number[] = [];
 
 			for (const accountUrl of accounts) {
-				const { id } = await this.database.account.insert(accountUrl);
-				if (id === 0) {
-					continue;
-				}
+				const { entity: {id}, isInserted } = await this.database.account.insert(accountUrl);
 				accountsIds.push(id);
+				if (isInserted) {
+					newAccountCount++;
+				}
 			}
 
 			// save Accounts relations
 			for (const accountId of accountsIds) {
 				const added = await this.database.account.addItem(accountId, itemId);
 				if (added) {
-					newAccountCount++;
+					newRelationsCount++;
 				}
 			}
 		} catch (error) {
@@ -173,9 +174,9 @@ export class ItemHandler {
 			const tracksUrls: string[] = await this.pageService.readAllAlbumTracks(page);
 
 			let albumRelationAlreadyExist: number = 0;
-			const album = await this.database.item.insert(albumUrl);
+			const { entity } = await this.database.item.insert(albumUrl);
 			for (const trackUrl of tracksUrls) {
-				if (!await this.database.item.insertTrackToAlbum(trackUrl, album)) {
+				if (!await this.database.item.insertTrackToAlbum(trackUrl, entity)) {
 					albumRelationAlreadyExist++;
 				}
 			}
@@ -195,9 +196,9 @@ export class ItemHandler {
 		const url: string = page.url();
 		try {
 			const albumUrl: string = await this.pageService.readTrackAlbum(page);
-			const album = await this.database.item.insert(albumUrl);
+			const { entity } = await this.database.item.insert(albumUrl);
 			if (!isNullOrUndefined(albumUrl)) {
-				const added = await this.database.item.insertTrackToAlbum(trackUrl, album);
+				const added = await this.database.item.insertTrackToAlbum(trackUrl, entity);
 
 				return { albumExtracted: true, albumRelationAlreadyExist: !added };
 			}

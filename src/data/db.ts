@@ -1,5 +1,5 @@
 import { DataSource } from 'typeorm';
-import { isNullOrUndefined, logMessage } from '../common/utils';
+import { isNullOrUndefined } from '../common/utils';
 import { AccountEntity } from './entities/account-entity';
 import { ItemEntity } from './entities/item-entity';
 import { ItemToAccountEntity } from './entities/item-to-account-entity';

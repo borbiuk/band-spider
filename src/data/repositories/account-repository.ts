@@ -1,5 +1,6 @@
 import { DataSource, IsNull, LessThan } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
+import { InsertResult } from '../../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 
@@ -29,7 +30,7 @@ export class AccountRepository {
 			.innerJoin('account.itemToAccount', 'itemToAccount')
 			.where(`itemToAccount.itemId IN (${itemIdsQuery})`)
 			.andWhere('account.id != :accountId', { accountId })
-			.andWhere({ lastProcessingDate: LessThan('2024-08-21') })
+			//.andWhere({ lastProcessingDate: LessThan('2024-08-21') })
 			.getMany();
 
 		return relatedAccounts;
@@ -39,24 +40,24 @@ export class AccountRepository {
 		return await this.dataSource.getRepository(AccountEntity).findOne({ where: { id: accountId } });
 	}
 
-	public async insert(accountUrl: string): Promise<AccountEntity> {
+	public async insert(accountUrl: string): Promise<InsertResult<AccountEntity>> {
 		const repository = this.dataSource.getRepository(AccountEntity);
 
 		let existingRecord: AccountEntity = await repository.findOne({ where: { url: accountUrl } });
-		if (existingRecord) {
-			return existingRecord;
+		if (!isNullOrUndefined(existingRecord)) {
+			return { entity: existingRecord, isInserted: false };
 		}
 
 		try {
 			const insertResult = await repository.insert({ url: accountUrl });
-			return insertResult.generatedMaps[0] as AccountEntity;
+			return { entity: insertResult.generatedMaps[0] as AccountEntity, isInserted: true };
 		} catch (error) {
 			existingRecord = await repository.findOne({ where: { url: accountUrl } });
 			if (!existingRecord) {
 				throw error;
 			}
 
-			return existingRecord;
+			return { entity: null, isInserted: false, };
 		}
 	};
 

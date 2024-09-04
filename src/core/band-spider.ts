@@ -69,6 +69,8 @@ export class BandSpider {
 					? await browser.newPage()
 					: pages[0];
 
+				await page.setCacheEnabled(false);
+
 				await page.setRequestInterception(true);
 				page.on('request', (request) => {
 					if (['font', 'image', 'stylesheet', 'media'].includes(request.resourceType())) {
@@ -153,13 +155,18 @@ export class BandSpider {
 				this.statistic.failed++;
 			}
 
-			if ((this.statistic.processed + this.statistic.failed) % 200 === 0) {
-				logger.info(
+			if ((this.statistic.processed + this.statistic.failed) % 50 === 0) {
+				logger.debug(
 					logMessage(
 						LogSource.Main,
 						`Processed: ${this.statistic.processed}; Failed: ${this.statistic.failed}; Speed: ${this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)}`
 					)
 				);
+
+				if (this.statistic.processed < this.statistic.failed) {
+					await page.browser().close();
+					throw 'No sense to process!';
+				}
 			}
 		}
 	}
@@ -210,7 +217,8 @@ export class BandSpider {
 			case UrlType.Account:
 				return fromFile
 					? this.readUrlsFromFile('accounts.txt')
-					: //(await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
+					: //([(await this.database.account.getById(1)).url])
+					//(await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
 					(await this.database.account.getNotProcessed()).map(({ url }) => url);
 			case UrlType.Item:
 				return fromFile
@@ -248,15 +256,19 @@ export class BandSpider {
 				headless: headless,
 				devtools: false,
 				args: [
-					'--no-sandbox',
-					'--disable-setuid-sandbox',
-					'--disable-dev-shm-usage',
 					'--disable-accelerated-2d-canvas',
+					'--disable-dev-shm-usage',
+					'--disable-gpu',
+					'--disable-setuid-sandbox',
+					'--disable-stack-profiler',
+					'--dns-server=1.1.1.1',
+					'--ignore-certificate-errors',
 					'--no-first-run',
+					'--no-sandbox',
 					'--no-zygote',
 					'--single-process',
-					'--disable-gpu',
-					'--ignore-certificate-errors',
+					'--performance',
+					'--disable-component-extensions-with-background-pages'
 				]
 			} as PuppeteerLaunchOptions);
 		}
