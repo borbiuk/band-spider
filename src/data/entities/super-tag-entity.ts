@@ -8,7 +8,7 @@ export class SuperTagEntity {
 	@PrimaryGeneratedColumn()
 	id: number;
 
-	@Column({ unique: true })
+	@Column({ unique: true, length: 64 })
 	name: string;
 
 

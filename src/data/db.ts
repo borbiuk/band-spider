@@ -16,7 +16,7 @@ import { TagRepository } from './repositories/tag-repository';
 const appDataSource: DataSource = new DataSource({
 	type: 'sqlite',
 	database: 'band_db.sqlite',
-	synchronize: false,
+	synchronize: true,
 	logging: false,
 	migrations: [],
 	entities: [

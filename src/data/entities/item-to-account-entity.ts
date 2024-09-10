@@ -1,4 +1,4 @@
-import { Entity, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
+import { Column, Entity, Index, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
 import { AccountEntity } from './account-entity';
 import { BaseEntity } from './base/enitity';
 import { ItemEntity } from './item-entity';
@@ -18,5 +18,10 @@ export class ItemToAccountEntity implements BaseEntity {
 
 	@ManyToOne(() => AccountEntity, (account) => account.itemToAccount)
 	account: AccountEntity;
+
+
+	@Index()
+	@Column({ type: 'boolean', default: false })
+	wishlist: boolean;
 
 }

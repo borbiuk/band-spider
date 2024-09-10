@@ -49,16 +49,19 @@ export const logAccountProcessed = (
 	pageIndex: number,
 	newItemsCount: number,
 	totalItemsCount: number,
+	newWishlistCount: number,
+	totalWishlistItemsCount: number,
 	newFollowersCount: number,
 	totalFollowersCount: number,
 	newFollowingCount: number,
 	totalFollowingCount: number
 ) => {
 	const itemsStat = itemColor(`${minus(newItemsCount).padStart(4)}/${minus(totalItemsCount).padEnd(4)}`);
+	const wishlistItemsStat = itemColor(`${minus(newWishlistCount).padStart(4)}/${minus(totalWishlistItemsCount).padEnd(4)}`);
 	const followersStat = followerColor(`${minus(newFollowersCount).padStart(4)}/${minus(totalFollowersCount).padEnd(4)}`);
 	const followingStat = followingColor(`${minus(newFollowingCount).padStart(4)}/${minus(totalFollowingCount).padEnd(4)}`);
 
-	const message = `[${String(pageIndex).padEnd(2)}] Account finished: ${itemsStat} ${followersStat} ${followingStat}`;
+	const message = `[${String(pageIndex).padEnd(2)}] Account finished: ${itemsStat} ${wishlistItemsStat} ${followersStat} ${followingStat}`;
 
 	logger.info(
 		logMessage(LogSource.Account, message, url)

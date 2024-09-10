@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { BaseEntity } from './base/enitity';
 import { FollowerEntity } from './follower-entity';
 import { ItemEntity } from './item-entity';
@@ -10,7 +10,7 @@ export class AccountEntity implements BaseEntity {
 	@PrimaryGeneratedColumn()
 	id: number;
 
-	@Column({ unique: true })
+	@Column({ unique: true, length: 512 })
 	url: string;
 
 	@Column({ type: 'date', nullable: true })

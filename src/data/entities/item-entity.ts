@@ -11,7 +11,7 @@ export class ItemEntity implements BaseEntity {
 	@PrimaryGeneratedColumn()
 	id: number;
 
-	@Column({ unique: true })
+	@Column({ unique: true, length: 512 })
 	url: string;
 
 	@Column({ type: 'date', nullable: true })

@@ -49,8 +49,19 @@ export class AccountHandler {
 			page,
 			id,
 			AccountTab.Collection,
-			40,
-			(accountId, entityId) => this.database.account.addItem(accountId, entityId)
+			20,
+			(accountId, entityId) => this.database.account.addItem(accountId, entityId, false)
+		);
+
+		const {
+			newCount: newWishlistItemsCount,
+			totalCount: totalWishlistItemsCount
+		} = await this.readAndSaveAccountData(
+			page,
+			id,
+			AccountTab.Wishlist,
+			20,
+			(accountId, entityId) => this.database.account.addItem(accountId, entityId, true)
 		);
 
 		const {
@@ -82,6 +93,7 @@ export class AccountHandler {
 			url,
 			pageIndex,
 			newItemsCount, totalItemsCount,
+			newWishlistItemsCount, totalWishlistItemsCount,
 			newFollowersCount, totalFollowersCount,
 			newFollowingCount, totalFollowingCount
 		);

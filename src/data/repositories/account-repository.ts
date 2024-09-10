@@ -63,7 +63,7 @@ export class AccountRepository {
 		}
 	};
 
-	public async addItem(accountId: number, itemId: number): Promise<boolean> {
+	public async addItem(accountId: number, itemId: number, wishlist: boolean = false): Promise<boolean> {
 		const repository = this.dataSource.getRepository(ItemToAccountEntity);
 
 		let existingRecord = await repository.findOne({
@@ -74,11 +74,15 @@ export class AccountRepository {
 		});
 
 		if (existingRecord) {
+			if (existingRecord.wishlist !== wishlist) {
+				existingRecord.wishlist = wishlist;
+				await repository.save(existingRecord);
+			}
 			return false;
 		}
 
 		try {
-			await repository.insert({ itemId, accountId });
+			await repository.insert({ itemId, accountId, wishlist });
 			return true;
 		} catch (error) {
 			existingRecord = await repository.findOne({
