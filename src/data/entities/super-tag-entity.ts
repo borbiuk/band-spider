@@ -11,6 +11,7 @@ export class SuperTagEntity {
 	@Column({ unique: true })
 	name: string;
 
+
 	@ManyToMany(() => TagEntity)
 	tags: TagEntity[];
 

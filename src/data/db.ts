@@ -1,6 +1,7 @@
 import { DataSource } from 'typeorm';
 import { isNullOrUndefined } from '../common/utils';
 import { AccountEntity } from './entities/account-entity';
+import { FollowerEntity } from './entities/follower-entity';
 import { ItemEntity } from './entities/item-entity';
 import { ItemToAccountEntity } from './entities/item-to-account-entity';
 import { ItemToTagEntity } from './entities/item-to-tag-entity';
@@ -15,16 +16,17 @@ import { TagRepository } from './repositories/tag-repository';
 const appDataSource: DataSource = new DataSource({
 	type: 'sqlite',
 	database: 'band_db.sqlite',
-	synchronize: false,
+	synchronize: true,
 	logging: false,
 	migrations: [],
 	entities: [
 		AccountEntity,
+		FollowerEntity,
 		ItemEntity,
-		TagEntity,
-		ItemToTagEntity,
 		ItemToAccountEntity,
+		ItemToTagEntity,
 		SuperTagEntity,
+		TagEntity,
 		TagToSuperTagEntity,
 	]
 });

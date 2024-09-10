@@ -1,4 +1,3 @@
-import * as fs from 'node:fs';
 import { Browser, HTTPResponse, Page, PuppeteerLaunchOptions } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
@@ -32,7 +31,6 @@ export class BandSpider {
 			concurrencyBrowsers,
 			headless,
 			type,
-			fromFile,
 			docker,
 		}: BandSpiderOptions
 	): Promise<void> {
@@ -48,7 +46,7 @@ export class BandSpider {
 		// init queue
 		logger.info('Queue init...');
 		const queue: ProcessingQueue = new ProcessingQueue(
-			await this.getInitialUrlsToProcess(type, fromFile),
+			await this.getInitialUrlsToProcess(type),
 			this.database
 		);
 		logger.info('Queue ready!');
@@ -58,6 +56,7 @@ export class BandSpider {
 			browsers.forEach(x => (x.close()));
 			logger.warn('Browsers closed');
 		});
+
 
 		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
@@ -69,36 +68,52 @@ export class BandSpider {
 					? await browser.newPage()
 					: pages[0];
 
-				await page.setCacheEnabled(false);
-
-				await page.setRequestInterception(true);
-				page.on('request', (request) => {
-					if (['font', 'image', 'stylesheet', 'media'].includes(request.resourceType())) {
-						request.abort();
-						return;
+				const cdpSession = await page.createCDPSession();
+				const clearPageCache = async (): Promise<void> => {
+					try {
+						await cdpSession.send('Network.clearBrowserCookies');
+						await cdpSession.send('Network.clearBrowserCache');
 					}
-
-					if (request.method() === 'POST') {
-						request.abort();
-						return;
+					catch (e) {
+						logger.error(
+							logMessage(LogSource.Browser, 'Clearing browser cache failed', e),
+						);
 					}
+				};
 
-					const url = request.url();
-					if (
-						url.includes('recaptcha')
-						|| url.includes('bcbits.com')
-						|| url.includes('gstatic.com')
-						|| url.includes('googletagmanager.com')
-						|| url.includes('google.com')
-						|| url.includes('bandcamp.com/api/currency_data')
-					) {
-						request.abort();
-						return;
-					}
+				if (headless) {
+					await page.setCacheEnabled(false);
 
-					request.continue();
-				});
-				page.on('response', (httpResponse: HTTPResponse) => {
+					await page.setRequestInterception(true);
+					page.on('request', (request) => {
+						if (['font', 'image', 'stylesheet', 'media'].includes(request.resourceType())) {
+							request.abort();
+							return;
+						}
+
+						if (request.method() === 'POST') {
+							request.abort();
+							return;
+						}
+
+						const url = request.url();
+						if (
+							url.includes('recaptcha')
+							|| url.includes('bcbits.com')
+							|| url.includes('gstatic.com')
+							|| url.includes('googletagmanager.com')
+							|| url.includes('google.com')
+							|| url.includes('bandcamp.com/api/currency_data')
+						) {
+							request.abort();
+							return;
+						}
+
+						request.continue();
+					});
+				}
+
+				page.on('response', async (httpResponse: HTTPResponse) => {
 					if (httpResponse.status() === 429) {
 						ProxyClient.initialize.changeIp();
 					}
@@ -108,7 +123,8 @@ export class BandSpider {
 					page,
 					queue,
 					type,
-					id
+					id,
+					clearPageCache
 				);
 			});
 		await Promise.all(promises)
@@ -119,6 +135,7 @@ export class BandSpider {
 		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
+		clearPageCache: () => Promise<void>
 	) {
 		while (true) {
 			// do not make a call if changing of IP is in progress
@@ -146,6 +163,7 @@ export class BandSpider {
 				event,
 				page,
 				id,
+				clearPageCache
 			);
 
 			// update statistic
@@ -159,7 +177,7 @@ export class BandSpider {
 				logger.debug(
 					logMessage(
 						LogSource.Main,
-						`Processed: ${this.statistic.processed}; Failed: ${this.statistic.failed}; Speed: ${this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)}`
+						`\tProcessed: ${this.statistic.processed}; Failed: ${this.statistic.failed}; Speed: ${(this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)}`
 					)
 				);
 
@@ -174,17 +192,18 @@ export class BandSpider {
 	private async processUrl(
 		event: QueueEvent,
 		page: Page,
-		pageIndex: number
+		pageIndex: number,
+		clearPageCache: () => Promise<void>
 	): Promise<boolean> {
 		try {
 			let processed = false;
 			if (event.type === UrlType.Account) {
 				await this.database.account.updateBusy(event.id, true);
-				processed = await this.accountHandler.processAccount(page, event, pageIndex);
+				processed = await this.accountHandler.processAccount(page, event, pageIndex, clearPageCache);
 				await this.database.account.updateBusy(event.id, false);
 			} else if (event.type === UrlType.Item) {
 				await this.database.item.updateBusy(event.id, true);
-				processed = await this.itemHandler.processItem(page, event, pageIndex);
+				processed = await this.itemHandler.processItem(page, event, pageIndex, clearPageCache);
 				await this.database.item.updateBusy(event.id, false);
 			}
 			return processed;
@@ -211,20 +230,15 @@ export class BandSpider {
 
 	private async getInitialUrlsToProcess(
 		type: UrlType,
-		fromFile: boolean,
 	): Promise<string[]> {
 		switch (type) {
 			case UrlType.Account:
-				return fromFile
-					? this.readUrlsFromFile('accounts.txt')
-					: //([(await this.database.account.getById(1)).url])
-					//(await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
-					(await this.database.account.getNotProcessed()).map(({ url }) => url);
+				return (await this.database.account.getNotProcessed()).map(({ url }) => url);
+				// return ([(await this.database.account.getById(1)).url])
+				// return (await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
 			case UrlType.Item:
-				return fromFile
-					? this.readUrlsFromFile('items.txt')
-					: //(await this.database.item.getUserItems(1)).map(({ url }) => url)
-					(await this.database.item.getNotProcessed()).map(({ url }) => url);
+				return (await this.database.item.getNotProcessed()).map(({ url }) => url);
+				// return (await this.database.item.getUserItems(1)).map(({ url }) => url)
 			default:
 				throw new Error('Scrapping Type is invalid!');
 		}
@@ -234,17 +248,11 @@ export class BandSpider {
 		queue: ProcessingQueue,
 		type: UrlType
 	): Promise<void> {
-		let urls: string[] = await this.getInitialUrlsToProcess(type, false);
+		let urls: string[] = await this.getInitialUrlsToProcess(type);
 		if (urls.length !== 0) {
 			await queue.enqueueButch(urls);
 		}
 	}
-
-	// Returns URLs from file
-	private readUrlsFromFile = (fileName: string): string[] => {
-		const fileContent: string = fs.readFileSync(fileName, 'utf8');
-		return fileContent.split('\n');
-	};
 
 	private async getBrowser(docker: boolean, headless: boolean): Promise<Browser> {
 		if (docker) {
@@ -257,18 +265,19 @@ export class BandSpider {
 				devtools: false,
 				args: [
 					'--disable-accelerated-2d-canvas',
+					'--disable-component-extensions-with-background-pages',
 					'--disable-dev-shm-usage',
 					'--disable-gpu',
 					'--disable-setuid-sandbox',
 					'--disable-stack-profiler',
 					'--dns-server=1.1.1.1',
 					'--ignore-certificate-errors',
+					'--incognito',
 					'--no-first-run',
 					'--no-sandbox',
 					'--no-zygote',
-					'--single-process',
 					'--performance',
-					'--disable-component-extensions-with-background-pages'
+					//'--single-process',
 				]
 			} as PuppeteerLaunchOptions);
 		}

@@ -1,6 +1,8 @@
+import pretty from 'pino-pretty';
+import fs from 'fs';
+import clc from 'cli-color';
+
 const pino = require('pino');
-const pretty = require('pino-pretty');
-const fs = require('fs');
 
 // Create a writable stream to a log file
 const fileStream = fs.createWriteStream('logfile.log', { flags: 'a' });
@@ -55,6 +57,14 @@ export const logger = {
 		}
 	},
 };
+
+export const accountColor = clc.xterm(215);
+export const followerColor = clc.xterm(190);
+export const followingColor = clc.xterm(230);
+export const itemColor = clc.xterm(156);
+export const albumColor = clc.xterm(229);
+export const tagColor = clc.xterm(151);
+export const dateColor = clc.xterm(153)
 
 export enum LogSource {
 	Main = '[🚨️ MAIN   ]',

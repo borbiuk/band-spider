@@ -1,5 +1,6 @@
 import { DataSource } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
+import { InsertResult } from '../../models/insert-result';
 import { ItemToTagEntity } from '../entities/item-to-tag-entity';
 import { TagEntity } from '../entities/tag-entity';
 
@@ -21,23 +22,29 @@ export class TagRepository {
 		});
 	}
 
-	public async insert(tag: string): Promise<TagEntity> {
+	public async insert(tag: string): Promise<InsertResult<TagEntity>> {
 		tag = tag.toLowerCase();
 
 		const repository = this.dataSource.getRepository(TagEntity);
 
 		let existingRecord: TagEntity = await repository.findOne({ where: { name: tag } });
 		if (existingRecord) {
-			return existingRecord;
+			return { entity: existingRecord, isInserted: false };
 		}
 
 		try {
 			const insertResult = await repository.insert({ name: tag });
-			return insertResult.generatedMaps[0] as TagEntity;
+			return {
+				entity: insertResult.generatedMaps[0] as TagEntity,
+				isInserted: true,
+			};
 		} catch (error) {
 			existingRecord = await repository.findOne({ where: { name: tag } });
 			if (existingRecord) {
-				return existingRecord;
+				return {
+					entity: existingRecord,
+					isInserted: false,
+				};
 			}
 
 			throw error;

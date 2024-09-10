@@ -17,25 +17,6 @@ export class ItemEntity implements BaseEntity {
 	@Column({ type: 'date', nullable: true })
 	releaseDate?: Date;
 
-	@Column({ nullable: true })
-	albumId?: number;
-
-	@ManyToOne(() => ItemEntity, (item) => item.albumId)
-	@JoinColumn()
-	album?: ItemEntity;
-
-	@ManyToMany(() => AccountEntity)
-	accounts: AccountEntity[];
-
-	@OneToMany(() => ItemToAccountEntity, (itemToAccount) => itemToAccount.item)
-	itemToAccount: ItemToAccountEntity[]
-
-	@ManyToMany(() => TagEntity)
-	tags: TagEntity[];
-
-	@OneToMany(() => ItemToTagEntity, (itemToTag) => itemToTag.item)
-	itemToTag: ItemToTagEntity[];
-
 	@Column({ type: 'date', nullable: true })
 	lastProcessingDate?: Date;
 
@@ -44,4 +25,27 @@ export class ItemEntity implements BaseEntity {
 
 	@Column({ type: 'integer', default: 0 })
 	failedCount: number;
+
+
+	@Column({ nullable: true })
+	albumId?: number;
+
+	@ManyToOne(() => ItemEntity, (item) => item.albumId)
+	@JoinColumn()
+	album?: ItemEntity;
+
+
+	@ManyToMany(() => AccountEntity)
+	accounts: AccountEntity[];
+
+	@OneToMany(() => ItemToAccountEntity, (itemToAccount) => itemToAccount.item)
+	itemToAccount: ItemToAccountEntity[]
+
+
+	@ManyToMany(() => TagEntity)
+	tags: TagEntity[];
+
+	@OneToMany(() => ItemToTagEntity, (itemToTag) => itemToTag.item)
+	itemToTag: ItemToTagEntity[];
+
 }

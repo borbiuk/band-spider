@@ -8,13 +8,12 @@ export interface BandSpiderOptions {
 	concurrencyBrowsers: number,
 	headless: boolean,
 	type: UrlType,
-	fromFile: boolean,
 	docker: boolean,
 	superTag: boolean,
 }
 
 // Count of parallel URL workers (Browsers).
-const PARALLEL_BROWSERS_COUNT: number = 12;
+const PARALLEL_BROWSERS_COUNT: number = 20;
 
 const main = async (): Promise<void> => {
 
@@ -24,7 +23,6 @@ const main = async (): Promise<void> => {
 		concurrencyBrowsers: PARALLEL_BROWSERS_COUNT,
 		headless: args.includes('--headless'),
 		type: args.includes('--account') ? UrlType.Account : UrlType.Item,
-		fromFile: args.includes('--file'),
 		docker: args.includes('--docker'),
 		superTag: args.includes('--superTag'),
 	};

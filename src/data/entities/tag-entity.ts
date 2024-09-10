@@ -14,11 +14,13 @@ export class TagEntity implements BaseEntity {
 	@Column({ unique: true })
 	name: string;
 
+
 	@ManyToMany(() => ItemEntity)
 	items: ItemEntity[];
 
 	@OneToMany(() => ItemToTagEntity, (itemToTag) => itemToTag.tag)
 	itemToTag: ItemToTagEntity[];
+
 
 	@ManyToMany(() => SuperTagEntity)
 	superTags: SuperTagEntity[];

@@ -61,7 +61,7 @@ export class ProxyClient {
 			? 0
 			: this.lastLocationIndex + 1;
 
-		const id = this.locations.reverse()[this.lastLocationIndex];
+		const id = this.locations[this.lastLocationIndex];
 		try {
 			// clear DNS cache on mac
 			// logger.warn(logMessage(LogSource.Proxy, 'DNC cache clearing...'));
@@ -74,7 +74,7 @@ export class ProxyClient {
 			// }
 			// logger.info(logMessage(LogSource.Proxy, 'DNC cache cleared!'));
 
-			logger.warn(logMessage(LogSource.Proxy, `IP Changing to ID ${id}`));
+			logger.warn(logMessage(LogSource.Proxy, `IP Changing to ID ${id} and index [${this.lastLocationIndex}/${this.locations.length}]`));
 			const commandOutput = execSync(`expresso connect --change ${id} --timeout ${this.timeout}`, { encoding: 'utf8' });
 			this.lastChangeTime = this.nowTime;
 

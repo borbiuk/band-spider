@@ -2,6 +2,7 @@ import { DataSource, IsNull, LessThan } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
+import { FollowerEntity } from '../entities/follower-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 
 export class AccountRepository {
@@ -12,7 +13,8 @@ export class AccountRepository {
 
 	public async getNotProcessed(): Promise<AccountEntity[]> {
 		return await this.dataSource.getRepository(AccountEntity).find({
-			where: { lastProcessingDate: IsNull(), isBusy: false },
+			// where: { lastProcessingDate: IsNull(), isBusy: false },
+			where: { lastProcessingDate: LessThan(new Date('2024-08-01')), isBusy: false },
 			take: 400
 		});
 	}
@@ -83,6 +85,38 @@ export class AccountRepository {
 				where: {
 					itemId: itemId,
 					accountId: accountId,
+				}
+			});
+			if (existingRecord) {
+				return true;
+			}
+
+			throw error;
+		}
+	};
+
+	public async addFollower(followedId: number, followerId: number): Promise<boolean> {
+		const repository = this.dataSource.getRepository(FollowerEntity);
+
+		let existingRecord = await repository.findOne({
+			where: {
+				followedId: followedId,
+				followerId: followerId,
+			}
+		});
+
+		if (existingRecord) {
+			return false;
+		}
+
+		try {
+			await repository.insert({ followedId, followerId });
+			return true;
+		} catch (error) {
+			existingRecord = await repository.findOne({
+				where: {
+					followedId: followedId,
+					followerId: followerId,
 				}
 			});
 			if (existingRecord) {

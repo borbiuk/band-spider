@@ -4,7 +4,6 @@ import { BaseEntity } from './base/enitity';
 import { ItemEntity } from './item-entity';
 
 @Entity('items-to-accounts')
-@Unique(['itemId', 'accountId'])
 export class ItemToAccountEntity implements BaseEntity {
 
 	@PrimaryColumn()
@@ -12,6 +11,7 @@ export class ItemToAccountEntity implements BaseEntity {
 
 	@ManyToOne(() => ItemEntity, (item) => item.itemToAccount)
 	item: ItemEntity;
+
 
 	@PrimaryColumn()
 	accountId: number;

@@ -1,7 +1,7 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
-import { logMessage } from '../../common/utils';
+import { logAccountProcessed, logMessage } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { AccountPageService } from '../page-services/account-page-service';
 import { ProxyClient } from '../proxy/proxy-client';
@@ -16,15 +16,17 @@ export class AccountHandler {
 	public async processAccount(
 		page: Page,
 		{ id, url }: QueueEvent,
-		pageIndex: number
+		pageIndex: number,
+		clearPageCache: () => Promise<void>
 	): Promise<boolean> {
 		this.database = await BandDatabase.initialize();
 
 		// open Account url
 		try {
-			await page.goto(url, { timeout: 3_000, waitUntil: 'domcontentloaded' });
-		}
-		catch (error){
+			await page.goto(url, { timeout: 2_500, waitUntil: 'domcontentloaded' });
+		} catch (error) {
+			await clearPageCache();
+
 			const proxyChanged = ProxyClient.initialize.changeIp();
 			if (proxyChanged) {
 				throw error;
@@ -34,14 +36,20 @@ export class AccountHandler {
 			return false;
 		}
 
-		// scrap and save Items
-		const { newCount, totalCount } = await this.readAndSaveAccountItems(page, id);
+		// scrap and save data
+		const { newItemsCount, totalItemsCount } = await this.readAndSaveAccountItems(page, id);
+		const { totalFollowersCount, newFollowersCount } = await this.readAndSaveAccountFollowers(page, id);
+		const { totalFollowingCount, newFollowingCount } = await this.readAndSaveAccountFollowing(page, id);
 
 		// save that account was processed now
 		await this.database.account.updateProcessingDate(id);
 
-		logger.info(
-			logMessage(LogSource.Account, `[${pageIndex}]\tAccount finished: [${newCount}/${totalCount}]\t`, url)
+		logAccountProcessed(
+			url,
+			pageIndex,
+			newItemsCount, totalItemsCount,
+			newFollowersCount, totalFollowersCount,
+			newFollowingCount, totalFollowingCount
 		);
 
 		return true;
@@ -50,12 +58,12 @@ export class AccountHandler {
 	private async readAndSaveAccountItems(
 		page: Page,
 		accountId: number
-	): Promise<{ totalCount: number, newCount: number }> {
+	): Promise<{ totalItemsCount: number, newItemsCount: number }> {
 		const { totalCount, itemsUrls } = await this.pageService.readAllAccountItems(page);
 		const itemsIds: number[] = [];
 
 		for (const itemUrl of itemsUrls) {
-			const { entity: {  id} } = await this.database.item.insert(itemUrl);
+			const { entity: { id } } = await this.database.item.insert(itemUrl);
 			itemsIds.push(id);
 		}
 
@@ -67,7 +75,48 @@ export class AccountHandler {
 			}
 		}
 
-		return { totalCount: totalCount, newCount };
+		return { totalItemsCount: totalCount, newItemsCount: newCount };
+	}
+
+	private async readAndSaveAccountFollowers(page: Page, accountId: number): Promise<{ totalFollowersCount: number, newFollowersCount: number }> {
+		const { totalCount, accountUrls } = await this.pageService.readAllFollowers(page);
+		const followersIds: number[] = [];
+
+		let newAccountsCount: number = 0;
+		for (const accountUrl of accountUrls) {
+			const { entity: { id }, isInserted } = await this.database.account.insert(accountUrl);
+			followersIds.push(id);
+
+			if (isInserted) {
+				newAccountsCount++;
+			}
+		}
+
+		for (const followerId of followersIds) {
+			await this.database.account.addFollower(accountId, followerId);
+		}
+
+		return { totalFollowersCount: totalCount, newFollowersCount: newAccountsCount };
+	}
+
+	private async readAndSaveAccountFollowing(page: Page, accountId: number): Promise<{ totalFollowingCount: number, newFollowingCount: number }> {
+		const { totalCount, accountUrls } = await this.pageService.readAllFollowing(page);
+		const followingsIds: number[] = [];
+
+		let newAccountsCount: number = 0;
+		for (const accountUrl of accountUrls) {
+			const { entity: { id }, isInserted } = await this.database.account.insert(accountUrl);
+			followingsIds.push(id);
+			if (isInserted) {
+				newAccountsCount++;
+			}
+		}
+
+		for (const followerId of followingsIds) {
+			await this.database.account.addFollower(followerId, accountId);
+		}
+
+		return { totalFollowingCount: totalCount, newFollowingCount: newAccountsCount };
 	}
 
 }

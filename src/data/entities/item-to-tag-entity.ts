@@ -4,7 +4,6 @@ import { ItemEntity } from './item-entity';
 import { TagEntity } from './tag-entity';
 
 @Entity('items-to-tags')
-@Unique(['itemId', 'tagId'])
 export class ItemToTagEntity implements BaseEntity {
 
 	@PrimaryColumn()
@@ -12,6 +11,7 @@ export class ItemToTagEntity implements BaseEntity {
 
 	@ManyToOne(() => ItemEntity, (item) => item.itemToTag)
 	item: ItemEntity;
+
 
 	@PrimaryColumn()
 	tagId: number;

@@ -137,7 +137,7 @@ export class ItemPageService {
 				await page.waitForSelector(
 					this.loadAllAccountsSelector,
 					{
-						timeout: 2_000
+						timeout: 1_500
 					});
 
 			await showMoreAccountsButton?.click();

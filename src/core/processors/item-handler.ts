@@ -1,7 +1,7 @@
 import { Page } from 'puppeteer';
 import { logger, LogSource } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
-import { isAlbumUrl, isNullOrUndefined, isTrackUrl, logMessage } from '../../common/utils';
+import { isAlbumUrl, isNullOrUndefined, isTrackUrl, logItemProcessed, logMessage } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { ItemPageService } from '../page-services/item-page-service';
 import { ProxyClient } from '../proxy/proxy-client';
@@ -10,22 +10,23 @@ export class ItemHandler {
 	private readonly pageService: ItemPageService = new ItemPageService();
 	private database: BandDatabase;
 
-	constructor(
-	) {
+	constructor() {
 	}
 
 	public async processItem(
 		page: Page,
 		{ id, url }: QueueEvent,
 		pageIndex: number,
+		clearPageCache: () => Promise<void>
 	): Promise<boolean> {
 		this.database = await BandDatabase.initialize();
 
 		// open Item url
 		try {
 			await page.goto(url, { timeout: 5_000, waitUntil: 'domcontentloaded' });
-		}
-		catch (error){
+		} catch (error) {
+			await clearPageCache();
+
 			const proxyChanged = ProxyClient.initialize.changeIp();
 			if (proxyChanged) {
 				throw error;
@@ -56,12 +57,16 @@ export class ItemHandler {
 		// save that item was processed now
 		await this.database.item.updateProcessingDate(id);
 
-		logger.info(
-			logMessage(
-				LogSource.Item,
-				`[${pageIndex}]\tItem finished: [${(isNullOrUndefined(albumInfo?.albumExtracted) ? null : albumInfo.albumExtracted ? 'y': 'n') ?? tracksInfo?.extractedTracksCount ?? 0}/${(albumInfo?.albumRelationAlreadyExist ?? tracksInfo?.albumRelationAlreadyExist) ? 'y' : 'n'}\t|${extracted ? 'y': 'n'}/${alreadySaved ? 'y': 'n'}\t|${newAccounts}/${totalAccounts}\t|${newTags}/${totalTags}\t]`,
-				url
-			)
+		logItemProcessed(
+			url,
+			pageIndex,
+			newAccounts,
+			totalAccounts,
+			albumInfo,
+			tracksInfo,
+			newTags,
+			totalTags,
+			extracted
 		);
 
 		// invalid handling of page
@@ -108,16 +113,17 @@ export class ItemHandler {
 			// save Tags
 			const tagsIds: number[] = [];
 			for (const tag of tags) {
-				const { id } = await this.database.tag.insert(tag);
+				const { entity: {id}, isInserted } = await this.database.tag.insert(tag);
 				tagsIds.push(id);
+
+				if (isInserted) {
+					newTagsCount++;
+				}
 			}
 
 			// save Tags relations
 			for (const tagId of tagsIds) {
-				const added = await this.database.tag.addItem(tagId, itemId);
-				if (added) {
-					newTagsCount++;
-				}
+				await this.database.tag.addItem(tagId, itemId);
 			}
 		} catch (error) {
 			logger.error(error, logMessage(LogSource.Tag, `Processing failed: ${error.message}`, url));
@@ -143,7 +149,7 @@ export class ItemHandler {
 			const accountsIds: number[] = [];
 
 			for (const accountUrl of accounts) {
-				const { entity: {id}, isInserted } = await this.database.account.insert(accountUrl);
+				const { entity: { id }, isInserted } = await this.database.account.insert(accountUrl);
 				accountsIds.push(id);
 				if (isInserted) {
 					newAccountCount++;
@@ -167,21 +173,23 @@ export class ItemHandler {
 	private async readAndSaveAlbumTracks(
 		page: Page,
 		albumUrl: string
-	): Promise<{ extractedTracksCount: number, albumRelationAlreadyExist: number }> {
+	): Promise<{ extractedTracksCount: number, newTracksCount: number }> {
 
 		const url: string = page.url();
 		try {
 			const tracksUrls: string[] = await this.pageService.readAllAlbumTracks(page);
 
-			let albumRelationAlreadyExist: number = 0;
-			const { entity } = await this.database.item.insert(albumUrl);
-			for (const trackUrl of tracksUrls) {
-				if (!await this.database.item.insertTrackToAlbum(trackUrl, entity)) {
-					albumRelationAlreadyExist++;
-				}
+			let newTracksCount: number = 0;
+			const { entity, isInserted } = await this.database.item.insert(albumUrl);
+			if (isInserted) {
+				newTracksCount++;
 			}
 
-			return { extractedTracksCount: tracksUrls.length, albumRelationAlreadyExist }
+			for (const trackUrl of tracksUrls) {
+				await this.database.item.insertTrackToAlbum(trackUrl, entity)
+			}
+
+			return { extractedTracksCount: tracksUrls.length, newTracksCount }
 		} catch (error) {
 			logger.error(error, logMessage(LogSource.Item, `Album Tracks processing failed: ${error.message}`, url));
 		}

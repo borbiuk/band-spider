@@ -6,12 +6,8 @@
 	"type": "commonjs",
 	"scripts": {
 		"build": "npx tsc",
-		"file:accounts": "npx ts-node ./src/index.ts --file --headless --account",
-		"file:items": "npx ts-node ./src/index.ts --file --headless",
 		"db:accounts": "npx ts-node ./src/index.ts --headless --account",
 		"db:items": "npx ts-node ./src/index.ts --headless",
-		"debug:file:accounts": "npx ts-node ./src/index.ts --file --account",
-		"debug:file:items": "npx ts-node ./src/index.ts --file",
 		"debug:db:accounts": "npx ts-node ./src/index.ts --account",
 		"debug:db:items": "npx ts-node ./src/index.ts",
 		"docker:db:accounts": "npx ts-node ./src/index.ts --headless --account --docker",
@@ -22,16 +18,20 @@
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
-		"fuse.js": "^7.0.0",
-		"pino": "9.3.2",
-		"puppeteer": "23.2.0",
+		"cli-color": "2.0.4",
+		"fuse.js": "7.0.0",
+		"pino": "9.4.0",
+		"puppeteer": "23.3.0",
 		"puppeteer-extra": "3.3.6",
 		"puppeteer-extra-plugin-stealth": "2.11.2",
 		"sqlite3": "5.1.7",
 		"typeorm": "0.3.20"
 	},
 	"devDependencies": {
-		"@types/node": "22.5.1",
+		"@types/cli-color": "2.0.6",
+		"@types/node": "22.5.4",
+		"@types/pino-pretty": "5.0.0",
+		"@types/puppeteer": "7.0.4",
 		"pino-pretty": "11.2.2",
 		"ts-node": "10.9.2",
 		"typescript": "5.5.4"
