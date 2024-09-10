@@ -23,7 +23,7 @@ export class ProxyClient {
 	private readonly timeout: number = 30_000;
 
 	private lastLocationIndex: number = null;
-	private lastChangeTime: number = this.nowTime;
+	private lastChangeTime: number = null;
 	private isProgress: boolean = false;
 
 	private constructor() {
@@ -50,9 +50,11 @@ export class ProxyClient {
 			return false;
 		}
 
-		const timeDiff = (this.nowTime - this.lastChangeTime) / 1000;
-		if (timeDiff < 15) {
-			return false;
+		if (!isNullOrUndefined(this.lastChangeTime)) {
+			const timeDiff = (this.nowTime - this.lastChangeTime) / 1000;
+			if (timeDiff < 15) {
+				return false;
+			}
 		}
 
 		this.isProgress = true;

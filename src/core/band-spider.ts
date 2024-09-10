@@ -51,12 +51,14 @@ export class BandSpider {
 		);
 		logger.info('Queue ready!');
 
+		// change IP
+		ProxyClient.initialize.changeIp();
+
 		const browsers: Browser[] = [];
 		process.on('SIGINT', () => {
 			browsers.forEach(x => (x.close()));
 			logger.warn('Browsers closed');
 		});
-
 
 		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
@@ -119,7 +121,7 @@ export class BandSpider {
 					}
 				});
 
-				return this.processPage(
+				return this.startPageProcessing(
 					page,
 					queue,
 					type,
@@ -130,7 +132,7 @@ export class BandSpider {
 		await Promise.all(promises)
 	}
 
-	private async processPage(
+	private async startPageProcessing(
 		page: Page,
 		queue: ProcessingQueue,
 		type: UrlType,
