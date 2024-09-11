@@ -1,4 +1,4 @@
-import { accountColor, albumColor, dateColor, followerColor, followingColor, itemColor, logger, LogSource, tagColor } from './logger';
+import { accountColor, albumColor, dateColor, followerColor, itemColor, logger, LogSource, tagColor } from './logger';
 
 export const delay = async (timeout: number = 300) => await new Promise(resolve => setTimeout(resolve, timeout));
 export const onlyUnique = <T>(value: T, index: number, array: T[]): boolean => array.indexOf(value) === index
@@ -59,7 +59,7 @@ export const logAccountProcessed = (
 	const itemsStat = itemColor(`${minus(newItemsCount).padStart(4)}/${minus(totalItemsCount).padEnd(4)}`);
 	const wishlistItemsStat = itemColor(`${minus(newWishlistCount).padStart(4)}/${minus(totalWishlistItemsCount).padEnd(4)}`);
 	const followersStat = followerColor(`${minus(newFollowersCount).padStart(4)}/${minus(totalFollowersCount).padEnd(4)}`);
-	const followingStat = followingColor(`${minus(newFollowingCount).padStart(4)}/${minus(totalFollowingCount).padEnd(4)}`);
+	const followingStat = followerColor(`${minus(newFollowingCount).padStart(4)}/${minus(totalFollowingCount).padEnd(4)}`);
 
 	const message = `[${String(pageIndex).padEnd(2)}] Account finished: ${itemsStat} ${wishlistItemsStat} ${followersStat} ${followingStat}`;
 

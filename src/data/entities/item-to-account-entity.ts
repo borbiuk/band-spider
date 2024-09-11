@@ -20,7 +20,6 @@ export class ItemToAccountEntity implements BaseEntity {
 	account: AccountEntity;
 
 
-	@Index()
 	@Column({ type: 'boolean', default: false })
 	wishlist: boolean;
 

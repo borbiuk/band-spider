@@ -14,7 +14,7 @@ export class AccountRepository {
 	public async getNotProcessed(): Promise<AccountEntity[]> {
 		return await this.dataSource.getRepository(AccountEntity).find({
 			// where: { lastProcessingDate: IsNull(), isBusy: false },
-			where: { lastProcessingDate: LessThan(new Date('2024-08-01')), isBusy: false },
+			where: { lastProcessingDate: LessThan(new Date('2024-09-10')), isBusy: false },
 			take: 400
 		});
 	}

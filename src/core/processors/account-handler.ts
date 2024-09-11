@@ -4,6 +4,7 @@ import { QueueEvent } from '../../common/processing-queue';
 import { logAccountProcessed, logMessage } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { AccountTab } from '../../models/account-tab';
+import { InsertResult } from '../../models/insert-result';
 import { AccountPageService } from '../page-services/account-page-service';
 import { ProxyClient } from '../proxy/proxy-client';
 
@@ -50,6 +51,7 @@ export class AccountHandler {
 			id,
 			AccountTab.Collection,
 			20,
+			(itemUrl: string) => this.database.item.insert(itemUrl),
 			(accountId, entityId) => this.database.account.addItem(accountId, entityId, false)
 		);
 
@@ -61,6 +63,7 @@ export class AccountHandler {
 			id,
 			AccountTab.Wishlist,
 			20,
+			(itemUrl: string) => this.database.item.insert(itemUrl),
 			(accountId, entityId) => this.database.account.addItem(accountId, entityId, true)
 		);
 
@@ -72,6 +75,7 @@ export class AccountHandler {
 			id,
 			AccountTab.Followers,
 			40,
+			(accountUrl: string) => this.database.account.insert(accountUrl),
 			(accountId, entityId) => this.database.account.addFollower(accountId, entityId)
 		);
 
@@ -83,7 +87,8 @@ export class AccountHandler {
 			id,
 			AccountTab.Following,
 			45,
-			(entityId, accountId) => this.database.account.addFollower(entityId, accountId)
+			(accountUrl: string) => this.database.account.insert(accountUrl),
+			(accountId, entityId) => this.database.account.addFollower(entityId, accountId)
 		);
 
 		// Save that account was processed now
@@ -108,7 +113,8 @@ export class AccountHandler {
 	 * @param accountId - Account ID.
 	 * @param tabType - Type of account tab (Collection, Followers, Following).
 	 * @param countOnPage - The number of items to read on the page.
-	 * @param saveMethod - The method to save data (either add item or add follower).
+	 * @param insert - The method to save new data (either add item or add account).
+	 * @param saveRelation - The method to save relation between entities (link item or follower to account).
 	 * @returns An object containing the total and new counts of items or followers.
 	 */
 	private async readAndSaveAccountData(
@@ -116,14 +122,15 @@ export class AccountHandler {
 		accountId: number,
 		tabType: AccountTab,
 		countOnPage: number,
-		saveMethod: (accountId: number, entityId: number) => Promise<boolean>
+		insert: (url: string) => Promise<InsertResult<{ id: number}>>,
+		saveRelation: (accountId: number, entityId: number) => Promise<boolean>
 	): Promise<{ totalCount: number, newCount: number }> {
 		const { total, data } = await this.pageService.read(page, tabType, countOnPage);
 		const entityIds: number[] = [];
 
 		let newCount: number = 0;
 		for (const entityUrl of data) {
-			const { entity: { id }, isInserted } = await this.database.account.insert(entityUrl);
+			const { entity: { id }, isInserted } = await insert(entityUrl);
 			entityIds.push(id);
 
 			if (isInserted) {
@@ -132,7 +139,7 @@ export class AccountHandler {
 		}
 
 		for (const entityId of entityIds) {
-			await saveMethod(accountId, entityId);
+			await saveRelation(accountId, entityId);
 		}
 
 		return { totalCount: total, newCount };

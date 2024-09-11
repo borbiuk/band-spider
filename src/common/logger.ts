@@ -60,7 +60,6 @@ export const logger = {
 
 export const accountColor = clc.xterm(215);
 export const followerColor = clc.xterm(190);
-export const followingColor = clc.xterm(230);
 export const itemColor = clc.xterm(156);
 export const albumColor = clc.xterm(229);
 export const tagColor = clc.xterm(151);
