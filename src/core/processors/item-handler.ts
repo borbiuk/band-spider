@@ -23,17 +23,17 @@ export class ItemHandler {
 
 		// open Item url
 		try {
-			await page.goto(url, { timeout: 5_000, waitUntil: 'domcontentloaded' });
+			await page.goto(url, { timeout: 3_500, waitUntil: 'domcontentloaded' });
 		} catch (error) {
-			await clearPageCache();
+			await this.database.item.updateFailed(id);
 
-			const proxyChanged = ProxyClient.initialize.changeIp();
-			if (proxyChanged) {
-				throw error;
+			if (error.message.includes('Navigation timeout')) {
+				// await clearPageCache();
+				// ProxyClient.initialize.changeIp();
+				return false;
 			}
 
-			logger.warn(logMessage(LogSource.Item, `[${pageIndex}]\tProcessing stopped`, url));
-			return false;
+			throw error;
 		}
 
 		// save Item release date
@@ -52,6 +52,10 @@ export class ItemHandler {
 			tracksInfo = await this.readAndSaveAlbumTracks(page, url);
 		} else if (isTrackUrl(url)) {
 			albumInfo = await this.readAndSaveTrackAlbum(page, url);
+		}
+		
+		if (!extracted && totalAccounts === 0 && totalAccounts === 0 && ((tracksInfo === null || tracksInfo.extractedTracksCount === 0) && (albumInfo === null || !albumInfo.albumExtracted))) {
+			throw new Error('Item did not scrapped!');
 		}
 
 		// save that item was processed now

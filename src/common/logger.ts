@@ -59,17 +59,22 @@ export const logger = {
 };
 
 export const accountColor = clc.xterm(215);
+export const albumColor = clc.xterm(229);
+export const dateColor = clc.xterm(153)
 export const followerColor = clc.xterm(190);
 export const itemColor = clc.xterm(156);
-export const albumColor = clc.xterm(229);
 export const tagColor = clc.xterm(151);
-export const dateColor = clc.xterm(153)
+export const urlColor = clc.xterm(75);
+
+export const errorColor = clc.xterm(203);
+export const speedColor = clc.xterm(226);
+export const successColor = clc.xterm(112);
 
 export enum LogSource {
 	Main = '[🚨️ MAIN   ]',
 	Browser = '[🖥 BROWSER]',
 	Page = '[📄 PAGE   ]',
-	Account = '[💁 ACCOUNT]',
+	Account = '[🧢 ACCOUNT]',
 	Item = '[📀 ITEM   ]',
 	Tag = '[🏷 TAG    ]',
 	Date = '[📅 DATE   ]',

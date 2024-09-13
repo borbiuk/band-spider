@@ -13,7 +13,11 @@ export class ItemRepository {
 
 	public async getNotProcessed(): Promise<ItemEntity[]> {
 		return await this.dataSource.getRepository(ItemEntity).find({
-			where: { lastProcessingDate: IsNull(), isBusy: false, failedCount: LessThan(1), url:ILike('%/album/%')// Or(ILike('%/album/%'), ILike('%/track/%'))
+			where: {
+				lastProcessingDate: IsNull(),
+				isBusy: false,
+				failedCount: LessThan(1),
+				url:ILike('%/album/%')// Or(ILike('%/album/%'), ILike('%/track/%'))
 			},
 			take: 400
 		});

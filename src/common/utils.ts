@@ -1,4 +1,4 @@
-import { accountColor, albumColor, dateColor, followerColor, itemColor, logger, LogSource, tagColor } from './logger';
+import { accountColor, albumColor, dateColor, followerColor, itemColor, logger, LogSource, tagColor, urlColor } from './logger';
 
 export const delay = async (timeout: number = 300) => await new Promise(resolve => setTimeout(resolve, timeout));
 export const onlyUnique = <T>(value: T, index: number, array: T[]): boolean => array.indexOf(value) === index
@@ -38,7 +38,7 @@ export const waitOn = async (condition: () => boolean, timeout: number): Promise
 export const logMessage = (source: LogSource, message: string, url?: string): string => {
 	return isEmptyString(url)
 		? `\t${source} ${message}`
-		: `\t${source} ${message}\t🔗 [${url}]`;
+		: `\t${source} ${message} 🔗 ${urlColor(url)}`;
 }
 
 const minus = (value: number):string => value === 0 ? '-' : String(value);

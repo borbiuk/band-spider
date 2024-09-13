@@ -28,17 +28,16 @@ export class AccountHandler {
 			// await page.goto(url, { timeout: 2_500, waitUntil: 'load' });
 			await page.goto(url);
 		} catch (error) {
-			if (error.message.includes('Navigation timeout')) {
-				await clearPageCache();
+			await this.database.account.updateFailed(id);
 
-				const proxyChanged = ProxyClient.initialize.changeIp();
-				if (proxyChanged) {
-					throw error;
-				}
+			if (error.message.includes('Navigation timeout')) {
+				// await clearPageCache();
+				logger.warn(logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Processing stopped`, url));
+				ProxyClient.initialize.changeIp();
+				return false;
 			}
 
-			logger.warn(logMessage(LogSource.Account, `[${pageIndex}]\tProcessing stopped`, url));
-			return false;
+			throw error;
 		}
 
 		// Scrape and save data

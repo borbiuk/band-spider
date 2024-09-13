@@ -35,13 +35,7 @@ log_time() {
 ###########
 echo "[PREPARE]"
 
-# Rebuild indexes of the database to decrease the size of backup
-log_time "$start_time" "Start indexes rebuilding..."
-if sqlite3 "$old_db_path" ".read $reindex_script_path"; then
-	log_time "$start_time" "Indexes rebuild completed"
-else
-	handle_error "Failed to rebuild indexes"
-fi
+
 
 ##############
 # GENERATING #
@@ -89,6 +83,14 @@ if mv "$new_db_path" "$old_db_path"; then
 	log_time "$start_time" "New DB renamed to replace old DB"
 else
 	handle_error "Failed to rename new DB to replace old DB"
+fi
+
+# Rebuild indexes of the database to decrease the size of backup
+log_time "$start_time" "Start indexes rebuilding..."
+if sqlite3 "$backup_file_path" ".read $reindex_script_path"; then
+	log_time "$start_time" "Indexes rebuild completed"
+else
+	handle_error "Failed to rebuild indexes"
 fi
 
 log_time "$start_time" "Finished!"

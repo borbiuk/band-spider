@@ -1,4 +1,4 @@
-import { DataSource, IsNull, LessThan } from 'typeorm';
+import { DataSource, IsNull, LessThan, Or } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
@@ -14,7 +14,7 @@ export class AccountRepository {
 	public async getNotProcessed(): Promise<AccountEntity[]> {
 		return await this.dataSource.getRepository(AccountEntity).find({
 			// where: { lastProcessingDate: IsNull(), isBusy: false },
-			where: { lastProcessingDate: LessThan(new Date('2024-09-10')), isBusy: false },
+			where: { lastProcessingDate: Or(LessThan(new Date('2024-09-10')), IsNull()), isBusy: false },
 			take: 400
 		});
 	}

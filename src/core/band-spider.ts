@@ -1,7 +1,7 @@
 import { Browser, HTTPResponse, Page, PuppeteerLaunchOptions } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { logger, LogSource } from '../common/logger';
+import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
 import { delay, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
@@ -9,6 +9,7 @@ import { BandSpiderOptions } from '../index';
 import { AccountHandler } from './processors/account-handler';
 import { ItemHandler } from './processors/item-handler';
 import { ProxyClient } from './proxy/proxy-client';
+import dns from 'dns/promises';
 
 export enum UrlType {
 	Account = 'account',
@@ -18,10 +19,11 @@ export enum UrlType {
 export class BandSpider {
 	private readonly accountHandler: AccountHandler = new AccountHandler();
 	private readonly itemHandler: ItemHandler = new ItemHandler();
+	private readonly usedIps: { [ip: string]: number } = {};
 	private readonly statistic = {
 		processed: 0,
 		failed: 0,
-		start: new Date().getTime()
+		start: null
 	};
 
 	private database: BandDatabase;
@@ -75,49 +77,61 @@ export class BandSpider {
 					try {
 						await cdpSession.send('Network.clearBrowserCookies');
 						await cdpSession.send('Network.clearBrowserCache');
-					}
-					catch (e) {
+					} catch (e) {
 						logger.error(
 							logMessage(LogSource.Browser, 'Clearing browser cache failed', e),
 						);
 					}
 				};
 
-				if (headless) {
-					await page.setCacheEnabled(false);
+				//if (headless) {
+				await page.setCacheEnabled(false);
 
-					await page.setRequestInterception(true);
-					page.on('request', (request) => {
-						if (['font', 'image', 'stylesheet', 'media'].includes(request.resourceType())) {
-							request.abort();
-							return;
-						}
+				await page.setRequestInterception(true);
+				page.on('request', (request) => {
+					if (['font', 'image', 'stylesheet', 'media'].includes(request.resourceType())) {
+						request.abort();
+						return;
+					}
 
-						if (request.method() === 'POST') {
-							request.abort();
-							return;
-						}
+					if (request.method() === 'POST') {
+						request.abort();
+						return;
+					}
 
-						const url = request.url();
-						if (
-							url.includes('recaptcha')
-							|| url.includes('bcbits.com')
-							|| url.includes('gstatic.com')
-							|| url.includes('googletagmanager.com')
-							|| url.includes('google.com')
-							|| url.includes('bandcamp.com/api/currency_data')
-						) {
-							request.abort();
-							return;
-						}
+					const url = request.url();
+					if (
+						url.includes('recaptcha')
+						|| url.includes('bcbits.com')
+						|| url.includes('gstatic.com')
+						|| url.includes('googletagmanager.com')
+						|| url.includes('google.com')
+						|| url.includes('bandcamp.com/api/currency_data')
+					) {
+						request.abort();
+						return;
+					}
 
-						request.continue();
-					});
-				}
+					request.continue();
+				});
+				//}
 
 				page.on('response', async (httpResponse: HTTPResponse) => {
-					if (httpResponse.status() === 429) {
+					if (httpResponse.status() !== 429) {
+						return;
+					}
+
+					try {
+						const url = new URL(httpResponse.url());
+						const domain = url.hostname;
+						const { address, family } = await dns.lookup(domain);
+						console.log(address);
+						console.log(family);
+						
 						ProxyClient.initialize.changeIp();
+					}
+					catch (e) {
+						logger.error(e, logMessage(LogSource.Browser, '', httpResponse.url()))
 					}
 				});
 
@@ -139,6 +153,9 @@ export class BandSpider {
 		id: number,
 		clearPageCache: () => Promise<void>
 	) {
+		if (isNullOrUndefined(this.statistic.start)) {
+			this.statistic.start = new Date().getTime()
+		}
 		while (true) {
 			// do not make a call if changing of IP is in progress
 			if (ProxyClient.initialize.isProcessing) {
@@ -179,16 +196,22 @@ export class BandSpider {
 				logger.debug(
 					logMessage(
 						LogSource.Main,
-						`\tProcessed: ${this.statistic.processed}; Failed: ${this.statistic.failed}; Speed: ${(this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)}`
+						`Processed: ${successColor(this.statistic.processed).padEnd(4)}; Failed: ${errorColor(this.statistic.failed).padEnd(4)}; Speed: ${speedColor((this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)).padEnd(4)}`
+							.padStart(240)
 					)
 				);
 
-				if (this.statistic.processed < this.statistic.failed) {
+				if (this.statistic.processed * 1.5 < this.statistic.failed) {
 					await page.browser().close();
 					throw 'No sense to process!';
 				}
 			}
 		}
+
+		await page.close();
+		logger.info(
+			logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] Completed!`)
+		);
 	}
 
 	private async processUrl(
@@ -236,11 +259,11 @@ export class BandSpider {
 		switch (type) {
 			case UrlType.Account:
 				return (await this.database.account.getNotProcessed()).map(({ url }) => url);
-				// return ([(await this.database.account.getById(1)).url])
-				// return (await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
+			// return ([(await this.database.account.getById(1)).url])
+			// return (await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
 			case UrlType.Item:
 				return (await this.database.item.getNotProcessed()).map(({ url }) => url);
-				// return (await this.database.item.getUserItems(1)).map(({ url }) => url)
+			// return (await this.database.item.getUserItems(1)).map(({ url }) => url)
 			default:
 				throw new Error('Scrapping Type is invalid!');
 		}
@@ -265,8 +288,12 @@ export class BandSpider {
 			return await puppeteer.launch({
 				headless: headless,
 				devtools: false,
+				ignoreDefaultArgs: [
+					'--enable-automation'
+				],
 				args: [
 					'--disable-accelerated-2d-canvas',
+					'--no-zygote',
 					'--disable-component-extensions-with-background-pages',
 					'--disable-dev-shm-usage',
 					'--disable-gpu',
@@ -279,6 +306,7 @@ export class BandSpider {
 					'--no-sandbox',
 					'--no-zygote',
 					'--performance',
+					'--disable-infobars',
 					//'--single-process',
 				]
 			} as PuppeteerLaunchOptions);

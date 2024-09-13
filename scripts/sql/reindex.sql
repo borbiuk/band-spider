@@ -1,3 +1,4 @@
+VACUUM;
 REINDEX accounts;
 REINDEX followers;
 REINDEX items;
