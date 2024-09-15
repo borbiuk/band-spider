@@ -107,7 +107,7 @@ export class AccountRepository {
 			}
 		});
 
-		if (existingRecord) {
+		if (!isNullOrUndefined(existingRecord)) {
 			return false;
 		}
 

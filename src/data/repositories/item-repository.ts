@@ -64,7 +64,11 @@ export class ItemRepository {
 
 		try {
 			const insertResult = await repository.insert({ url: itemUrl });
-			return { entity: insertResult.generatedMaps[0] as ItemEntity, isInserted: true };
+			const insertedEntity: ItemEntity = {
+				...(insertResult.generatedMaps[0] as ItemEntity),
+				url: itemUrl,
+			};
+			return { entity: insertedEntity, isInserted: true };
 		} catch (error) {
 			existingRecord = await repository.findOne({ where: { url: itemUrl } });
 			if (!isNullOrUndefined(existingRecord)) {

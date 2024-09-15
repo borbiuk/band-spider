@@ -6,7 +6,7 @@ import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
 import { delay, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { BandSpiderOptions } from '../index';
-import { AccountHandler } from './processors/account-handler';
+import { processAccount } from './account/account-handler';
 import { ItemHandler } from './processors/item-handler';
 import { ProxyClient } from './proxy/proxy-client';
 import dns from 'dns/promises';
@@ -17,7 +17,6 @@ export enum UrlType {
 }
 
 export class BandSpider {
-	private readonly accountHandler: AccountHandler = new AccountHandler();
 	private readonly itemHandler: ItemHandler = new ItemHandler();
 	private readonly statistic = {
 		processed: 0,
@@ -66,6 +65,7 @@ export class BandSpider {
 		});
 
 		// create jobs
+		logger.debug(`${concurrencyBrowsers} Jobs (Browsers) init starting...`);
 		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
 				const browser = await this.getBrowser(docker, headless);
@@ -80,6 +80,7 @@ export class BandSpider {
 					id,
 				);
 			});
+		logger.debug('Jobs started!');
 
 		// run jobs
 		await Promise.all(promises)
@@ -160,7 +161,7 @@ export class BandSpider {
 			let processed = false;
 			if (event.type === UrlType.Account) {
 				await this.database.account.updateBusy(event.id, true);
-				processed = await this.accountHandler.processAccount(page, event, pageIndex);
+				processed = await processAccount(event, this.database, page, pageIndex);
 				await this.database.account.updateBusy(event.id, false);
 			} else if (event.type === UrlType.Item) {
 				await this.database.item.updateBusy(event.id, true);
@@ -298,15 +299,19 @@ export class BandSpider {
 					return;
 				}
 
-				if (request.method() === 'POST') {
+				const url = request.url();
+				if (request.method() === 'POST' && url !== 'https://bandcamp.com/api/fancollection/1/collection_items') {
 					request.abort();
 					return;
 				}
 
-				const url = request.url();
+				if (url === 'https://bandcamp.com/api/fancollection/1/collection_items') {
+					console.log(1);
+				}
+
 				if (
-					url.includes('recaptcha')
-					|| url.includes('bcbits.com')
+					//url.includes('recaptcha') ||
+					url.includes('bcbits.com')
 					|| url.includes('gstatic.com')
 					|| url.includes('googletagmanager.com')
 					|| url.includes('google.com')

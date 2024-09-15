@@ -34,7 +34,11 @@ export class TagRepository {
 
 		try {
 			const insertResult = await repository.insert({ name: tag });
-			return { entity: insertResult.generatedMaps[0] as TagEntity, isInserted: true, };
+			const insertedEntity: TagEntity = {
+				...(insertResult.generatedMaps[0] as TagEntity),
+				name: tag,
+			};
+			return { entity: insertedEntity, isInserted: true, };
 		} catch (error) {
 			existingRecord = await repository.findOne({ where: { name: tag } });
 			if (!isNullOrUndefined(existingRecord)) {

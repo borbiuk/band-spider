@@ -41,36 +41,8 @@ export const logMessage = (source: LogSource, message: string, url?: string): st
 		: `\t${source} ${message} 🔗 ${urlColor(url)}`;
 }
 
-const minus = (value: number): string => value === 0 ? '•' : String(value);
-const yesNo = (value: boolean): string => value ? '+' : '•';
-
-export const logAccountProcessed = (
-	url: string,
-	pageIndex: number,
-	newItems: number,
-	totalItems: number,
-	allItemsRead: boolean,
-	newWishlist: number,
-	totalWishlist: number,
-	allWishlistRead: boolean,
-	newFollowers: number,
-	totalFollowers: number,
-	allFollowersRead: boolean,
-	newFollowing: number,
-	totalFollowing: number,
-	allFollowingRead: boolean
-) => {
-	const itemsStat = itemColor(`${minus(newItems).padStart(4)}/${minus(totalItems).padEnd(4)}[${yesNo(allItemsRead)}]`);
-	const wishlistItemsStat = itemColor(`${minus(newWishlist).padStart(4)}/${minus(totalWishlist).padEnd(4)}[${yesNo(allWishlistRead)}]`);
-	const followersStat = followerColor(`${minus(newFollowers).padStart(4)}/${minus(totalFollowers).padEnd(4)}[${yesNo(allFollowersRead)}]`);
-	const followingStat = followerColor(`${minus(newFollowing).padStart(4)}/${minus(totalFollowing).padEnd(4)}[${yesNo(allFollowingRead)}]`);
-
-	const message = `[${String(pageIndex).padEnd(2)}] Account finished: ${itemsStat} ${wishlistItemsStat} ${followersStat} ${followingStat}`;
-
-	logger.info(
-		logMessage(LogSource.Account, message, url)
-	);
-}
+export const minus = (value: number): string => value === 0 ? '•' : String(value);
+export const yesNo = (value: boolean): string => value ? '+' : '•';
 
 export const logItemProcessed = (
 	url: string,
