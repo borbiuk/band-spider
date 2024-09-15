@@ -75,11 +75,10 @@ export class ProxyClient {
 			// }
 			// logger.info(logMessage(LogSource.Proxy, 'DNC cache cleared!'));
 
-			logger.warn(logMessage(LogSource.Proxy, `IP Changing to ID ${id} [${index + 1}/${this.locations.length}]`));
+			logger.debug(logMessage(LogSource.Proxy, `IP Changing to ID ${id} [${index + 1}/${this.locations.length}]`));
 			const commandOutput = execSync(`expresso connect --change ${id} --timeout ${this.timeout}`, { encoding: 'utf8' });
 			this.lastChangeTime = this.nowTime;
-
-			logger.info(logMessage(LogSource.Proxy, `IP Changed for ID ${id}: ${commandOutput}`));
+			logger.debug(logMessage(LogSource.Proxy, `IP Changed for ID ${id}: ${commandOutput}`));
 		} catch (error) {
 			logger.error(error, logMessage(LogSource.Proxy, `IP Changing failed for ID ${id}: ${error.stdout}`));
 		} finally {

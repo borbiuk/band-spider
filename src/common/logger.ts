@@ -76,7 +76,7 @@ export enum LogSource {
 	Page = '[📄 PAGE   ]',
 	Account = '[🧢 ACCOUNT]',
 	Item = '[📀 ITEM   ]',
-	Tag = '[🏷 TAG    ]',
+	Tag = '[🏷  TAG   ]',
 	Date = '[📅 DATE   ]',
 	Proxy = '[📡 PROXY  ]',
 	Data = '[🗄 DATA   ]',

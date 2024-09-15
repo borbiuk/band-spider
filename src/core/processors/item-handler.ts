@@ -17,7 +17,6 @@ export class ItemHandler {
 		page: Page,
 		{ id, url }: QueueEvent,
 		pageIndex: number,
-		clearPageCache: () => Promise<void>
 	): Promise<boolean> {
 		this.database = await BandDatabase.initialize();
 
@@ -28,8 +27,7 @@ export class ItemHandler {
 			await this.database.item.updateFailed(id);
 
 			if (error.message.includes('Navigation timeout')) {
-				// await clearPageCache();
-				// ProxyClient.initialize.changeIp();
+				ProxyClient.initialize.changeIp();
 				return false;
 			}
 
@@ -53,7 +51,7 @@ export class ItemHandler {
 		} else if (isTrackUrl(url)) {
 			albumInfo = await this.readAndSaveTrackAlbum(page, url);
 		}
-		
+
 		if (!extracted && totalAccounts === 0 && totalAccounts === 0 && ((tracksInfo === null || tracksInfo.extractedTracksCount === 0) && (albumInfo === null || !albumInfo.albumExtracted))) {
 			throw new Error('Item did not scrapped!');
 		}
@@ -117,7 +115,7 @@ export class ItemHandler {
 			// save Tags
 			const tagsIds: number[] = [];
 			for (const tag of tags) {
-				const { entity: {id}, isInserted } = await this.database.tag.insert(tag);
+				const { entity: { id }, isInserted } = await this.database.tag.insert(tag);
 				tagsIds.push(id);
 
 				if (isInserted) {

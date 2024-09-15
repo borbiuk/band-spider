@@ -55,11 +55,10 @@ export class AccountRepository {
 			return { entity: insertResult.generatedMaps[0] as AccountEntity, isInserted: true };
 		} catch (error) {
 			existingRecord = await repository.findOne({ where: { url: accountUrl } });
-			if (!existingRecord) {
-				throw error;
+			if (!isNullOrUndefined(existingRecord)) {
+				return { entity: existingRecord, isInserted: false, };
 			}
-
-			return { entity: null, isInserted: false, };
+			throw error;
 		}
 	};
 
@@ -73,7 +72,7 @@ export class AccountRepository {
 			}
 		});
 
-		if (existingRecord) {
+		if (!isNullOrUndefined(existingRecord)) {
 			if (existingRecord.wishlist !== wishlist) {
 				existingRecord.wishlist = wishlist;
 				await repository.save(existingRecord);
@@ -91,10 +90,9 @@ export class AccountRepository {
 					accountId: accountId,
 				}
 			});
-			if (existingRecord) {
+			if (!isNullOrUndefined(existingRecord)) {
 				return true;
 			}
-
 			throw error;
 		}
 	};
@@ -123,10 +121,9 @@ export class AccountRepository {
 					followerId: followerId,
 				}
 			});
-			if (existingRecord) {
+			if (!isNullOrUndefined(existingRecord)) {
 				return true;
 			}
-
 			throw error;
 		}
 	};

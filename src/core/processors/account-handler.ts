@@ -19,7 +19,6 @@ export class AccountHandler {
 		page: Page,
 		{ id, url }: QueueEvent,
 		pageIndex: number,
-		clearPageCache: () => Promise<void>
 	): Promise<boolean> {
 		this.database = await BandDatabase.initialize();
 
@@ -31,7 +30,6 @@ export class AccountHandler {
 			await this.database.account.updateFailed(id);
 
 			if (error.message.includes('Navigation timeout')) {
-				// await clearPageCache();
 				logger.warn(logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Processing stopped`, url));
 				ProxyClient.initialize.changeIp();
 				return false;
@@ -44,7 +42,8 @@ export class AccountHandler {
 
 		const {
 			newCount: newItemsCount,
-			totalCount: totalItemsCount
+			totalCount: totalItemsCount,
+			allRead: allItemsRead,
 		} = await this.readAndSaveAccountData(
 			page,
 			id,
@@ -56,7 +55,9 @@ export class AccountHandler {
 
 		const {
 			newCount: newWishlistItemsCount,
-			totalCount: totalWishlistItemsCount
+			totalCount: totalWishlistItemsCount,
+			allRead: allWishlistRead,
+
 		} = await this.readAndSaveAccountData(
 			page,
 			id,
@@ -68,7 +69,8 @@ export class AccountHandler {
 
 		const {
 			newCount: newFollowersCount,
-			totalCount: totalFollowersCount
+			totalCount: totalFollowersCount,
+			allRead: allFollowersRead,
 		} = await this.readAndSaveAccountData(
 			page,
 			id,
@@ -80,7 +82,8 @@ export class AccountHandler {
 
 		const {
 			newCount: newFollowingCount,
-			totalCount: totalFollowingCount
+			totalCount: totalFollowingCount,
+			allRead: allFollowedRead,
 		} = await this.readAndSaveAccountData(
 			page,
 			id,
@@ -96,10 +99,10 @@ export class AccountHandler {
 		logAccountProcessed(
 			url,
 			pageIndex,
-			newItemsCount, totalItemsCount,
-			newWishlistItemsCount, totalWishlistItemsCount,
-			newFollowersCount, totalFollowersCount,
-			newFollowingCount, totalFollowingCount
+			newItemsCount, totalItemsCount, allItemsRead,
+			newWishlistItemsCount, totalWishlistItemsCount, allWishlistRead,
+			newFollowersCount, totalFollowersCount, allFollowersRead,
+			newFollowingCount, totalFollowingCount, allFollowedRead
 		);
 
 		return true;
@@ -121,9 +124,9 @@ export class AccountHandler {
 		accountId: number,
 		tabType: AccountTab,
 		countOnPage: number,
-		insert: (url: string) => Promise<InsertResult<{ id: number}>>,
+		insert: (url: string) => Promise<InsertResult<{ id: number }>>,
 		saveRelation: (accountId: number, entityId: number) => Promise<boolean>
-	): Promise<{ totalCount: number, newCount: number }> {
+	): Promise<{ totalCount: number, newCount: number, allRead: boolean }> {
 		const { total, data } = await this.pageService.read(page, tabType, countOnPage);
 		const entityIds: number[] = [];
 
@@ -141,6 +144,6 @@ export class AccountHandler {
 			await saveRelation(accountId, entityId);
 		}
 
-		return { totalCount: total, newCount };
+		return { totalCount: total, newCount, allRead: total === data.length };
 	}
 }

@@ -13,7 +13,7 @@ export interface BandSpiderOptions {
 }
 
 // Count of parallel URL workers (Browsers).
-const PARALLEL_BROWSERS_COUNT: number = 14;
+const PARALLEL_BROWSERS_COUNT: number = 4;
 
 const main = async (): Promise<void> => {
 
@@ -30,8 +30,7 @@ const main = async (): Promise<void> => {
 	// Run
 	if (options.superTag) {
 		return await new SuperTagUpdate().run(options);
-	}
-	else {
+	} else {
 		return await new BandSpider().run(options);
 	}
 };

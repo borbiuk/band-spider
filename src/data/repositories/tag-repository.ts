@@ -28,25 +28,18 @@ export class TagRepository {
 		const repository = this.dataSource.getRepository(TagEntity);
 
 		let existingRecord: TagEntity = await repository.findOne({ where: { name: tag } });
-		if (existingRecord) {
+		if (!isNullOrUndefined(existingRecord)) {
 			return { entity: existingRecord, isInserted: false };
 		}
 
 		try {
 			const insertResult = await repository.insert({ name: tag });
-			return {
-				entity: insertResult.generatedMaps[0] as TagEntity,
-				isInserted: true,
-			};
+			return { entity: insertResult.generatedMaps[0] as TagEntity, isInserted: true, };
 		} catch (error) {
 			existingRecord = await repository.findOne({ where: { name: tag } });
-			if (existingRecord) {
-				return {
-					entity: existingRecord,
-					isInserted: false,
-				};
+			if (!isNullOrUndefined(existingRecord)) {
+				return { entity: existingRecord, isInserted: false, };
 			}
-
 			throw error;
 		}
 	};
@@ -76,7 +69,7 @@ export class TagRepository {
 				}
 			});
 
-			if (existingRecord) {
+			if (!isNullOrUndefined(existingRecord)) {
 				return false;
 			}
 

@@ -17,14 +17,14 @@ export class ItemRepository {
 				lastProcessingDate: IsNull(),
 				isBusy: false,
 				failedCount: LessThan(1),
-				url:ILike('%/album/%')// Or(ILike('%/album/%'), ILike('%/track/%'))
+				url: ILike('%/album/%')// Or(ILike('%/album/%'), ILike('%/track/%'))
 			},
 			take: 400
 		});
 	};
 
 	public async getUserItems(accountId: number): Promise<ItemEntity[]> {
-		return  await this.dataSource.getRepository(ItemEntity).createQueryBuilder('item')
+		return await this.dataSource.getRepository(ItemEntity).createQueryBuilder('item')
 			.innerJoin('item.itemToAccount', 'itemToAccount')
 			.where('itemToAccount.accountId = :accountId', { accountId: accountId })
 			//.where({ failedCount: MoreThan(0) })
@@ -58,20 +58,19 @@ export class ItemRepository {
 		const repository = this.dataSource.getRepository(ItemEntity);
 
 		let existingRecord = await repository.findOne({ where: { url: itemUrl } });
-		if (existingRecord) {
+		if (!isNullOrUndefined(existingRecord)) {
 			return { entity: existingRecord, isInserted: false };
 		}
 
 		try {
 			const insertResult = await repository.insert({ url: itemUrl });
-			return {entity: insertResult.generatedMaps[0] as ItemEntity, isInserted: true };
+			return { entity: insertResult.generatedMaps[0] as ItemEntity, isInserted: true };
 		} catch (error) {
 			existingRecord = await repository.findOne({ where: { url: itemUrl } });
-			if (isNullOrUndefined(existingRecord)) {
-				throw error;
+			if (!isNullOrUndefined(existingRecord)) {
+				return { entity: existingRecord, isInserted: false };
 			}
-
-			return {entity: null, isInserted: false };
+			throw error;
 		}
 	};
 

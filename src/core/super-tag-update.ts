@@ -31,7 +31,7 @@ export class SuperTagUpdate {
 			// Find the best matching super tag
 			const result = fuse.search(normalizedTagName, { limit: 3 });
 			if (result.length > 0) {
-				for( let i = 0; i < result.length; i++) {
+				for (let i = 0; i < result.length; i++) {
 					const bestMatchSuperTag = result[i].item;
 
 					if (await this.database.superTag.addTag(bestMatchSuperTag.id, tag.id)) {

@@ -27,8 +27,7 @@ export class SuperTagRepository {
 		try {
 			await repository.insert({ superTagId: superTagId, tagId: tagId });
 			return true;
-		}
-		catch (e) {
+		} catch (e) {
 			let existedRecord = repository.findOne({ where: { superTagId: superTagId, tagId: tagId } });
 
 			if (!isNullOrUndefined(existedRecord)) {

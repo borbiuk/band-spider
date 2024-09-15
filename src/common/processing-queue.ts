@@ -94,5 +94,5 @@ export class ProcessingQueue {
 		const randomIndex = Math.floor(Math.random() * array.length);
 		const [removedElement] = array.splice(randomIndex, 1);
 		return removedElement;
-	} 
+	}
 }

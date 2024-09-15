@@ -1,4 +1,4 @@
-import { Column, Entity, JoinColumn, ManyToMany, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, Index, JoinColumn, ManyToMany, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { AccountEntity } from './account-entity';
 import { BaseEntity } from './base/enitity';
 import { ItemToAccountEntity } from './item-to-account-entity';
@@ -28,6 +28,7 @@ export class ItemEntity implements BaseEntity {
 
 
 	@Column({ nullable: true })
+	@Index()
 	albumId?: number;
 
 	@ManyToOne(() => ItemEntity, (item) => item.albumId)

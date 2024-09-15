@@ -19,7 +19,6 @@ export enum UrlType {
 export class BandSpider {
 	private readonly accountHandler: AccountHandler = new AccountHandler();
 	private readonly itemHandler: ItemHandler = new ItemHandler();
-	private readonly usedIps: { [ip: string]: number } = {};
 	private readonly statistic = {
 		processed: 0,
 		failed: 0,
@@ -39,110 +38,50 @@ export class BandSpider {
 		puppeteer.use(StealthPlugin());
 
 		// init database
-		logger.info('DB creating...')
+		logger.debug('DB synchronizing...')
 		this.database = await BandDatabase.initialize();
+		logger.debug('DB synchronized!');
+
+		logger.debug('DB preparing ...');
 		await this.database.account.resetAllBusy();
 		await this.database.item.resetAllBusy();
-		logger.info('DB created');
+		logger.debug('DB ready!');
 
 		// init queue
-		logger.info('Queue init...');
+		logger.debug('Queue init...');
 		const queue: ProcessingQueue = new ProcessingQueue(
 			await this.getInitialUrlsToProcess(type),
 			this.database
 		);
-		logger.info('Queue ready!');
+		logger.debug('Queue ready!');
 
 		// change IP
 		ProxyClient.initialize.changeIp();
 
+		// configure browsers closing on exit
 		const browsers: Browser[] = [];
 		process.on('SIGINT', () => {
 			browsers.forEach(x => (x.close()));
 			logger.warn('Browsers closed');
 		});
 
+		// create jobs
 		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
 				const browser = await this.getBrowser(docker, headless);
 				browsers.push(browser);
 
-				const pages = await browser.pages();
-				const page = isNullOrUndefined(pages) || pages.length === 0
-					? await browser.newPage()
-					: pages[0];
-
-				const cdpSession = await page.createCDPSession();
-				const clearPageCache = async (): Promise<void> => {
-					try {
-						await cdpSession.send('Network.clearBrowserCookies');
-						await cdpSession.send('Network.clearBrowserCache');
-					} catch (e) {
-						logger.error(
-							logMessage(LogSource.Browser, 'Clearing browser cache failed', e),
-						);
-					}
-				};
-
-				//if (headless) {
-				await page.setCacheEnabled(false);
-
-				await page.setRequestInterception(true);
-				page.on('request', (request) => {
-					if (['font', 'image', 'stylesheet', 'media'].includes(request.resourceType())) {
-						request.abort();
-						return;
-					}
-
-					if (request.method() === 'POST') {
-						request.abort();
-						return;
-					}
-
-					const url = request.url();
-					if (
-						url.includes('recaptcha')
-						|| url.includes('bcbits.com')
-						|| url.includes('gstatic.com')
-						|| url.includes('googletagmanager.com')
-						|| url.includes('google.com')
-						|| url.includes('bandcamp.com/api/currency_data')
-					) {
-						request.abort();
-						return;
-					}
-
-					request.continue();
-				});
-				//}
-
-				page.on('response', async (httpResponse: HTTPResponse) => {
-					if (httpResponse.status() !== 429) {
-						return;
-					}
-
-					try {
-						const url = new URL(httpResponse.url());
-						const domain = url.hostname;
-						const { address, family } = await dns.lookup(domain);
-						console.log(address);
-						console.log(family);
-						
-						ProxyClient.initialize.changeIp();
-					}
-					catch (e) {
-						logger.error(e, logMessage(LogSource.Browser, '', httpResponse.url()))
-					}
-				});
+				const page = await this.getPage(browser, headless);
 
 				return this.startPageProcessing(
 					page,
 					queue,
 					type,
 					id,
-					clearPageCache
 				);
 			});
+
+		// run jobs
 		await Promise.all(promises)
 	}
 
@@ -151,7 +90,6 @@ export class BandSpider {
 		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
-		clearPageCache: () => Promise<void>
 	) {
 		if (isNullOrUndefined(this.statistic.start)) {
 			this.statistic.start = new Date().getTime()
@@ -182,7 +120,6 @@ export class BandSpider {
 				event,
 				page,
 				id,
-				clearPageCache
 			);
 
 			// update statistic
@@ -218,17 +155,16 @@ export class BandSpider {
 		event: QueueEvent,
 		page: Page,
 		pageIndex: number,
-		clearPageCache: () => Promise<void>
 	): Promise<boolean> {
 		try {
 			let processed = false;
 			if (event.type === UrlType.Account) {
 				await this.database.account.updateBusy(event.id, true);
-				processed = await this.accountHandler.processAccount(page, event, pageIndex, clearPageCache);
+				processed = await this.accountHandler.processAccount(page, event, pageIndex);
 				await this.database.account.updateBusy(event.id, false);
 			} else if (event.type === UrlType.Item) {
 				await this.database.item.updateBusy(event.id, true);
-				processed = await this.itemHandler.processItem(page, event, pageIndex, clearPageCache);
+				processed = await this.itemHandler.processItem(page, event, pageIndex);
 				await this.database.item.updateBusy(event.id, false);
 			}
 			return processed;
@@ -293,12 +229,18 @@ export class BandSpider {
 				],
 				args: [
 					'--disable-accelerated-2d-canvas',
-					'--no-zygote',
+					'--disable-background-timer-throttling',
+					'--disable-backgrounding-occluded-windows',
+					'--disable-breakpad',
+					'--disable-client-side-phishing-detection',
 					'--disable-component-extensions-with-background-pages',
+					'--disable-default-apps',
 					'--disable-dev-shm-usage',
+					'--disable-extensions',
 					'--disable-gpu',
+					'--disable-infobars',
+					'--disable-popup-blocking',
 					'--disable-setuid-sandbox',
-					'--disable-stack-profiler',
 					'--dns-server=1.1.1.1',
 					'--ignore-certificate-errors',
 					'--incognito',
@@ -306,11 +248,79 @@ export class BandSpider {
 					'--no-sandbox',
 					'--no-zygote',
 					'--performance',
-					'--disable-infobars',
 					//'--single-process',
 				]
 			} as PuppeteerLaunchOptions);
 		}
+	}
+
+	private async getPage(
+		browser: Browser,
+		headless: boolean,
+	): Promise<Page> {
+		const pages = await browser.pages();
+		const page = isNullOrUndefined(pages) || pages.length === 0
+			? await browser.newPage()
+			: pages[0];
+
+		// response handling
+		page.on('response', async (httpResponse: HTTPResponse) => {
+			if (httpResponse.status() !== 429) {
+				return;
+			}
+
+			try {
+				const url = new URL(httpResponse.url());
+				const domain = url.hostname;
+				const { address, family } = await dns.lookup(domain);
+				console.log('IP:' + address);
+				console.log(family);
+
+				ProxyClient.initialize.changeIp();
+			} catch (e) {
+				logger.error(e, logMessage(LogSource.Browser, 'IP error', httpResponse.url()))
+			}
+		});
+
+		// request filtering
+		if (headless) {
+			await page.setCacheEnabled(false);
+
+			await page.setRequestInterception(true);
+			page.on('request', (request) => {
+				if ([
+					'font',
+					'image',
+					'stylesheet',
+					'media'
+				].includes(request.resourceType())) {
+					request.abort();
+					return;
+				}
+
+				if (request.method() === 'POST') {
+					request.abort();
+					return;
+				}
+
+				const url = request.url();
+				if (
+					url.includes('recaptcha')
+					|| url.includes('bcbits.com')
+					|| url.includes('gstatic.com')
+					|| url.includes('googletagmanager.com')
+					|| url.includes('google.com')
+					|| url.includes('bandcamp.com/api/currency_data')
+				) {
+					request.abort();
+					return;
+				}
+
+				request.continue();
+			});
+		}
+
+		return page;
 	}
 
 }

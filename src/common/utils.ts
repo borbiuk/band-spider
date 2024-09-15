@@ -41,25 +41,29 @@ export const logMessage = (source: LogSource, message: string, url?: string): st
 		: `\t${source} ${message} 🔗 ${urlColor(url)}`;
 }
 
-const minus = (value: number):string => value === 0 ? '-' : String(value);
-const yesNo = (value: boolean): string => value ? 'y': '-';
+const minus = (value: number): string => value === 0 ? '•' : String(value);
+const yesNo = (value: boolean): string => value ? '+' : '•';
 
 export const logAccountProcessed = (
 	url: string,
 	pageIndex: number,
-	newItemsCount: number,
-	totalItemsCount: number,
-	newWishlistCount: number,
-	totalWishlistItemsCount: number,
-	newFollowersCount: number,
-	totalFollowersCount: number,
-	newFollowingCount: number,
-	totalFollowingCount: number
+	newItems: number,
+	totalItems: number,
+	allItemsRead: boolean,
+	newWishlist: number,
+	totalWishlist: number,
+	allWishlistRead: boolean,
+	newFollowers: number,
+	totalFollowers: number,
+	allFollowersRead: boolean,
+	newFollowing: number,
+	totalFollowing: number,
+	allFollowingRead: boolean
 ) => {
-	const itemsStat = itemColor(`${minus(newItemsCount).padStart(4)}/${minus(totalItemsCount).padEnd(4)}`);
-	const wishlistItemsStat = itemColor(`${minus(newWishlistCount).padStart(4)}/${minus(totalWishlistItemsCount).padEnd(4)}`);
-	const followersStat = followerColor(`${minus(newFollowersCount).padStart(4)}/${minus(totalFollowersCount).padEnd(4)}`);
-	const followingStat = followerColor(`${minus(newFollowingCount).padStart(4)}/${minus(totalFollowingCount).padEnd(4)}`);
+	const itemsStat = itemColor(`${minus(newItems).padStart(4)}/${minus(totalItems).padEnd(4)}[${yesNo(allItemsRead)}]`);
+	const wishlistItemsStat = itemColor(`${minus(newWishlist).padStart(4)}/${minus(totalWishlist).padEnd(4)}[${yesNo(allWishlistRead)}]`);
+	const followersStat = followerColor(`${minus(newFollowers).padStart(4)}/${minus(totalFollowers).padEnd(4)}[${yesNo(allFollowersRead)}]`);
+	const followingStat = followerColor(`${minus(newFollowing).padStart(4)}/${minus(totalFollowing).padEnd(4)}[${yesNo(allFollowingRead)}]`);
 
 	const message = `[${String(pageIndex).padEnd(2)}] Account finished: ${itemsStat} ${wishlistItemsStat} ${followersStat} ${followingStat}`;
 
@@ -81,10 +85,10 @@ export const logItemProcessed = (
 ) => {
 	const accountsStat = accountColor(`${minus(newAccounts).padStart(3)}/${minus(totalAccounts).padEnd(3)}`);
 	const albumStat = albumColor(isNullOrUndefined(albumInfo)
-			? (isNullOrUndefined(tracksInfo)
-				? `-`.padEnd(5)
-				: `${minus(tracksInfo.newTracksCount).padStart(2)}/${minus(tracksInfo.extractedTracksCount).padEnd(2)}`)
-			: yesNo(albumInfo.albumExtracted).padEnd(5)
+		? (isNullOrUndefined(tracksInfo)
+			? '•'.padEnd(5)
+			: `${minus(tracksInfo.newTracksCount).padStart(2)}/${minus(tracksInfo.extractedTracksCount).padEnd(2)}`)
+		: yesNo(albumInfo.albumExtracted).padEnd(5)
 	);
 	const tagsStat = tagColor(`${minus(newTags).padStart(2)}/${minus(totalTags).padEnd(2)}`);
 	const releaseDateStat = dateColor(yesNo(releaseDateExtracted));

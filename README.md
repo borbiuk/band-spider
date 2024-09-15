@@ -4,11 +4,13 @@
     <h1 style="margin-top: 10px; margin-bottom: -8px; color: rgb(17 24 39); font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">Band Spider</h1>
 </div>
 
-**band-spider** is a web scraper for [bandcamp](bandcamp.com). It stores information about albums, tracks, their tags, labels, and accounts that purchased them.
+**band-spider** is a web scraper for [bandcamp](bandcamp.com). It stores information about albums, tracks, their tags,
+labels, and accounts that purchased them.
 
 ## 🛠️ Installation
 
 Clone the repository and install dependencies:
+
 ```shell
   git clone https://github.com/borbiuk/band-spider.git \
   && cd band-spider \
@@ -22,11 +24,13 @@ Clone the repository and install dependencies:
 **NOTE:** *DB will be created automatically*
 
 Fill the file `accounts.txt` with links to accounts of bandcamp and run:
+
 ```shell
 node run file:accounts
 ```
 
 **Or** fill the file `items.txt` with links to albums/tracks of bandcamp and run:
+
 ```shell
 node run file:items
 ```
@@ -34,11 +38,13 @@ node run file:items
 ### 💾 Run the app using the DB as the data source
 
 To start process saved accounts:
+
 ```shell
 node run db:accounts
 ```
 
 To start process saved albums/tracks:
+
 ```shell
 node run db:items
 ```
@@ -46,6 +52,7 @@ node run db:items
 ## 🕵️ Debug Mode
 
 By default browser will be running in `headless` mode, to run a browser with GUI use the `debug:` prefix in the command:
+
 - `node run debug:file:accounts`
 - `node run debug:file:items`
 - `node run debug:db:accounts`
