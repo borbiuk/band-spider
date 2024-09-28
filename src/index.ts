@@ -13,7 +13,7 @@ export interface BandSpiderOptions {
 }
 
 // Count of parallel URL workers (Browsers).
-const PARALLEL_BROWSERS_COUNT: number = 1;
+const PARALLEL_BROWSERS_COUNT: number = 12;
 
 const main = async (): Promise<void> => {
 

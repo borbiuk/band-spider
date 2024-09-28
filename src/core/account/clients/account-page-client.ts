@@ -4,15 +4,17 @@ import { isAccountUrl, isItemUrl, isNullOrUndefined, logMessage, originalUrl } f
 import { AccountTab } from '../../../models/account-tab';
 import { ProxyClient } from '../../proxy/proxy-client';
 import { AccountPageData } from '../models/account-page-data';
-import { AccountTabData, defaultPageReadResult, getPageReadErrorResult } from '../models/account-tab-data';
+import { AccountTabData, defaultAccountTabData, errorAccountTabData } from '../models/account-tab-data';
 
-export async function readAccountPage(url: string, page: Page, pageIndex: number): Promise<AccountPageData> {
+export async function readAccountPage(
+	url: string,
+	page: Page,
+): Promise<AccountPageData> {
 	try {
 		await page.goto(url, { timeout: 2_500, waitUntil: 'domcontentloaded' });
 	} catch (e) {
 		if (e.message.includes('Navigation timeout')) {
-			logger.warn(logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Processing stopped`, url));
-			ProxyClient.initialize.changeIp();
+			await ProxyClient.initialize.changeIp();
 		}
 
 		throw e;
@@ -45,23 +47,24 @@ async function readAccountTab(page: Page, tabType: AccountTab, countOnPage: numb
 	try {
 		const totalCount = await getTabItemsCount(page, tabType);
 		if (isNullOrUndefined(totalCount) || totalCount <= 0) {
-			return defaultPageReadResult;
+			return defaultAccountTabData;
 		}
 
 		const container = await getTabContainer(page, tabType);
 		if (isNullOrUndefined(container)) {
-			return defaultPageReadResult;
+			return defaultAccountTabData;
 		}
 
-		if (totalCount > countOnPage) {
-			await scrollTab(page, container);
-		}
+		// TODO: scrolling did not working in headless mode
+		// if (totalCount > countOnPage) {
+		// 	await scrollTab(page, container);
+		// }
 
 		const urls = await getTabUrls(container, tabType);
 
 		return getReadPageResult(totalCount, urls);
 	} catch (e) {
-		return getPageReadErrorResult(e);
+		return errorAccountTabData(e);
 	}
 }
 
@@ -158,15 +161,12 @@ async function scrollTab(page: Page, container: ElementHandle) {
 	while (isLoadingAvailable && retry < 2) {
 		try {
 			// scroll to end
-			// await page.evaluate(c => {
-			// 	c.scrollBy(0, 1_000)
-			// }, container)
 			await page.evaluate((height: number) => {
 				window.scrollTo(0, height * 10);
 			}, height);
 
 			// wait on loader
-			await container.waitForSelector('svg.upload-spinner', { timeout: 700 });
+			await container.waitForSelector('svg.upload-spinner', { timeout: 5_000 });
 
 			// check is more scroll needed
 			const currentHeight = (await container.boundingBox()).height;

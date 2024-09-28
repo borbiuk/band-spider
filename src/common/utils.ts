@@ -42,7 +42,7 @@ export const logMessage = (source: LogSource, message: string, url?: string): st
 }
 
 export const minus = (value: number): string => value === 0 ? '•' : String(value);
-export const yesNo = (value: boolean): string => value ? '+' : '•';
+export const yesNo = (value: boolean | number): string => value ? '+' : '•';
 
 export const logItemProcessed = (
 	url: string,

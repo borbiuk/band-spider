@@ -4,5 +4,5 @@ export interface AccountTabData {
 	error?: Error
 }
 
-export const defaultPageReadResult: AccountTabData = { total: 0, urls: [] };
-export const getPageReadErrorResult = (error: Error): AccountTabData => ({ ...defaultPageReadResult, error });
+export const defaultAccountTabData: AccountTabData = { total: 0, urls: [] };
+export const errorAccountTabData = (error: Error): AccountTabData => ({ ...defaultAccountTabData, error });

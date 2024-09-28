@@ -12,7 +12,8 @@
 		"debug:db:items": "npx ts-node ./src/index.ts",
 		"docker:db:accounts": "npx ts-node ./src/index.ts --headless --account --docker",
 		"docker:db:items": "npx ts-node ./src/index.ts --headless --docker",
-		"superTag": "npx ts-node ./src/index.ts --superTag"
+		"superTag": "npx ts-node ./src/index.ts --superTag",
+		"isntall-browser": "npx @puppeteer/browsers install chrome@stable"
 	},
 	"keywords": [],
 	"author": "",
@@ -21,7 +22,7 @@
 		"cli-color": "2.0.4",
 		"fuse.js": "7.0.0",
 		"pino": "9.4.0",
-		"puppeteer": "23.3.0",
+		"puppeteer": "^23.4.1",
 		"puppeteer-extra": "3.3.6",
 		"puppeteer-extra-plugin-stealth": "2.11.2",
 		"sqlite3": "5.1.7",
@@ -29,7 +30,7 @@
 	},
 	"devDependencies": {
 		"@types/cli-color": "2.0.6",
-		"@types/node": "22.5.5",
+		"@types/node": "22.7.4",
 		"@types/pino-pretty": "5.0.0",
 		"@types/puppeteer": "7.0.4",
 		"pino-pretty": "11.2.2",

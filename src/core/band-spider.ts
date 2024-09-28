@@ -7,7 +7,7 @@ import { delay, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { BandSpiderOptions } from '../index';
 import { processAccount } from './account/account-handler';
-import { ItemHandler } from './processors/item-handler';
+import { processItem } from './item/item-handler';
 import { ProxyClient } from './proxy/proxy-client';
 import dns from 'dns/promises';
 
@@ -17,9 +17,9 @@ export enum UrlType {
 }
 
 export class BandSpider {
-	private readonly itemHandler: ItemHandler = new ItemHandler();
 	private readonly statistic = {
 		processed: 0,
+		skipped: 0,
 		failed: 0,
 		start: null
 	};
@@ -55,7 +55,7 @@ export class BandSpider {
 		logger.debug('Queue ready!');
 
 		// change IP
-		ProxyClient.initialize.changeIp();
+		await ProxyClient.initialize.changeIp(true);
 
 		// configure browsers closing on exit
 		const browsers: Browser[] = [];
@@ -98,7 +98,7 @@ export class BandSpider {
 		while (true) {
 			// do not make a call if changing of IP is in progress
 			if (ProxyClient.initialize.isProcessing) {
-				await delay();
+				await delay(2_000);
 				continue;
 			}
 
@@ -139,10 +139,10 @@ export class BandSpider {
 					)
 				);
 
-				if (this.statistic.processed * 1.5 < this.statistic.failed) {
-					await page.browser().close();
-					throw 'No sense to process!';
-				}
+				// if (this.statistic.processed * 1.5 < this.statistic.failed) {
+				// 	await page.browser().close();
+				// 	throw 'No sense to process!';
+				// }
 			}
 		}
 
@@ -165,7 +165,7 @@ export class BandSpider {
 				await this.database.account.updateBusy(event.id, false);
 			} else if (event.type === UrlType.Item) {
 				await this.database.item.updateBusy(event.id, true);
-				processed = await this.itemHandler.processItem(page, event, pageIndex);
+				processed = await processItem(event, this.database, page, pageIndex);
 				await this.database.item.updateBusy(event.id, false);
 			}
 			return processed;
@@ -179,6 +179,13 @@ export class BandSpider {
 				source = LogSource.Item;
 				await this.database.item.updateFailed(event.id)
 				await this.database.item.updateBusy(event.id, false);
+			}
+
+			if (error.message === 'Page did not exist') {
+				logger.warn(
+					logMessage(source, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(200), event.url)
+				);
+				return true;
 			}
 
 			logger.error(
@@ -249,6 +256,7 @@ export class BandSpider {
 					'--no-sandbox',
 					'--no-zygote',
 					'--performance',
+					'--window-size=1200,800',
 					//'--single-process',
 				]
 			} as PuppeteerLaunchOptions);
@@ -277,7 +285,7 @@ export class BandSpider {
 				console.log('IP:' + address);
 				console.log(family);
 
-				ProxyClient.initialize.changeIp();
+				await ProxyClient.initialize.changeIp();
 			} catch (e) {
 				logger.error(e, logMessage(LogSource.Browser, 'IP error', httpResponse.url()))
 			}

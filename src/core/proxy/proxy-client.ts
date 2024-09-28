@@ -1,7 +1,7 @@
 import { execSync } from 'child_process';
 // import * as process from 'node:process';
 import { logger, LogSource } from '../../common/logger';
-import { isNullOrUndefined, logMessage } from '../../common/utils';
+import { delay, isNullOrUndefined, logMessage } from '../../common/utils';
 
 export class ProxyClient {
 	private static instance: ProxyClient;
@@ -46,15 +46,17 @@ export class ProxyClient {
 		return new Date().getTime();
 	}
 
-	public changeIp(): boolean {
-		if (this.isProcessing) {
-			return false;
-		}
-
-		if (!isNullOrUndefined(this.lastChangeTime)) {
-			const timeDiff = (this.nowTime - this.lastChangeTime) / 1000;
-			if (timeDiff < 15) {
+	public async changeIp(isFirst: boolean = false): Promise<boolean> {
+		if (!isFirst) {
+			if (this.isProcessing) {
 				return false;
+			}
+
+			if (!isNullOrUndefined(this.lastChangeTime)) {
+				const timeDiff = (this.nowTime - this.lastChangeTime) / 1000;
+				if (timeDiff < 15) {
+					return false;
+				}
 			}
 		}
 
@@ -81,6 +83,15 @@ export class ProxyClient {
 			logger.debug(logMessage(LogSource.Proxy, `IP Changed for ID ${id}: ${commandOutput}`));
 		} catch (error) {
 			logger.error(error, logMessage(LogSource.Proxy, `IP Changing failed for ID ${id}: ${error.stdout}`));
+			try {
+				await delay(60_000);
+				const commandOutput = execSync(`expresso connect --change ${id} --timeout ${this.timeout}`, { encoding: 'utf8' });
+				this.lastChangeTime = this.nowTime;
+				logger.debug(logMessage(LogSource.Proxy, `IP Changed for ID ${id}: ${commandOutput}`));
+			}
+			catch (error) {
+				logger.error(error, logMessage(LogSource.Proxy, `IP Changing failed for ID ${id}: ${error.stdout}`));
+			}
 		} finally {
 			this.isProgress = false;
 		}

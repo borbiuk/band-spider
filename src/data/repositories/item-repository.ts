@@ -17,7 +17,7 @@ export class ItemRepository {
 				lastProcessingDate: IsNull(),
 				isBusy: false,
 				failedCount: LessThan(1),
-				url: ILike('%/album/%')// Or(ILike('%/album/%'), ILike('%/track/%'))
+				url: ILike('%/track/%')// Or(ILike('%/album/%'), ILike('%/track/%'))
 			},
 			take: 400
 		});
@@ -123,6 +123,19 @@ export class ItemRepository {
 		entity.albumId = album.id;
 		await repository.save(entity);
 
+		return true;
+	}
+
+	public async updateTrackAlbum(trackId: number, albumId: number): Promise<boolean> {
+		const repository = this.dataSource.getRepository(ItemEntity);
+
+		const item = await repository.findOne({ where: { id: trackId } });
+		if (item.albumId === albumId) {
+			return false;
+		}
+
+		item.albumId = albumId;
+		await repository.save(item);
 		return true;
 	}
 

@@ -19,7 +19,7 @@ export async function processAccount(
 	// read data from the page
 	let accountPageData: AccountPageData
 	try {
-		accountPageData = await readAccountPage(url, page, pageIndex);
+		accountPageData = await readAccountPage(url, page);
 		if (accountPageData.errors.length > 0) {
 			accountPageData.errors.forEach((e: Error) => {
 				logger.warn(logMessage(LogSource.Account, 'Scrapping issue', url), e);
@@ -39,16 +39,20 @@ export async function processAccount(
 		return false;
 	}
 
-	logPageStatistic(url, pageIndex, accountPageStatistic);
+	logAccountPageStatistic(url, pageIndex, accountPageStatistic);
 
 	return true;
 }
 
-function logPageStatistic(url: string, pageIndex: number, { collection, wishlist, followers, following }: AccountPageStatistic) {
-	const collectionStat = itemColor(tapStatisticMessage(collection));
-	const wishlistStat = itemColor(tapStatisticMessage(wishlist));
-	const followersStat = followerColor(tapStatisticMessage(followers));
-	const followingStat = followerColor(tapStatisticMessage(following));
+function logAccountPageStatistic(
+	url: string,
+	pageIndex: number,
+	{ collection, wishlist, followers, following }: AccountPageStatistic
+): void {
+	const collectionStat = itemColor(accountTabStatisticMessage(collection));
+	const wishlistStat = itemColor(accountTabStatisticMessage(wishlist));
+	const followersStat = followerColor(accountTabStatisticMessage(followers));
+	const followingStat = followerColor(accountTabStatisticMessage(following));
 
 	const message = `[${String(pageIndex).padEnd(2)}] Account finished: ${collectionStat} ${wishlistStat} ${followersStat} ${followingStat}`;
 
@@ -57,6 +61,6 @@ function logPageStatistic(url: string, pageIndex: number, { collection, wishlist
 	);
 }
 
-function tapStatisticMessage({ allScraped, newRecords, newRelations, total }: AccountTabStatistic): string {
+function accountTabStatisticMessage({ allScraped, newRecords, newRelations, total }: AccountTabStatistic): string {
 	return `${minus(newRecords).padStart(4)}/${minus(total).padEnd(4)}[${yesNo(allScraped)}] ${minus(newRelations).padEnd(4)}`;
 }

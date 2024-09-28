@@ -1,14 +1,11 @@
-WITH input_item_accounts AS (SELECT accountId
-                             FROM 'items-to-accounts'
-                             WHERE itemId = (SELECT id
-                                             FROM items
-                                             WHERE url =
-                                                   'https://phonicarecords.bandcamp.com/track/energy-breakthrough-adam-pits-lightspeed-mix-2'))
-SELECT i.url, COUNT(*) as frequency
-FROM 'items-to-accounts' ita
-         JOIN items i ON ita.itemId = i.id
-WHERE ita.accountId IN (SELECT accountId FROM input_item_accounts)
-  AND i.url != 'https://phonicarecords.bandcamp.com/track/energy-breakthrough-adam-pits-lightspeed-mix-2'
-GROUP BY i.id
-ORDER BY frequency DESC
-LIMIT 20
+
+-- replace 4804679 to your item ID
+SELECT i.url, COUNT(ia2.itemId) AS group_size
+FROM 'items-to-accounts' AS ia
+         JOIN 'items-to-accounts' AS ia2 ON ia.accountId = ia2.accountId
+         JOIN items AS i ON i.id = ia2.itemId
+WHERE ia.itemId = 4804679 -- Replace with your specific item ID
+  AND ia2.itemId != 4804679 -- Exclude the specific item itself
+GROUP BY i.url
+ORDER BY group_size DESC
+LIMIT 10;
