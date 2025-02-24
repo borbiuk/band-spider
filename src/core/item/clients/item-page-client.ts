@@ -20,9 +20,7 @@ export async function readItemPage(
 	page: Page,
 ): Promise<ItemPageData> {
 	try {
-		await page.goto(url, { timeout: 3_500, waitUntil: 'domcontentloaded' }).catch(e => {
-			console.error(e);
-		});
+		await page.goto(url, { timeout: 3_500, waitUntil: 'domcontentloaded' })
 
 		const errorTitle: boolean = await page
 			.$eval('h2', (element) => {
@@ -53,6 +51,7 @@ export async function readItemPage(
 		? await readAllAlbumTracks(page, url)
 		: defaultItemTabData<string[]>();
 
+	const imageUrl = await readItemImage(page, url);
 
 	return {
 		url,
@@ -61,7 +60,8 @@ export async function readItemPage(
 		releaseDate,
 		album,
 		tracks,
-		errors: [accounts.error, tags.error, releaseDate.error, album.error, tracks.error].filter(x => !isNullOrUndefined(x))
+		imageUrl,
+		errors: [accounts.error, tags.error, releaseDate.error, album.error, tracks.error, imageUrl.error].filter(x => !isNullOrUndefined(x))
 	};
 }
 
@@ -193,4 +193,14 @@ async function readTrackAlbum(page: Page, url: string): Promise<ItemTabData<stri
 	return isEmptyString(albumPath)
 		? defaultItemTabData()
 		: { data: domain + albumPath };
+}
+
+async function readItemImage(page: Page, url: string): Promise<ItemTabData<string>> {
+	try {
+		const imgUrl = await page.$eval(`#tralbumArt img`, (img) => img.src);
+		return { data: imgUrl };
+	}
+	catch (e) {
+		return errorItemData(e);
+	}
 }

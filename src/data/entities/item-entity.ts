@@ -17,6 +17,9 @@ export class ItemEntity implements BaseEntity {
 	@Column({ type: 'date', nullable: true })
 	releaseDate?: Date;
 
+	@Column({ length: 512, nullable: true })
+	imageUrl?: string;
+
 	@Column({ type: 'date', nullable: true })
 	lastProcessingDate?: Date;
 

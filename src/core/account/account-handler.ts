@@ -20,13 +20,8 @@ export async function processAccount(
 	let accountPageData: AccountPageData
 	try {
 		accountPageData = await readAccountPage(url, page);
-		if (accountPageData.errors.length > 0) {
-			accountPageData.errors.forEach((e: Error) => {
-				logger.warn(logMessage(LogSource.Account, 'Scrapping issue', url), e);
-			});
-		}
 	} catch (e) {
-		logger.error(e, logMessage(LogSource.Account, 'Scrapping failed!', url));
+		logger.error(logMessage(LogSource.Account,  `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${e.message}`, url));
 		return false;
 	}
 
@@ -35,13 +30,19 @@ export async function processAccount(
 	try {
 		accountPageStatistic = await saveAccountPageData(id, accountPageData, database);
 	} catch (e) {
-		logger.error(e, logMessage(LogSource.Account, 'Data saving failed!', url));
+		logger.error(logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Data saving failed: ${e.message}`, url));
 		return false;
 	}
 
 	logAccountPageStatistic(url, pageIndex, accountPageStatistic);
 
-	return true;
+	const result = accountPageData.errors.length === 0;
+	if (!result) {
+		accountPageData.errors.forEach((e: Error) => {
+			logger.warn(logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Scrapping issue: ${e.message}`, url));
+		});
+	}
+	return result;
 }
 
 function logAccountPageStatistic(
@@ -54,7 +55,7 @@ function logAccountPageStatistic(
 	const followersStat = followerColor(accountTabStatisticMessage(followers));
 	const followingStat = followerColor(accountTabStatisticMessage(following));
 
-	const message = `[${String(pageIndex).padEnd(2)}] Account finished: ${collectionStat} ${wishlistStat} ${followersStat} ${followingStat}`;
+	const message = `[${String(pageIndex).padEnd(2)}] ${collectionStat} ${wishlistStat} ${followersStat} ${followingStat}`;
 
 	logger.info(
 		logMessage(LogSource.Account, message, url)

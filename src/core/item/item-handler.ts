@@ -20,14 +20,8 @@ export async function processItem(
 	let itemPageData: ItemPageData;
 	try {
 		itemPageData = await readItemPage(url, page);
-		if (itemPageData.errors.length > 0) {
-			itemPageData.errors.forEach((e: Error) => {
-				logger.warn(logMessage(LogSource.Item, 'Scrapping issue', url), e);
-			});
-		}
 	} catch (e) {
-		throw e;
-		logger.error(e, logMessage(LogSource.Item, 'Scrapping failed!', url));
+		logger.error(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${e.message}`.padEnd(61), url));
 		return false;
 	}
 
@@ -36,14 +30,20 @@ export async function processItem(
 	try {
 		itemPageStatistic = await saveItemPageData(id, itemPageData, database);
 	} catch (e) {
-		throw e;
-		logger.error(e, logMessage(LogSource.Item, 'Data saving failed!', url));
+		logger.error(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] saving failed: ${e.message}`.padEnd(61), url));
 		return false;
 	}
 
 	logItemPageStatistic(url, pageIndex, itemPageStatistic);
 
-	return true;
+	const result = itemPageData.errors.length === 0;
+	if (!result) {
+		itemPageData.errors.forEach((e: Error) => {
+			logger.warn(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] Scrapping issue: ${e.message}`.padEnd(61), url));
+		});
+	}
+
+	return result;
 }
 
 function logItemPageStatistic(
@@ -58,7 +58,7 @@ function logItemPageStatistic(
 	const albumStat = albumColor(itemTabBooleanStatisticMessage(album));
 	const tracksStat = itemColor(itemTabStatisticMessage(tracks));
 
-	const message = `[${String(pageIndex).padEnd(2)}] Item finished: ${accountsStat} ${albumStat} ${tracksStat} ${releaseDateStat} ${tagsStat}`;
+	const message = `[${String(pageIndex).padEnd(2)}] ${accountsStat} ${albumStat} ${tracksStat} ${releaseDateStat} ${tagsStat}`;
 
 	logger.info(
 		logMessage(LogSource.Item, message, url)

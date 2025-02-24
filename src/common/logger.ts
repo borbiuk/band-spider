@@ -72,14 +72,14 @@ export const speedColor = clc.xterm(226);
 export const successColor = clc.xterm(112);
 
 export enum LogSource {
-	Main = '[🚨️ MAIN   ]',
-	Browser = '[🖥 BROWSER]',
-	Page = '[📄 PAGE   ]',
-	Account = '[🧢 ACCOUNT]',
-	Item = '[📀 ITEM   ]',
-	Tag = '[🏷  TAG   ]',
-	Date = '[📅 DATE   ]',
-	Proxy = '[📡 PROXY  ]',
-	Data = '[🗄 DATA   ]',
-	Unknown = '[❓ UNKNOWN]',
+	Main = '🚨️',
+	Browser = '🖥 ',
+	Page = '📄',
+	Account = '🧢',
+	Item = '📀',
+	Tag = '🏷',
+	Date = '📅',
+	Proxy = '📡',
+	Data = '🗄',
+	Unknown = '❓',
 }

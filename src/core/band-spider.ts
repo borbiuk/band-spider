@@ -1,4 +1,5 @@
-import { Browser, HTTPResponse, Page, PuppeteerLaunchOptions } from 'puppeteer';
+import dns from 'dns/promises';
+import { Browser, HTTPResponse, LaunchOptions, Page } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
@@ -9,7 +10,6 @@ import { BandSpiderOptions } from '../index';
 import { processAccount } from './account/account-handler';
 import { processItem } from './item/item-handler';
 import { ProxyClient } from './proxy/proxy-client';
-import dns from 'dns/promises';
 
 export enum UrlType {
 	Account = 'account',
@@ -58,23 +58,47 @@ export class BandSpider {
 		await ProxyClient.initialize.changeIp(true);
 
 		// configure browsers closing on exit
-		const browsers: Browser[] = [];
+		const browsersList: { [id: number]: Browser } = {};
 		process.on('SIGINT', () => {
-			browsers.forEach(x => (x.close()));
+			Object.values(browsersList).forEach(x => (x.close()));
 			logger.warn('Browsers closed');
 		});
+
+		const recreateBrowser = async (id: number, safe = true): Promise<Page> => {
+			try {
+				const existed = browsersList[id];
+				if (!isNullOrUndefined(existed)) {
+					await existed.close();
+					logger.debug(
+						logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] closed!`)
+					);
+				}
+
+				const browser = await this.getBrowser(docker, headless);
+				browsersList[id] = browser;
+
+				logger.debug(
+					logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] created!`)
+				);
+				return await this.getPage(browser, headless);
+			}
+			catch (e) {
+				if (!safe) {
+					logger.error(e)
+					throw e;
+				}
+
+				return await recreateBrowser(id, false);
+			}
+
+		}
 
 		// create jobs
 		logger.debug(`${concurrencyBrowsers} Jobs (Browsers) init starting...`);
 		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
-				const browser = await this.getBrowser(docker, headless);
-				browsers.push(browser);
-
-				const page = await this.getPage(browser, headless);
-
 				return this.startPageProcessing(
-					page,
+					recreateBrowser,
 					queue,
 					type,
 					id,
@@ -87,7 +111,7 @@ export class BandSpider {
 	}
 
 	private async startPageProcessing(
-		page: Page,
+		recreateBrowser: (id: number) => Promise<Page>,
 		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
@@ -95,7 +119,13 @@ export class BandSpider {
 		if (isNullOrUndefined(this.statistic.start)) {
 			this.statistic.start = new Date().getTime()
 		}
+
+		let page = await recreateBrowser(id);
+
+		let i = 0;
 		while (true) {
+			i++;
+
 			// do not make a call if changing of IP is in progress
 			if (ProxyClient.initialize.isProcessing) {
 				await delay(2_000);
@@ -144,6 +174,10 @@ export class BandSpider {
 				// 	throw 'No sense to process!';
 				// }
 			}
+
+			if (i % 50 === 0) {
+				page = await recreateBrowser(id);
+			}
 		}
 
 		await page.close();
@@ -162,14 +196,21 @@ export class BandSpider {
 			if (event.type === UrlType.Account) {
 				await this.database.account.updateBusy(event.id, true);
 				processed = await processAccount(event, this.database, page, pageIndex);
+				if (!processed) {
+					await this.database.account.updateFailed(event.id)
+				}
 				await this.database.account.updateBusy(event.id, false);
 			} else if (event.type === UrlType.Item) {
 				await this.database.item.updateBusy(event.id, true);
 				processed = await processItem(event, this.database, page, pageIndex);
+				if (!processed) {
+					await this.database.item.updateFailed(event.id)
+				}
 				await this.database.item.updateBusy(event.id, false);
 			}
 			return processed;
 		} catch (error) {
+			console.log('\n\n\n\n\n\n\n\nTHIS SHOULD NOT BE HERE !!!!\n\n\n\n\n\n\n\n\n\n\n\n\n\n')
 			let source: LogSource = LogSource.Unknown;
 			if (event.type === UrlType.Account) {
 				source = LogSource.Account;
@@ -183,7 +224,7 @@ export class BandSpider {
 
 			if (error.message === 'Page did not exist') {
 				logger.warn(
-					logMessage(source, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(200), event.url)
+					logMessage(source, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), event.url)
 				);
 				return true;
 			}
@@ -259,7 +300,7 @@ export class BandSpider {
 					'--window-size=1200,800',
 					//'--single-process',
 				]
-			} as PuppeteerLaunchOptions);
+			} as LaunchOptions);
 		}
 	}
 
@@ -280,10 +321,8 @@ export class BandSpider {
 
 			try {
 				const url = new URL(httpResponse.url());
-				const domain = url.hostname;
-				const { address, family } = await dns.lookup(domain);
+				const { address } = await dns.lookup(url.hostname);
 				console.log('IP:' + address);
-				console.log(family);
 
 				await ProxyClient.initialize.changeIp();
 			} catch (e) {
@@ -300,7 +339,6 @@ export class BandSpider {
 				if ([
 					'font',
 					'image',
-					'stylesheet',
 					'media'
 				].includes(request.resourceType())) {
 					request.abort();
@@ -313,13 +351,8 @@ export class BandSpider {
 					return;
 				}
 
-				if (url === 'https://bandcamp.com/api/fancollection/1/collection_items') {
-					console.log(1);
-				}
-
 				if (
-					//url.includes('recaptcha') ||
-					url.includes('bcbits.com')
+					url.includes('recaptcha')
 					|| url.includes('gstatic.com')
 					|| url.includes('googletagmanager.com')
 					|| url.includes('google.com')

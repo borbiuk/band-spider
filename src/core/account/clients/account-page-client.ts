@@ -1,6 +1,5 @@
 import { ElementHandle, Page } from 'puppeteer';
-import { logger, LogSource } from '../../../common/logger';
-import { isAccountUrl, isItemUrl, isNullOrUndefined, logMessage, originalUrl } from '../../../common/utils';
+import { isAccountUrl, isItemUrl, isNullOrUndefined, originalUrl } from '../../../common/utils';
 import { AccountTab } from '../../../models/account-tab';
 import { ProxyClient } from '../../proxy/proxy-client';
 import { AccountPageData } from '../models/account-page-data';
@@ -11,11 +10,11 @@ export async function readAccountPage(
 	page: Page,
 ): Promise<AccountPageData> {
 	try {
-		await page.goto(url, { timeout: 2_500, waitUntil: 'domcontentloaded' });
+		await page.goto(url, { timeout: 3_000, waitUntil: 'domcontentloaded' });
 	} catch (e) {
-		if (e.message.includes('Navigation timeout')) {
-			await ProxyClient.initialize.changeIp();
-		}
+		// if (e.message.includes('Navigation timeout')) {
+		// 	await ProxyClient.initialize.changeIp();
+		// }
 
 		throw e;
 	}
@@ -56,9 +55,9 @@ async function readAccountTab(page: Page, tabType: AccountTab, countOnPage: numb
 		}
 
 		// TODO: scrolling did not working in headless mode
-		// if (totalCount > countOnPage) {
-		// 	await scrollTab(page, container);
-		// }
+		if (totalCount > countOnPage) {
+			await scrollTab(page, container);
+		}
 
 		const urls = await getTabUrls(container, tabType);
 
@@ -158,15 +157,13 @@ async function scrollTab(page: Page, container: ElementHandle) {
 	let height = (await container.boundingBox()).height;
 	let retry = 0;
 
-	while (isLoadingAvailable && retry < 2) {
+	while (isLoadingAvailable && retry < 1) {
 		try {
 			// scroll to end
-			await page.evaluate((height: number) => {
-				window.scrollTo(0, height * 10);
-			}, height);
+			await page.keyboard.down('End')
 
 			// wait on loader
-			await container.waitForSelector('svg.upload-spinner', { timeout: 5_000 });
+			await page.waitForNetworkIdle({ timeout: 5_000 });
 
 			// check is more scroll needed
 			const currentHeight = (await container.boundingBox()).height;

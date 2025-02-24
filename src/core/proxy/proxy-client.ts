@@ -47,14 +47,17 @@ export class ProxyClient {
 	}
 
 	public async changeIp(isFirst: boolean = false): Promise<boolean> {
+		return true;
 		if (!isFirst) {
 			if (this.isProcessing) {
+				logger.warn('IP changing in progress');
 				return false;
 			}
 
 			if (!isNullOrUndefined(this.lastChangeTime)) {
 				const timeDiff = (this.nowTime - this.lastChangeTime) / 1000;
 				if (timeDiff < 15) {
+					logger.warn('IP changed recently');
 					return false;
 				}
 			}
@@ -66,17 +69,6 @@ export class ProxyClient {
 		const id = this.locations[index];
 
 		try {
-			// clear DNS cache on mac
-			// logger.warn(logMessage(LogSource.Proxy, 'DNC cache clearing...'));
-			// switch (process.platform) {
-			//	case 'linux':
-			//		execSync('sudo resolvectl flush-caches', { encoding: 'utf8' });
-			//		break;
-			//	case 'darwin':
-			//		execSync('sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder', { encoding: 'utf8' });
-			// }
-			// logger.info(logMessage(LogSource.Proxy, 'DNC cache cleared!'));
-
 			logger.debug(logMessage(LogSource.Proxy, `IP Changing to ID ${id} [${index + 1}/${this.locations.length}]`));
 			const commandOutput = execSync(`expresso connect --change ${id} --timeout ${this.timeout}`, { encoding: 'utf8' });
 			this.lastChangeTime = this.nowTime;

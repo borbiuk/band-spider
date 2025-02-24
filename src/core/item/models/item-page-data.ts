@@ -7,5 +7,6 @@ export interface ItemPageData {
 	releaseDate: ItemTabData<Date>,
 	album?: ItemTabData<string>,
 	tracks?: ItemTabData<string[]>,
+	imageUrl: ItemTabData<string>,
 	errors: Error[]
 }

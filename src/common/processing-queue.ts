@@ -22,7 +22,7 @@ export class ProcessingQueue {
 		return this.urls.length;
 	}
 
-	public async enqueue(url: string): Promise<boolean> {
+	public enqueue(url: string): boolean {
 		if (this.size >= this.capacity) {
 			return false;
 		}
@@ -42,7 +42,7 @@ export class ProcessingQueue {
 		return true;
 	}
 
-	public async enqueueButch(urls: string[]): Promise<boolean> {
+	public enqueueButch(urls: string[]): boolean {
 		if (this.size >= this.capacity) {
 			return false;
 		}

@@ -41,6 +41,8 @@ export async function saveItemPageData(
 		database,
 	);
 
+	await database.item.updateImageUrl(itemId, data.imageUrl.data);
+
 	// Save that account was processed now
 	await database.item.updateProcessingDate(itemId);
 

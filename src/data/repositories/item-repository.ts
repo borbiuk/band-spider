@@ -17,7 +17,9 @@ export class ItemRepository {
 				lastProcessingDate: IsNull(),
 				isBusy: false,
 				failedCount: LessThan(1),
-				url: ILike('%/track/%')// Or(ILike('%/album/%'), ILike('%/track/%'))
+				// url: Or(ILike('%/album/%'), ILike('%/track/%'))
+				// url: ILike('%/album/%'),
+				url: ILike('%/track/%'),
 			},
 			take: 400
 		});
@@ -109,6 +111,18 @@ export class ItemRepository {
 		const item: ItemEntity = await this.getById(itemId);
 		item.lastProcessingDate = new Date();
 		await this.dataSource.getRepository(ItemEntity).save(item);
+	}
+
+	public async updateImageUrl(itemId: number,  imageUrl: string): Promise<void> {
+		if (isNullOrUndefined(imageUrl)) {
+			return;
+		}
+
+		const item: ItemEntity = await this.getById(itemId);
+		if (isNullOrUndefined(imageUrl) || item.imageUrl !== imageUrl) {
+			item.imageUrl = imageUrl;
+			await this.dataSource.getRepository(ItemEntity).save(item);
+		}
 	}
 
 	public async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
