@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { logger, LogSource } from './common/logger';
 import { logMessage } from './common/utils';
 import { BandSpider, UrlType } from './core/band-spider';
+import { Neo4jMigration } from './core/neo4j-migration';
 import { SuperTagUpdate } from './core/super-tag-update';
 
 export interface BandSpiderOptions {
@@ -10,6 +11,7 @@ export interface BandSpiderOptions {
 	type: UrlType,
 	docker: boolean,
 	superTag: boolean,
+	migration: boolean,
 }
 
 // Count of parallel URL workers (Browsers).
@@ -25,7 +27,13 @@ const main = async (): Promise<void> => {
 		type: args.includes('--account') ? UrlType.Account : UrlType.Item,
 		docker: args.includes('--docker'),
 		superTag: args.includes('--superTag'),
+		migration: args.includes('--migration'),
 	};
+
+	// Run migration from SQLite to Neo4j
+	if (options.migration) {
+		return await new Neo4jMigration().up();
+	}
 
 	// Run
 	if (options.superTag) {
