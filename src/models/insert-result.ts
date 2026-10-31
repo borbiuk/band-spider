@@ -1,6 +1,4 @@
-import { BaseEntity } from '../data/entities/base/enitity';
-
-export interface InsertResult<TEntity extends BaseEntity> {
+export interface InsertResult<TEntity> {
 	entity: TEntity;
 	isInserted: boolean;
 }

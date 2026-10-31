@@ -1,12 +1,9 @@
-import { Column, Entity, Index, JoinColumn, ManyToMany, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-import { AccountEntity } from './account-entity';
-import { BaseEntity } from './base/enitity';
+import { Column, Entity, Index, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { ItemToAccountEntity } from './item-to-account-entity';
 import { ItemToTagEntity } from './item-to-tag-entity';
-import { TagEntity } from './tag-entity';
 
 @Entity('items')
-export class ItemEntity implements BaseEntity {
+export class ItemEntity {
 
 	@PrimaryGeneratedColumn()
 	id: number;
@@ -34,20 +31,14 @@ export class ItemEntity implements BaseEntity {
 	@Index()
 	albumId?: number;
 
-	@ManyToOne(() => ItemEntity, (item) => item.albumId)
+	@ManyToOne(() => ItemEntity)
 	@JoinColumn()
 	album?: ItemEntity;
 
 
-	@ManyToMany(() => AccountEntity)
-	accounts: AccountEntity[];
-
 	@OneToMany(() => ItemToAccountEntity, (itemToAccount) => itemToAccount.item)
 	itemToAccount: ItemToAccountEntity[]
 
-
-	@ManyToMany(() => TagEntity)
-	tags: TagEntity[];
 
 	@OneToMany(() => ItemToTagEntity, (itemToTag) => itemToTag.item)
 	itemToTag: ItemToTagEntity[];

@@ -1,10 +1,9 @@
-import { Column, Entity, Index, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
+import { Column, Entity, ManyToOne, PrimaryColumn } from 'typeorm';
 import { AccountEntity } from './account-entity';
-import { BaseEntity } from './base/enitity';
 import { ItemEntity } from './item-entity';
 
 @Entity('items-to-accounts')
-export class ItemToAccountEntity implements BaseEntity {
+export class ItemToAccountEntity {
 
 	@PrimaryColumn()
 	itemId: number;

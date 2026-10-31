@@ -1,10 +1,9 @@
-import { Entity, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
-import { BaseEntity } from './base/enitity';
+import { Entity, ManyToOne, PrimaryColumn } from 'typeorm';
 import { ItemEntity } from './item-entity';
 import { TagEntity } from './tag-entity';
 
 @Entity('items-to-tags')
-export class ItemToTagEntity implements BaseEntity {
+export class ItemToTagEntity {
 
 	@PrimaryColumn()
 	itemId: number;

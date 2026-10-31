@@ -1,4 +1,4 @@
-import { Entity, ManyToOne, PrimaryColumn, Unique } from 'typeorm';
+import { Entity, ManyToOne, PrimaryColumn } from 'typeorm';
 import { SuperTagEntity } from './super-tag-entity';
 import { TagEntity } from './tag-entity';
 
