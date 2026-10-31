@@ -1,5 +1,6 @@
 import type { Page } from 'puppeteer';
 import { isAlbumUrl, isTrackUrl } from '../../../common/utils';
+import { asError, errorMessage } from '../../../common/errors';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { ProxyClient } from '../../proxy/proxy-client';
 import { ItemPageData } from '../models/item-page-data';
@@ -19,7 +20,7 @@ export async function readItemPage(
 			throw new RateLimitedError(url, response.headers()['retry-after']);
 		}
 	} catch (e) {
-		if (!(e instanceof RateLimitedError) && e.message.includes('Navigation timeout')) {
+		if (!(e instanceof RateLimitedError) && errorMessage(e).includes('Navigation timeout')) {
 			await ProxyClient.initialize.changeIp();
 		}
 
@@ -55,7 +56,7 @@ export async function readItemPage(
 		}, { wantAlbum, wantTracks, notFoundTitle: NOT_FOUND_TITLE });
 	} catch (e) {
 		// as before, a failed read gives an error for every field instead of throwing
-		readError = e;
+		readError = asError(e);
 	}
 
 	// TODO: button click did not working in headless mode, so only the first 60 accounts are read

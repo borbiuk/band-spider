@@ -1,4 +1,4 @@
-import { ApiRefusedError } from '../../../common/errors';
+import { ApiRefusedError, asError } from '../../../common/errors';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isAccountUrl, isItemUrl, isNullOrUndefined, originalUrl } from '../../../common/utils';
 import { AccountTab } from '../../../models/account-tab';
@@ -21,12 +21,48 @@ export const API_PAGE_SIZE = 20;
 /** Stops a fan with a huge collection from holding a worker forever. */
 export const API_PAGE_LIMIT = 200;
 
+/**
+ * One record of a tab, in the page and in the API: an item has `item_url`, a fan `trackpipe_url`.
+ * Like all types here it lists only the fields that are read, and Bandcamp may leave any out.
+ */
+export interface FanRecord {
+	item_url?: string;
+	trackpipe_url?: string;
+}
+
+/** The section of the page blob with the total and the pagination token of one tab. */
+export interface FanTabSection {
+	item_count?: number;
+	last_token?: string;
+}
+
+/** The parts of the `#pagedata` blob of a fan page that are read. */
+export interface FanPageBlob {
+	fan_data?: { fan_id?: number };
+	collection_data?: FanTabSection;
+	wishlist_data?: FanTabSection;
+	followers_data?: FanTabSection;
+	following_fans_data?: FanTabSection;
+	/** The first batch of every tab, by tab, then by record id. */
+	item_cache?: { [cacheKey: string]: { [id: string]: FanRecord } | undefined };
+}
+
+/** One page of the fan collection API. */
+export interface FanApiPage {
+	/** Item tabs. */
+	items?: FanRecord[];
+	/** Follower tabs; the API spells it this way. */
+	followeers?: FanRecord[];
+	more_available?: boolean;
+	last_token?: string;
+}
+
 /** Answer of one API call. `body` is the parsed JSON, set only when the status is OK. */
 export interface ApiAnswer {
 	status: number;
 	/** Raw `Retry-After` header value, if any. */
 	retryAfter?: string;
-	body?: any;
+	body?: FanApiPage;
 }
 
 /** Sends one POST request to the fan collection API. How it is sent depends on the reader. */
@@ -36,11 +72,11 @@ export interface TabSource {
 	/** Key inside `item_cache` holding the batch embedded in the page. */
 	cacheKey: string;
 	/** Key of the blob section holding the total and the pagination token. */
-	dataKey: string;
+	dataKey: 'collection_data' | 'wishlist_data' | 'followers_data' | 'following_fans_data';
 	/** API method serving the rest of the tab. */
 	endpoint: string;
 	/** Field of an API record holding the URL. */
-	urlField: string;
+	urlField: keyof FanRecord;
 	isValidUrl: (url: string) => boolean;
 }
 
@@ -85,7 +121,7 @@ export const TAB_SOURCES: { [tab in AccountTab]: TabSource } = {
  */
 export async function buildAccountPageData(
 	url: string,
-	blob: any,
+	blob: FanPageBlob,
 	requestApi: ApiRequest,
 ): Promise<AccountPageData> {
 	const collection = await readAccountTab(url, blob, AccountTab.Collection, requestApi);
@@ -109,7 +145,7 @@ export async function buildAccountPageData(
  */
 async function readAccountTab(
 	pageUrl: string,
-	blob: any,
+	blob: FanPageBlob,
 	tabType: AccountTab,
 	requestApi: ApiRequest,
 ): Promise<AccountTabData> {
@@ -143,21 +179,21 @@ async function readAccountTab(
 		if (e instanceof RateLimitedError || e instanceof ApiRefusedError) {
 			throw e;
 		}
-		return errorAccountTabData(e);
+		return errorAccountTabData(asError(e));
 	}
 }
 
 /**
  * Reads the URLs of the batch the page already carries, so the first API page can be skipped.
  */
-function readEmbeddedUrls(blob: any, source: TabSource): string[] {
+function readEmbeddedUrls(blob: FanPageBlob, source: TabSource): string[] {
 	const cache = blob.item_cache?.[source.cacheKey];
 	if (isNullOrUndefined(cache)) {
 		return [];
 	}
 
 	return Object.values(cache)
-		.map((record: any) => record?.[source.urlField])
+		.map((record: FanRecord) => record?.[source.urlField])
 		.filter((x: string) => !isNullOrUndefined(x));
 }
 
@@ -167,7 +203,7 @@ function readEmbeddedUrls(blob: any, source: TabSource): string[] {
  * @returns The URLs of every record after the embedded batch, and the answer that stopped the walk.
  */
 async function fetchRemainingUrls(
-	blob: any,
+	blob: FanPageBlob,
 	source: TabSource,
 	requestApi: ApiRequest,
 ): Promise<{ urls: string[], refused: ApiAnswer | null }> {
@@ -189,7 +225,7 @@ async function fetchRemainingUrls(
 		const body = answer.body;
 
 		// Follower tabs answer with `followeers`, item tabs with `items`.
-		const records: any[] = body.followeers ?? body.items ?? [];
+		const records: FanRecord[] = body.followeers ?? body.items ?? [];
 		for (const record of records) {
 			if (record?.[source.urlField]) {
 				urls.push(record[source.urlField]);

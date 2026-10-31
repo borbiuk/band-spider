@@ -1,8 +1,6 @@
 import { EntityManager } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
-import { ItemToTagEntity } from '../entities/item-to-tag-entity';
 import { SuperTagEntity } from '../entities/super-tag-entity';
-import { TagEntity } from '../entities/tag-entity';
 import { TagToSuperTagEntity } from '../entities/tag-to-super-tag-entity';
 
 export class SuperTagRepository {

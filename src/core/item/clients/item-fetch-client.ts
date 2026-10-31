@@ -1,5 +1,5 @@
 import * as cheerio from 'cheerio';
-import { ApiRefusedError } from '../../../common/errors';
+import { ApiRefusedError, asError } from '../../../common/errors';
 import { getPageHtml, HttpClient, HttpResponse } from '../../../common/http-client';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isAlbumUrl, isNullOrUndefined, isTrackUrl } from '../../../common/utils';
@@ -62,7 +62,7 @@ async function parseItemPage(url: string, html: string, http: HttpClient): Promi
 			if (e instanceof RateLimitedError || e instanceof ApiRefusedError) {
 				throw e;
 			}
-			accountsError = e;
+			accountsError = asError(e);
 		}
 	}
 

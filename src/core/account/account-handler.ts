@@ -1,3 +1,4 @@
+import { errorMessage } from '../../common/errors';
 import { followerColor, itemColor, logger, LogSource } from '../../common/logger';
 import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
@@ -25,7 +26,7 @@ export async function processAccount(
 		if (e instanceof RateLimitedError) {
 			throw e;
 		}
-		logger.error(logMessage(LogSource.Account,  `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${e.message}`, url));
+		logger.error(logMessage(LogSource.Account,  `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${errorMessage(e)}`, url));
 		return false;
 	}
 
@@ -34,7 +35,7 @@ export async function processAccount(
 	try {
 		accountPageStatistic = await saveAccountPageData(id, accountPageData, database);
 	} catch (e) {
-		logger.error(e, logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Data saving failed: ${e.message}`, url));
+		logger.error(e, logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Data saving failed: ${errorMessage(e)}`, url));
 		return false;
 	}
 

@@ -1,4 +1,4 @@
-import { EntityManager, ILike, IsNull, LessThan, MoreThan, Or } from 'typeorm';
+import { EntityManager, ILike, IsNull, LessThan } from 'typeorm';
 import { chunk, isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';

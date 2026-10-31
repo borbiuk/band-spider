@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ApiRefusedError, HttpStatusError, PageNotFoundError } from '../common/errors';
+import { ApiRefusedError, asError, errorMessage, HttpStatusError, PageNotFoundError } from '../common/errors';
 import { getPageHtml, HttpClient } from '../common/http-client';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
 import { buildAccountPageData } from '../core/account/clients/account-page-common';
@@ -123,5 +123,31 @@ describe('network errors of HttpClient', () => {
 
 		const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
 		await assert.rejects(failingClient(async () => { throw timeout; }).get(url), (e: unknown) => e === timeout);
+	});
+});
+
+describe('errorMessage and asError', () => {
+	it('keep an Error as it is', () => {
+		const error = new RangeError('out of range');
+
+		assert.equal(errorMessage(error), 'out of range');
+		assert.equal(asError(error), error);
+	});
+
+	it('use the text of a value that is not an Error', () => {
+		assert.equal(errorMessage('plain text'), 'plain text');
+		assert.equal(errorMessage(42), '42');
+		assert.equal(errorMessage(undefined), 'undefined');
+
+		const wrapped = asError('plain text');
+		assert.ok(wrapped instanceof Error);
+		assert.equal(wrapped.message, 'plain text');
+	});
+
+	it('treat a timeout DOMException as an Error', () => {
+		const timeout = new DOMException('The operation timed out', 'TimeoutError');
+
+		assert.equal(errorMessage(timeout), 'The operation timed out');
+		assert.equal(asError(timeout), timeout);
 	});
 });

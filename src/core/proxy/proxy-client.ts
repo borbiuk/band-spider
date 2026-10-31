@@ -74,7 +74,7 @@ export class ProxyClient {
 			this.lastChangeTime = this.nowTime;
 			logger.debug(logMessage(LogSource.Proxy, `IP Changed for ID ${id}: ${commandOutput}`));
 		} catch (error) {
-			logger.error(error, logMessage(LogSource.Proxy, `IP Changing failed for ID ${id}: ${error.stdout}`));
+			logger.error(error, logMessage(LogSource.Proxy, `IP Changing failed for ID ${id}: ${commandStdout(error)}`));
 			try {
 				await delay(60_000);
 				const commandOutput = execSync(`expresso connect --change ${id} --timeout ${this.timeout}`, { encoding: 'utf8' });
@@ -82,7 +82,7 @@ export class ProxyClient {
 				logger.debug(logMessage(LogSource.Proxy, `IP Changed for ID ${id}: ${commandOutput}`));
 			}
 			catch (error) {
-				logger.error(error, logMessage(LogSource.Proxy, `IP Changing failed for ID ${id}: ${error.stdout}`));
+				logger.error(error, logMessage(LogSource.Proxy, `IP Changing failed for ID ${id}: ${commandStdout(error)}`));
 			}
 		} finally {
 			this.isProgress = false;
@@ -111,3 +111,6 @@ export class ProxyClient {
 		return this.availableIndices[randomIndex];
 	}
 }
+
+/** The output of a failed `execSync` command, which it adds to the error it throws. */
+const commandStdout = (error: unknown): unknown => (error as { stdout?: unknown } | null)?.stdout;

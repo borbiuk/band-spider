@@ -9,7 +9,7 @@ export const chunk = <T>(array: T[], size: number): T[][] => {
 	}
 	return result;
 };
-export const isNullOrUndefined = (x: unknown): boolean => x === null || x === undefined;
+export const isNullOrUndefined = (x: unknown): x is null | undefined => x === null || x === undefined;
 export const isEmptyString = (x: string): boolean => isNullOrUndefined(x) || x.trim() === '';
 export const isAlbumUrl = (url: string): boolean => isValidUrl(url) && url.includes('/album/');
 export const isTrackUrl = (url: string): boolean => isValidUrl(url) && url.includes('/track/');
