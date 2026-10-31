@@ -13,8 +13,7 @@
 		"docker:db:accounts": "npx ts-node ./src/index.ts --headless --account --docker",
 		"docker:db:items": "npx ts-node ./src/index.ts --headless --docker",
 		"superTag": "npx ts-node ./src/index.ts --superTag",
-		"install-browser": "npx @puppeteer/browsers install chrome@stable",
-		"neo4j-migration": "NODE_OPTIONS=\"--expose-gc --max-old-space-size=8192\" npx ts-node ./src/index.ts --migration"
+		"install-browser": "npx @puppeteer/browsers install chrome@stable"
 	},
 	"keywords": [],
 	"author": "",
@@ -22,7 +21,6 @@
 	"dependencies": {
 		"cli-color": "2.0.4",
 		"fuse.js": "7.1.0",
-		"neo4j-driver": "5.28.1",
 		"pino": "9.6.0",
 		"puppeteer": "24.4.0",
 		"puppeteer-extra": "3.3.6",
