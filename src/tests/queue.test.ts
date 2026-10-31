@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it, mock } from 'node:test';
-import { ProcessingQueue } from '../common/processing-queue';
-import { UrlType } from '../core/band-spider';
-import { BandDatabase } from '../data/db';
+import { ProcessingQueue } from '../core/processing-queue';
+import type { BandDatabase } from '../data/db';
+import { UrlType } from '../models/url-type';
 
 type Row = { id: number, isBusy: boolean };
 

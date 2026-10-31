@@ -1,7 +1,7 @@
 import Fuse from 'fuse.js';
 import { logger } from '../common/logger';
 import { BandDatabase } from '../data/db';
-import { BandSpiderOptions } from '../index';
+import type { BandSpiderOptions } from '../config';
 
 export class SuperTagUpdate {
 	private database: BandDatabase;

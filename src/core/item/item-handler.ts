@@ -1,9 +1,9 @@
 import { accountColor, albumColor, dateColor, itemColor, logger, LogSource, tagColor } from '../../common/logger';
-import { QueueEvent } from '../../common/processing-queue';
 import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { PageReader } from '../page-reader';
+import type { QueueEvent } from '../processing-queue';
 import { saveItemPageData } from './clients/item-db-client';
 import { ItemPageData } from './models/item-page-data';
 import { ItemPageStatistic } from './models/item-page-statistic';
