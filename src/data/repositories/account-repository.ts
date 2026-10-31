@@ -1,4 +1,4 @@
-import { DataSource, EntityManager, IsNull, LessThan, Or } from 'typeorm';
+import { EntityManager, IsNull, LessThan, Or } from 'typeorm';
 import { chunk, isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
@@ -9,12 +9,12 @@ const DB_BATCH_SIZE = 500;
 
 export class AccountRepository {
 	constructor(
-		private readonly dataSource: DataSource
+		private readonly manager: EntityManager
 	) {
 	}
 
 	public async getNotProcessed(): Promise<AccountEntity[]> {
-		return await this.dataSource.getRepository(AccountEntity).find({
+		return await this.manager.getRepository(AccountEntity).find({
 			// where: { lastProcessingDate: IsNull(), isBusy: false },
 			where: { lastProcessingDate: Or(LessThan(new Date('2024-09-10')), IsNull()), isBusy: false },
 			take: 400
@@ -22,14 +22,14 @@ export class AccountRepository {
 	}
 
 	public async getAccountRelated(accountId: number): Promise<AccountEntity[]> {
-		const itemIdsQuery = this.dataSource.getRepository(ItemToAccountEntity)
+		const itemIdsQuery = this.manager.getRepository(ItemToAccountEntity)
 			.createQueryBuilder('itemToAccount')
 			.select('itemToAccount.itemId')
 			.where('itemToAccount.accountId = :accountId', { accountId })
 			.getQuery();
 
 		// Step 2: Get related accounts based on the retrieved item IDs
-		const relatedAccounts = await this.dataSource.getRepository(AccountEntity)
+		const relatedAccounts = await this.manager.getRepository(AccountEntity)
 			.createQueryBuilder('account')
 			.innerJoin('account.itemToAccount', 'itemToAccount')
 			.where(`itemToAccount.itemId IN (${itemIdsQuery})`)
@@ -41,11 +41,11 @@ export class AccountRepository {
 	}
 
 	public async getById(accountId: number): Promise<AccountEntity> {
-		return await this.dataSource.getRepository(AccountEntity).findOne({ where: { id: accountId } });
+		return await this.manager.getRepository(AccountEntity).findOne({ where: { id: accountId } });
 	}
 
 	public async insert(accountUrl: string): Promise<InsertResult<AccountEntity>> {
-		const repository = this.dataSource.getRepository(AccountEntity);
+		const repository = this.manager.getRepository(AccountEntity);
 
 		let existingRecord: AccountEntity = await repository.findOne({ where: { url: accountUrl } });
 		if (!isNullOrUndefined(existingRecord)) {
@@ -65,7 +65,7 @@ export class AccountRepository {
 	};
 
 	public async addItem(accountId: number, itemId: number, wishlist: boolean = false): Promise<boolean> {
-		const repository = this.dataSource.getRepository(ItemToAccountEntity);
+		const repository = this.manager.getRepository(ItemToAccountEntity);
 
 		let existingRecord = await repository.findOne({
 			where: {
@@ -109,12 +109,11 @@ export class AccountRepository {
 		accountId: number,
 		itemIds: number[],
 		wishlist: boolean,
-		manager: EntityManager | DataSource = this.dataSource
 	): Promise<number> {
 		let newRelations = 0;
 
 		for (const part of chunk([...new Set(itemIds)], DB_BATCH_SIZE)) {
-			const existing: { itemId: number, wishlist: number }[] = await manager.query(
+			const existing: { itemId: number, wishlist: number }[] = await this.manager.query(
 				`SELECT itemId, wishlist FROM "items-to-accounts" WHERE accountId = ? AND itemId IN (${part.map(() => '?').join(',')})`,
 				[accountId, ...part]
 			);
@@ -122,7 +121,7 @@ export class AccountRepository {
 
 			const toUpdate = existing.filter(x => Boolean(x.wishlist) !== wishlist).map(x => x.itemId);
 			if (toUpdate.length !== 0) {
-				await manager.query(
+				await this.manager.query(
 					`UPDATE "items-to-accounts" SET wishlist = ? WHERE accountId = ? AND itemId IN (${toUpdate.map(() => '?').join(',')})`,
 					[wishlist ? 1 : 0, accountId, ...toUpdate]
 				);
@@ -130,7 +129,7 @@ export class AccountRepository {
 
 			const toInsert = part.filter(x => !existingIds.has(x));
 			if (toInsert.length !== 0) {
-				await manager.query(
+				await this.manager.query(
 					`INSERT OR IGNORE INTO "items-to-accounts"(itemId, accountId, wishlist) VALUES ${toInsert.map(() => '(?,?,?)').join(',')}`,
 					toInsert.flatMap(x => [x, accountId, wishlist ? 1 : 0])
 				);
@@ -142,7 +141,7 @@ export class AccountRepository {
 	}
 
 	public async addFollower(followedId: number, followerId: number): Promise<boolean> {
-		const repository = this.dataSource.getRepository(FollowerEntity);
+		const repository = this.manager.getRepository(FollowerEntity);
 
 		let existingRecord = await repository.findOne({
 			where: {
@@ -173,7 +172,7 @@ export class AccountRepository {
 	};
 
 	public async resetAllBusy(): Promise<void> {
-		await this.dataSource.getRepository(AccountEntity)
+		await this.manager.getRepository(AccountEntity)
 			.createQueryBuilder()
 			.update()
 			.set({ isBusy: false })
@@ -182,11 +181,11 @@ export class AccountRepository {
 	}
 
 	public async updateBusy(accountId: number, isBusy: boolean): Promise<void> {
-		await this.dataSource.getRepository(AccountEntity).update({ id: accountId }, { isBusy });
+		await this.manager.getRepository(AccountEntity).update({ id: accountId }, { isBusy });
 	}
 
 	public async updateFailed(accountId: number, clear: boolean = false): Promise<void> {
-		await this.dataSource.getRepository(AccountEntity)
+		await this.manager.getRepository(AccountEntity)
 			.createQueryBuilder()
 			.update()
 			.set({ failedCount: clear ? 0 : () => 'COALESCE(failedCount, 0) + 1' })
@@ -195,19 +194,19 @@ export class AccountRepository {
 	}
 
 	public async updateProcessingDate(accountId: number): Promise<void> {
-		await this.dataSource.getRepository(AccountEntity)
+		await this.manager.getRepository(AccountEntity)
 			.update({ id: accountId }, { lastProcessingDate: new Date() });
 	}
 
 	public async removeByUrl(accountUrl: string): Promise<void> {
-		const repository = this.dataSource.getRepository(AccountEntity)
+		const repository = this.manager.getRepository(AccountEntity)
 
 		const existingRecord = await repository.findOne({ where: { url: accountUrl } });
 		if (isNullOrUndefined(existingRecord)) {
 			return;
 		}
 
-		await this.dataSource.getRepository(ItemToAccountEntity)
+		await this.manager.getRepository(ItemToAccountEntity)
 			.delete({ accountId: existingRecord.id });
 
 		await repository.delete({ url: existingRecord.url });

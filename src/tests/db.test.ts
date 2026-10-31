@@ -1,9 +1,8 @@
-// must stay the first imports: the DB path is read when `data/db` is loaded
-import { removeTempDb, tempDbFile } from './helpers/temp-db';
 import 'reflect-metadata';
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { saveAccountPageData } from '../core/account/clients/account-db-client';
@@ -15,28 +14,27 @@ import { BandDatabase } from '../data/db';
 // tests run from `dist/tests`, the fixtures stay in `src/tests/fixtures`
 const SCHEMA_FIXTURE = path.join(__dirname, '../../src/tests/fixtures/schema.json');
 
+const tempDir: string = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-test-'));
+const tempDbFile: string = path.join(tempDir, 'test.sqlite');
+
 let db: BandDatabase;
 
-const query = (sql: string, params: unknown[] = []): Promise<any[]> => db.dataSource.query(sql, params);
+const query = (sql: string, params: unknown[] = []): Promise<any[]> => db.query(sql, params);
 const count = async (table: string): Promise<number> => (await query(`SELECT COUNT(*) AS n FROM "${table}"`))[0].n;
 const itemByUrl = async (url: string): Promise<any> => (await query('SELECT * FROM items WHERE url = ?', [url]))[0];
 
 before(async () => {
-	db = await BandDatabase.initialize();
+	db = await BandDatabase.open({ file: tempDbFile, synchronize: true });
 });
 
 after(async () => {
-	await db.dataSource.destroy();
-	removeTempDb();
+	await db.close();
+	fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 describe('database setup', () => {
-	it('uses the file from BAND_DB_PATH', () => {
+	it('creates the given file', () => {
 		assert.ok(fs.existsSync(tempDbFile));
-	});
-
-	it('returns the same instance on every initialize', async () => {
-		assert.equal(await BandDatabase.initialize(), db);
 	});
 
 	it('creates the same schema for a new file', async () => {
@@ -59,6 +57,44 @@ describe('database setup', () => {
 		assert.equal(await pragma('temp_store'), 2, 'MEMORY');
 		assert.equal(await pragma('busy_timeout'), 5000);
 		assert.ok(Number(await pragma('mmap_size')) > 0, 'mmap is on (SQLite may clamp the size)');
+	});
+});
+
+describe('transactions', () => {
+	it('commits everything written through the transaction database', async () => {
+		const urls = ['https://tx.bandcamp.com/album/a', 'https://tx.bandcamp.com/album/b'];
+
+		const result = await db.transaction(async (tx) => {
+			await tx.item.insertMany(urls);
+			await tx.account.insert('https://bandcamp.com/tx-fan');
+			return 'done';
+		});
+
+		assert.equal(result, 'done');
+		assert.equal((await query('SELECT COUNT(*) AS n FROM items WHERE url LIKE ?', ['https://tx.bandcamp.com/%']))[0].n, 2);
+		assert.ok(await query('SELECT id FROM accounts WHERE url = ?', ['https://bandcamp.com/tx-fan']).then(x => x.length === 1));
+	});
+
+	it('rolls back everything when the work throws', async () => {
+		await assert.rejects(db.transaction(async (tx) => {
+			await tx.item.insertMany(['https://rollback.bandcamp.com/album/a']);
+			await tx.account.insert('https://bandcamp.com/rollback-fan');
+			throw new Error('stop');
+		}), { message: 'stop' });
+
+		assert.deepEqual(await query('SELECT id FROM items WHERE url LIKE ?', ['https://rollback.bandcamp.com/%']), []);
+		assert.deepEqual(await query('SELECT id FROM accounts WHERE url = ?', ['https://bandcamp.com/rollback-fan']), []);
+	});
+});
+
+describe('close', () => {
+	it('closes the connection and can be called twice', async () => {
+		const file = path.join(tempDir, 'close.sqlite');
+		const other = await BandDatabase.open({ file, synchronize: true });
+
+		await other.close();
+		await other.close();
+		await assert.rejects(other.query('SELECT 1'));
 	});
 });
 

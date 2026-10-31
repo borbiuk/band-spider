@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { ItemToTagEntity } from '../entities/item-to-tag-entity';
@@ -6,7 +6,7 @@ import { TagEntity } from '../entities/tag-entity';
 
 export class TagRepository {
 	constructor(
-		private readonly dataSource: DataSource
+		private readonly manager: EntityManager
 	) {
 	}
 
@@ -14,7 +14,7 @@ export class TagRepository {
 		page: number = 1,
 		pageSize: number = 10
 	): Promise<TagEntity[]> {
-		const repository = this.dataSource.getRepository(TagEntity);
+		const repository = this.manager.getRepository(TagEntity);
 
 		return await repository.find({
 			skip: (page - 1) * pageSize,
@@ -25,7 +25,7 @@ export class TagRepository {
 	public async insert(tag: string): Promise<InsertResult<TagEntity>> {
 		tag = tag.toLowerCase();
 
-		const repository = this.dataSource.getRepository(TagEntity);
+		const repository = this.manager.getRepository(TagEntity);
 
 		let existingRecord: TagEntity = await repository.findOne({ where: { name: tag } });
 		if (!isNullOrUndefined(existingRecord)) {
@@ -49,7 +49,7 @@ export class TagRepository {
 	};
 
 	public async addItem(tagId: number, itemId: number): Promise<boolean> {
-		const repository = this.dataSource.getRepository(ItemToTagEntity);
+		const repository = this.manager.getRepository(ItemToTagEntity);
 
 		let existingRecord: ItemToTagEntity = await repository.findOne({
 			where: {

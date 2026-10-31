@@ -1,4 +1,3 @@
-import { EntityManager } from 'typeorm';
 import { BandDatabase } from '../../../data/db';
 import { InsertResult } from '../../../models/insert-result';
 import { AccountPageData } from '../models/account-page-data';
@@ -12,26 +11,26 @@ export async function saveAccountPageData(
 	database: BandDatabase
 ): Promise<AccountPageStatistic> {
 	// One transaction per account page: one commit instead of one per row.
-	return await database.dataSource.transaction(async (manager) => {
-		const collection = await saveAccountItems(accountId, data.collection, false, database, manager);
-		const wishlist = await saveAccountItems(accountId, data.wishlist, true, database, manager);
+	return await database.transaction(async (transaction) => {
+		const collection = await saveAccountItems(accountId, data.collection, false, transaction);
+		const wishlist = await saveAccountItems(accountId, data.wishlist, true, transaction);
 
 		const followers = await readAndSaveAccountData(
 			accountId,
 			data.followers,
-			(accountUrl: string) => database.account.insert(accountUrl),
-			(accountId, entityId) => database.account.addFollower(accountId, entityId)
+			(accountUrl: string) => transaction.account.insert(accountUrl),
+			(accountId, entityId) => transaction.account.addFollower(accountId, entityId)
 		);
 
 		const following = await readAndSaveAccountData(
 			accountId,
 			data.following,
-			(accountUrl: string) => database.account.insert(accountUrl),
-			(accountId, entityId) => database.account.addFollower(entityId, accountId)
+			(accountUrl: string) => transaction.account.insert(accountUrl),
+			(accountId, entityId) => transaction.account.addFollower(entityId, accountId)
 		);
 
 		// Save that account was processed now
-		await database.account.updateProcessingDate(accountId);
+		await transaction.account.updateProcessingDate(accountId);
 
 		return {
 			collection,
@@ -50,17 +49,16 @@ async function saveAccountItems(
 	accountId: number,
 	pageReadResult: AccountTabData,
 	wishlist: boolean,
-	database: BandDatabase,
-	manager: EntityManager
+	database: BandDatabase
 ): Promise<AccountTabStatistic> {
 	let newUrls: string[] = [];
 	let newRelationsCount: number = 0;
 
 	if (pageReadResult.urls.length !== 0) {
-		const inserted = await database.item.insertMany(pageReadResult.urls, manager);
+		const inserted = await database.item.insertMany(pageReadResult.urls);
 		newUrls = inserted.newUrls;
 		const ids = inserted.ids;
-		newRelationsCount = await database.account.addItems(accountId, ids, wishlist, manager);
+		newRelationsCount = await database.account.addItems(accountId, ids, wishlist);
 	}
 
 	return {

@@ -1,16 +1,15 @@
 import Fuse from 'fuse.js';
 import { logger } from '../common/logger';
-import { BandDatabase } from '../data/db';
 import type { BandSpiderOptions } from '../config';
+import { BandDatabase } from '../data/db';
 
 export class SuperTagUpdate {
-	private database: BandDatabase;
+	constructor(
+		private readonly database: BandDatabase,
+	) {
+	}
 
 	public async run({}: BandSpiderOptions): Promise<void> {
-		logger.info('DB creating...')
-		this.database = await BandDatabase.initialize();
-		logger.info('DB created');
-
 		logger.info('Tags search...');
 		const superTags = await this.database.superTag.all();
 

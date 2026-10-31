@@ -43,10 +43,13 @@ export class BandSpider {
 		start: null
 	};
 
-	private database: BandDatabase;
-
 	// one pause for all workers after HTTP 429
 	private readonly rateLimitGate = new RateLimitGate();
+
+	constructor(
+		private readonly database: BandDatabase,
+	) {
+	}
 
 	public async run(
 		{
@@ -57,11 +60,6 @@ export class BandSpider {
 			browser,
 		}: BandSpiderOptions
 	): Promise<void> {
-
-		// init database
-		logger.debug('DB synchronizing...')
-		this.database = await BandDatabase.initialize();
-		logger.debug('DB synchronized!');
 
 		logger.debug('DB preparing ...');
 		await this.database.account.resetAllBusy();
