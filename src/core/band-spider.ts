@@ -40,6 +40,9 @@ export class BandSpider {
 	// one pause for all workers after HTTP 429
 	private readonly rateLimitGate = new RateLimitGate();
 
+	// take the newest unprocessed URLs from the DB first (`--reverse`)
+	private newestFirst = false;
+
 	constructor(
 		private readonly database: BandDatabase,
 	) {
@@ -52,10 +55,13 @@ export class BandSpider {
 			type,
 			docker,
 			browser,
+			reverse,
 		}: BandSpiderOptions,
 		/** When aborted, every worker stops after its current URL. */
 		stop: AbortSignal = new AbortController().signal,
 	): Promise<void> {
+
+		this.newestFirst = reverse;
 
 		logger.debug('DB preparing ...');
 		await this.database.account.resetAllBusy();
@@ -291,11 +297,11 @@ export class BandSpider {
 	): Promise<string[]> {
 		switch (type) {
 			case UrlType.Account:
-				return (await this.database.account.getNotProcessed()).map(({ url }) => url);
+				return (await this.database.account.getNotProcessed(this.newestFirst)).map(({ url }) => url);
 			// return ([(await this.database.account.getById(1)).url])
 			// return (await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
 			case UrlType.Item:
-				return (await this.database.item.getNotProcessed()).map(({ url }) => url);
+				return (await this.database.item.getNotProcessed(this.newestFirst)).map(({ url }) => url);
 			// return (await this.database.item.getUserItems(1)).map(({ url }) => url)
 			default:
 				throw new Error('Scrapping Type is invalid!');

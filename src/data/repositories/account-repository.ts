@@ -14,10 +14,15 @@ export class AccountRepository {
 	) {
 	}
 
-	public async getNotProcessed(): Promise<AccountEntity[]> {
+	/**
+	 * @param newestFirst - Take the accounts with the highest id first. Otherwise the order is not
+	 * set, which in SQLite gives the lowest ids first.
+	 */
+	public async getNotProcessed(newestFirst: boolean = false): Promise<AccountEntity[]> {
 		return await this.manager.getRepository(AccountEntity).find({
 			// where: { lastProcessingDate: IsNull(), isBusy: false },
 			where: { lastProcessingDate: Or(LessThan(new Date('2024-09-10')), IsNull()), isBusy: false },
+			order: newestFirst ? { id: 'DESC' } : undefined,
 			take: 400
 		});
 	}

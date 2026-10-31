@@ -10,6 +10,8 @@ export interface BandSpiderOptions {
 	superTag: boolean,
 	/** Read pages with Puppeteer instead of plain HTTP requests. */
 	browser: boolean,
+	/** Take the newest unprocessed URLs first (highest id), instead of the oldest. */
+	reverse: boolean,
 }
 
 // Count of parallel URL workers (Browsers).
@@ -27,6 +29,7 @@ export const parseOptions = (args: string[]): BandSpiderOptions => ({
 	docker: args.includes('--docker'),
 	superTag: args.includes('--superTag'),
 	browser: args.includes('--browser'),
+	reverse: args.includes('--reverse'),
 });
 
 /** The DB file used when `BAND_DB_PATH` is not set. */

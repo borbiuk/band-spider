@@ -16,6 +16,7 @@ const options = (overrides: Partial<BandSpiderOptions> = {}): BandSpiderOptions 
 	docker: false,
 	superTag: false,
 	browser: false,
+	reverse: false,
 	...overrides,
 });
 
@@ -34,6 +35,7 @@ describe('parseOptions', () => {
 		assert.deepEqual(parseOptions(['--docker']), options({ docker: true }));
 		assert.deepEqual(parseOptions(['--superTag']), options({ superTag: true }));
 		assert.deepEqual(parseOptions(['--browser']), options({ browser: true }));
+		assert.deepEqual(parseOptions(['--reverse']), options({ reverse: true }));
 	});
 
 	it('matches whole arguments only', () => {
@@ -43,6 +45,8 @@ describe('parseOptions', () => {
 	const expected: Record<string, BandSpiderOptions> = {
 		'db:accounts': options({ headless: true, type: UrlType.Account }),
 		'db:items': options({ headless: true }),
+		'db:accounts:reverse': options({ headless: true, type: UrlType.Account, reverse: true }),
+		'db:items:reverse': options({ headless: true, reverse: true }),
 		'db:accounts:browser': options({ headless: true, type: UrlType.Account, browser: true }),
 		'db:items:browser': options({ headless: true, browser: true }),
 		'debug:db:accounts': options({ type: UrlType.Account, browser: true }),
