@@ -34,7 +34,7 @@ export async function processAccount(
 	try {
 		accountPageStatistic = await saveAccountPageData(id, accountPageData, database);
 	} catch (e) {
-		logger.error(logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Data saving failed: ${e.message}`, url));
+		logger.error(e, logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Data saving failed: ${e.message}`, url));
 		return false;
 	}
 

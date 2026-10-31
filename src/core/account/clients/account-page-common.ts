@@ -1,3 +1,4 @@
+import { ApiRefusedError } from '../../../common/errors';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isAccountUrl, isItemUrl, isNullOrUndefined, originalUrl } from '../../../common/utils';
 import { AccountTab } from '../../../models/account-tab';
@@ -30,12 +31,6 @@ export interface ApiAnswer {
 
 /** Sends one POST request to the fan collection API. How it is sent depends on the reader. */
 export type ApiRequest = (endpoint: string, body: object) => Promise<ApiAnswer>;
-
-/**
- * Marks the error raised when the API refuses a request. A truncated tab must not be saved as a
- * complete one, so this travels up and fails the whole account instead.
- */
-const REFUSED = Symbol('refused');
 
 export interface TabSource {
 	/** Key inside `item_cache` holding the batch embedded in the page. */
@@ -133,10 +128,9 @@ async function readAccountTab(
 		if (refused?.status === 429) {
 			throw new RateLimitedError(pageUrl, refused.retryAfter);
 		}
+		// A truncated tab must not be saved as a complete one, so this fails the whole account.
 		if (!isNullOrUndefined(refused)) {
-			const error = new Error(`Fan collection API refused "${source.endpoint}" with status ${refused.status}`);
-			error[REFUSED] = true;
-			throw error;
+			throw new ApiRefusedError(`Fan collection API refused "${source.endpoint}" with status ${refused.status}`);
 		}
 
 		const urls = [...embedded, ...fetched]
@@ -146,7 +140,7 @@ async function readAccountTab(
 
 		return { total, urls: [...new Set(urls)] };
 	} catch (e) {
-		if (e instanceof RateLimitedError || e?.[REFUSED]) {
+		if (e instanceof RateLimitedError || e instanceof ApiRefusedError) {
 			throw e;
 		}
 		return errorAccountTabData(e);

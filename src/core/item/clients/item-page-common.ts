@@ -1,3 +1,4 @@
+import { PageNotFoundError } from '../../../common/errors';
 import {
 	isAccountUrl,
 	isAlbumUrl,
@@ -37,7 +38,7 @@ export const selectorNotFound = (selector: string): Error =>
  * @param url - URL of the item page.
  * @param raw - The raw page content, undefined when reading it failed.
  * @param readError - The error of a failed read. It is reported for every field.
- * @throws 'Page did not exist' when the page is the "not found" page.
+ * @throws `PageNotFoundError` when the page is the "not found" page.
  */
 export function buildItemPageData(
 	url: string,
@@ -45,7 +46,7 @@ export function buildItemPageData(
 	readError: Error | null,
 ): ItemPageData {
 	if (raw?.notFound) {
-		throw new Error('Page did not exist');
+		throw new PageNotFoundError();
 	}
 
 	const wantAlbum = isTrackUrl(url);

@@ -1,6 +1,7 @@
 import { Browser, HTTPResponse, LaunchOptions, Page } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
@@ -296,7 +297,6 @@ export class BandSpider {
 				return UrlResult.RateLimited;
 			}
 
-			console.log('\n\n\n\n\n\n\n\nTHIS SHOULD NOT BE HERE !!!!\n\n\n\n\n\n\n\n\n\n\n\n\n\n')
 			let source: LogSource = LogSource.Unknown;
 			if (event.type === UrlType.Account) {
 				source = LogSource.Account;
@@ -308,7 +308,7 @@ export class BandSpider {
 				await this.database.item.updateBusy(event.id, false);
 			}
 
-			if (error.message === 'Page did not exist') {
+			if (error instanceof PageNotFoundError) {
 				logger.warn(
 					logMessage(source, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), event.url)
 				);

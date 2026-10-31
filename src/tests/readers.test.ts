@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
+import { ApiRefusedError, HttpStatusError, PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
 import { readAccountPageByFetch } from '../core/account/clients/account-fetch-client';
@@ -111,6 +112,7 @@ describe('item reader', () => {
 	it('maps 404 and the "not found" page to "Page did not exist"', async () => {
 		handler = () => ({ status: 404, body: fixture('item-dead.html') });
 		await assert.rejects(readItemPageByFetch(itemUrl, createClient()), { message: 'Page did not exist' });
+		await assert.rejects(readItemPageByFetch(itemUrl, createClient()), PageNotFoundError);
 
 		handler = () => ({ status: 200, body: fixture('item-dead.html') });
 		await assert.rejects(readItemPageByFetch(itemUrl, createClient()), { message: 'Page did not exist' });
@@ -146,6 +148,7 @@ describe('item reader', () => {
 			: { status: 403 };
 
 		await assert.rejects(readItemPageByFetch(itemUrl, createClient()), /Supporters API refused with status 403/);
+		await assert.rejects(readItemPageByFetch(itemUrl, createClient()), ApiRefusedError);
 	});
 
 	it('maps 429 of the supporters API to RateLimitedError', async () => {
@@ -160,6 +163,7 @@ describe('item reader', () => {
 		handler = () => ({ status: 500 });
 		await assert.rejects(readItemPageByFetch(itemUrl, createClient()), (e: Error) => {
 			assert.ok(!(e instanceof RateLimitedError));
+			assert.ok(e instanceof HttpStatusError);
 			assert.match(e.message, /HTTP 500/);
 			return true;
 		});
@@ -211,6 +215,7 @@ describe('account reader', () => {
 
 		handler = () => ({ status: 200, body: '<html><body>nothing</body></html>' });
 		await assert.rejects(readAccountPageByFetch(accountUrl, createClient()), { message: 'Page did not exist' });
+		await assert.rejects(readAccountPageByFetch(accountUrl, createClient()), PageNotFoundError);
 	});
 
 	it('maps 429 of the page and of the API to RateLimitedError', async () => {
@@ -229,6 +234,7 @@ describe('account reader', () => {
 			: { status: 403 };
 
 		await assert.rejects(readAccountPageByFetch(accountUrl, createClient()), /refused "collection_items" with status 403/);
+		await assert.rejects(readAccountPageByFetch(accountUrl, createClient()), ApiRefusedError);
 	});
 });
 
