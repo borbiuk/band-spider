@@ -1,6 +1,3 @@
-import { Browser, HTTPResponse, LaunchOptions, Page } from 'puppeteer';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
@@ -10,8 +7,9 @@ import type { BandSpiderOptions } from '../config';
 import { BandDatabase } from '../data/db';
 import { UrlType } from '../models/url-type';
 import { processAccount } from './account/account-handler';
+import { BrowserPageSource, BrowserPool } from './browser/browser-page-source';
 import { processItem } from './item/item-handler';
-import { BrowserPageReader, FetchPageReader, PageReader } from './page-reader';
+import { FetchPageReader, PageReader, PageSource } from './page-reader';
 import { ProcessingQueue, QueueEvent } from './processing-queue';
 import { ProxyClient } from './proxy/proxy-client';
 
@@ -21,18 +19,6 @@ enum UrlResult {
 	/** Bandcamp answered HTTP 429: the URL is not counted as failed and is tried again after the pause. */
 	RateLimited,
 }
-
-/** What a worker reads pages with, and what it does around it. */
-interface PageSource {
-	reader: PageReader;
-	/** Called after every processed URL. The browser source replaces its page and browser here. */
-	afterUrl: () => Promise<void>;
-	close: () => Promise<void>;
-}
-
-// The page is replaced often to free the memory of the renderer, the whole browser rarely.
-const PAGE_RECREATE_INTERVAL = 1;
-const BROWSER_RELAUNCH_INTERVAL = 500;
 
 export class BandSpider {
 	private readonly statistic = {
@@ -114,74 +100,13 @@ export class BandSpider {
 
 	/** Puppeteer, the fallback used with `--browser`. */
 	private createBrowserSourceFactory(headless: boolean, docker: boolean): (id: number) => Promise<PageSource> {
-		puppeteer.use(StealthPlugin());
-
-		// configure browsers closing on exit
-		const browsersList: { [id: number]: Browser } = {};
-		process.on('SIGINT', async () => {
-			await Promise.allSettled(Object.values(browsersList).map(x => x.close()));
-			logger.warn('Browsers closed');
-			process.exit();
+		const pool = new BrowserPool({
+			headless,
+			docker,
+			onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(url, retryAfter),
 		});
 
-		const recreateBrowser = async (id: number, safe = true): Promise<Page> => {
-			try {
-				const existed = browsersList[id];
-				if (!isNullOrUndefined(existed)) {
-					await existed.close();
-					logger.debug(
-						logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] closed!`)
-					);
-				}
-
-				const browser = await this.getBrowser(docker, headless);
-				browsersList[id] = browser;
-
-				logger.debug(
-					logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] created!`)
-				);
-				return await this.getPage(browser, headless, true);
-			}
-			catch (e) {
-				if (!safe) {
-					logger.error(e)
-					throw e;
-				}
-
-				return await recreateBrowser(id, false);
-			}
-
-		}
-
-		// closes the page and opens a new one with the same setup in the same browser
-		const recreatePage = async (id: number, oldPage: Page): Promise<Page> => {
-			try {
-				const page = await this.getPage(browsersList[id], headless, false);
-				await oldPage.close().catch(() => { });
-				return page;
-			} catch (e) {
-				logger.error(e, logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] page recreation failed, relaunching browser`));
-				return await recreateBrowser(id);
-			}
-		}
-
-		return async (id: number) => {
-			const reader = new BrowserPageReader(await recreateBrowser(id));
-
-			let i = 0;
-			return {
-				reader,
-				afterUrl: async () => {
-					i++;
-					if (i % BROWSER_RELAUNCH_INTERVAL === 0) {
-						reader.page = await recreateBrowser(id);
-					} else if (i % PAGE_RECREATE_INTERVAL === 0) {
-						reader.page = await recreatePage(id, reader.page);
-					}
-				},
-				close: async () => await reader.page.close(),
-			};
-		};
+		return (id: number) => BrowserPageSource.create(pool, id);
 	}
 
 	private async startPageProcessing(
@@ -372,104 +297,6 @@ export class BandSpider {
 		if (urls.length !== 0) {
 			await queue.enqueueButch(urls);
 		}
-	}
-
-	private async getBrowser(docker: boolean, headless: boolean): Promise<Browser> {
-		if (docker) {
-			return await puppeteer.connect({
-				browserWSEndpoint: 'ws://localhost:3000',
-			});
-		} else {
-			return await puppeteer.launch({
-				headless: headless,
-				devtools: false,
-				ignoreDefaultArgs: [
-					'--enable-automation'
-				],
-				args: [
-					'--disable-accelerated-2d-canvas',
-					'--disable-background-timer-throttling',
-					'--disable-backgrounding-occluded-windows',
-					'--disable-breakpad',
-					'--disable-client-side-phishing-detection',
-					'--disable-component-extensions-with-background-pages',
-					'--disable-default-apps',
-					'--disable-dev-shm-usage',
-					'--disable-extensions',
-					'--disable-gpu',
-					'--disable-infobars',
-					'--disable-popup-blocking',
-					'--disable-setuid-sandbox',
-					'--dns-server=1.1.1.1',
-					'--ignore-certificate-errors',
-					'--incognito',
-					'--no-first-run',
-					'--no-sandbox',
-					'--no-zygote',
-					'--performance',
-					'--window-size=1200,800',
-					//'--single-process',
-				]
-			} as LaunchOptions);
-		}
-	}
-
-	private async getPage(
-		browser: Browser,
-		headless: boolean,
-		reuseFirstPage: boolean,
-	): Promise<Page> {
-		const pages = reuseFirstPage ? await browser.pages() : [];
-		const page = isNullOrUndefined(pages) || pages.length === 0
-			? await browser.newPage()
-			: pages[0];
-
-		// response handling
-		page.on('response', (httpResponse: HTTPResponse) => {
-			if (httpResponse.status() === 429) {
-				this.pauseOnRateLimit(httpResponse.url(), httpResponse.headers()['retry-after']);
-			}
-		});
-
-		// request filtering
-		if (headless) {
-			await page.setCacheEnabled(false);
-
-			await page.setRequestInterception(true);
-			page.on('request', (request) => {
-				if ([
-					'font',
-					'image',
-					'media'
-				].includes(request.resourceType())) {
-					request.abort();
-					return;
-				}
-
-				const url = request.url();
-
-				// Account tabs are read from the fan collection API, so every method of it is needed.
-				if (request.method() === 'POST' && !url.startsWith('https://bandcamp.com/api/fancollection/1/')) {
-					request.abort();
-					return;
-				}
-
-				if (
-					url.includes('recaptcha')
-					|| url.includes('gstatic.com')
-					|| url.includes('googletagmanager.com')
-					|| url.includes('google.com')
-					|| url.includes('bandcamp.com/api/currency_data')
-				) {
-					request.abort();
-					return;
-				}
-
-				request.continue();
-			});
-		}
-
-		return page;
 	}
 
 }

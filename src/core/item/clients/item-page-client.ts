@@ -5,13 +5,16 @@ import { ProxyClient } from '../../proxy/proxy-client';
 import { ItemPageData } from '../models/item-page-data';
 import { buildItemPageData, NOT_FOUND_TITLE, RawItemPage } from './item-page-common';
 
+/** How long the browser waits for an item page to load. */
+export const ITEM_NAVIGATION_TIMEOUT_MS = 3_500;
+
 /** Reads an item page in the browser. Used with the `--browser` flag. */
 export async function readItemPage(
 	url: string,
 	page: Page,
 ): Promise<ItemPageData> {
 	try {
-		const response = await page.goto(url, { timeout: 3_500, waitUntil: 'domcontentloaded' });
+		const response = await page.goto(url, { timeout: ITEM_NAVIGATION_TIMEOUT_MS, waitUntil: 'domcontentloaded' });
 		if (response?.status() === 429) {
 			throw new RateLimitedError(url, response.headers()['retry-after']);
 		}

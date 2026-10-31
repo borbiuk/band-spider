@@ -27,9 +27,14 @@ export class FetchPageReader implements PageReader {
 	}
 }
 
-/** Puppeteer. Used with the `--browser` flag. The page is replaced from time to time, so it is settable. */
+/** Puppeteer. Used with the `--browser` flag. The page is replaced from time to time. */
 export class BrowserPageReader implements PageReader {
-	constructor(public page: Page) {
+	constructor(private page: Page) {
+	}
+
+	/** Reads the next pages with this one. */
+	public replace(page: Page): void {
+		this.page = page;
 	}
 
 	public readItemPage(url: string): Promise<ItemPageData> {
@@ -39,4 +44,12 @@ export class BrowserPageReader implements PageReader {
 	public readAccountPage(url: string): Promise<AccountPageData> {
 		return readAccountPage(url, this.page);
 	}
+}
+
+/** What a worker reads pages with, and what it does around it. */
+export interface PageSource {
+	reader: PageReader;
+	/** Called after every processed URL. The browser source replaces its page and browser here. */
+	afterUrl: () => Promise<void>;
+	close: () => Promise<void>;
 }
