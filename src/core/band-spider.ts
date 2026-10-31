@@ -1,4 +1,4 @@
-import { PageNotFoundError } from '../common/errors';
+import { errorMessage, PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
@@ -35,7 +35,7 @@ export class BandSpider {
 		skipped: 0,
 		failed: 0,
 		rateLimited: 0,
-		start: null
+		start: null as number | null,
 	};
 
 	// one pause for all workers after HTTP 429
@@ -247,7 +247,7 @@ export class BandSpider {
 
 			logger.error(
 				error,
-				logMessage(source, `[${pageIndex}] Processing failed: ${error.message}`, event.url)
+				logMessage(source, `[${pageIndex}] Processing failed: ${errorMessage(error)}`, event.url)
 			);
 
 			return UrlResult.Failed;

@@ -21,3 +21,11 @@ export class HttpStatusError extends Error {
  */
 export class ApiRefusedError extends Error {
 }
+
+/** The message of a caught value: `message` of an `Error`, the value as text otherwise. */
+export const errorMessage = (error: unknown): string =>
+	error instanceof Error ? error.message : String(error);
+
+/** A caught value as an `Error`: an `Error` stays the same object, anything else is wrapped. */
+export const asError = (error: unknown): Error =>
+	error instanceof Error ? error : new Error(String(error));

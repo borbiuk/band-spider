@@ -1,3 +1,4 @@
+import { errorMessage } from '../../common/errors';
 import { accountColor, albumColor, dateColor, itemColor, logger, LogSource, tagColor } from '../../common/logger';
 import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
@@ -25,7 +26,7 @@ export async function processItem(
 		if (e instanceof RateLimitedError) {
 			throw e;
 		}
-		logger.error(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${e.message}`.padEnd(61), url));
+		logger.error(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${errorMessage(e)}`.padEnd(61), url));
 		return false;
 	}
 
@@ -34,7 +35,7 @@ export async function processItem(
 	try {
 		itemPageStatistic = await saveItemPageData(id, itemPageData, database);
 	} catch (e) {
-		logger.error(e, logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] saving failed: ${e.message}`.padEnd(61), url));
+		logger.error(e, logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] saving failed: ${errorMessage(e)}`.padEnd(61), url));
 		return false;
 	}
 
