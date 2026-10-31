@@ -1,7 +1,7 @@
-import { UrlType } from '../core/band-spider';
+import { logger, LogSource } from '../common/logger';
+import { isAccountUrl, isEmptyString, isItemUrl, isNullOrUndefined, logMessage, onlyUnique, originalUrl } from '../common/utils';
 import { BandDatabase } from '../data/db';
-import { logger, LogSource } from './logger';
-import { isAccountUrl, isEmptyString, isItemUrl, isNullOrUndefined, logMessage, onlyUnique, originalUrl } from './utils';
+import { UrlType } from '../models/url-type';
 
 export interface QueueEvent {
 	id: number,

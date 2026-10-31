@@ -1,9 +1,9 @@
 import { followerColor, itemColor, logger, LogSource } from '../../common/logger';
-import { QueueEvent } from '../../common/processing-queue';
 import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { PageReader } from '../page-reader';
+import type { QueueEvent } from '../processing-queue';
 import { saveAccountPageData } from './clients/account-db-client';
 import { AccountPageData } from './models/account-page-data';
 import { AccountPageStatistic } from './models/account-page-statistic';

@@ -3,20 +3,16 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { HttpClient } from '../common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
-import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
 import { isAccountUrl, isItemUrl, isNullOrUndefined, logMessage } from '../common/utils';
+import type { BandSpiderOptions } from '../config';
 import { BandDatabase } from '../data/db';
-import { BandSpiderOptions } from '../index';
+import { UrlType } from '../models/url-type';
 import { processAccount } from './account/account-handler';
 import { processItem } from './item/item-handler';
 import { BrowserPageReader, FetchPageReader, PageReader } from './page-reader';
+import { ProcessingQueue, QueueEvent } from './processing-queue';
 import { ProxyClient } from './proxy/proxy-client';
-
-export enum UrlType {
-	Account = 'account',
-	Item = 'item',
-}
 
 enum UrlResult {
 	Processed,
