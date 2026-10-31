@@ -6,8 +6,8 @@ import { after, before, beforeEach, describe, it } from 'node:test';
 import { ApiRefusedError, HttpStatusError, PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
-import { readAccountPageByFetch } from '../core/account/clients/account-fetch-client';
-import { readItemPageByFetch } from '../core/item/clients/item-fetch-client';
+import { readAccountPageByFetch } from '../core/account/clients/account-http-reader';
+import { readItemPageByFetch } from '../core/item/clients/item-http-reader';
 
 // tests run from `dist/tests`, the fixtures stay in `src/tests/fixtures`
 const fixture = (name: string): string =>

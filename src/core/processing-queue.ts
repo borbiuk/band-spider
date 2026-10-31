@@ -47,7 +47,7 @@ export class ProcessingQueue {
 		return true;
 	}
 
-	public enqueueButch(urls: string[]): boolean {
+	public enqueueBatch(urls: string[]): boolean {
 		if (this.size >= this.capacity) {
 			return false;
 		}
