@@ -1,5 +1,4 @@
-import { Column, Entity, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-import { TagEntity } from './tag-entity';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { TagToSuperTagEntity } from './tag-to-super-tag-entity';
 
 @Entity('super-tags')
@@ -11,9 +10,6 @@ export class SuperTagEntity {
 	@Column({ unique: true, length: 64 })
 	name: string;
 
-
-	@ManyToMany(() => TagEntity)
-	tags: TagEntity[];
 
 	@OneToMany(() => TagToSuperTagEntity, (tagToSuperTag) => tagToSuperTag.superTag)
 	tagToSuperTag: TagToSuperTagEntity[];

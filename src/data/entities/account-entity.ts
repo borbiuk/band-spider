@@ -1,11 +1,8 @@
-import { Column, Entity, Index, JoinColumn, ManyToMany, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
-import { BaseEntity } from './base/enitity';
-import { FollowerEntity } from './follower-entity';
-import { ItemEntity } from './item-entity';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { ItemToAccountEntity } from './item-to-account-entity';
 
 @Entity('accounts')
-export class AccountEntity implements BaseEntity {
+export class AccountEntity {
 
 	@PrimaryGeneratedColumn()
 	id: number;
@@ -23,16 +20,6 @@ export class AccountEntity implements BaseEntity {
 	failedCount: number;
 
 
-	@ManyToMany(() => ItemEntity)
-	items: ItemEntity[];
-
 	@OneToMany(() => ItemToAccountEntity, (itemToAccount) => itemToAccount.account)
 	itemToAccount: ItemToAccountEntity[];
-
-
-	@OneToMany(() => FollowerEntity, (follower) => follower.follower)
-	followers: FollowerEntity[];
-
-	@OneToMany(() => FollowerEntity, (follower) => follower.followed)
-	followedBy: FollowerEntity[];
 }
