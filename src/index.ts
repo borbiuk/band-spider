@@ -1,5 +1,6 @@
 import 'reflect-metadata';
 import { logger, LogSource, logToFile } from './common/logger';
+import { stopOnSignals } from './common/shutdown';
 import { logMessage } from './common/utils';
 import { BandSpiderOptions, parseOptions, readDatabaseConfig } from './config';
 import { BandSpider } from './core/band-spider';
@@ -38,7 +39,8 @@ const main = async (): Promise<void> => {
 		if (options.superTag) {
 			return await new SuperTagUpdate(database).run(options);
 		} else {
-			return await new BandSpider(database).run(options);
+			// Ctrl-C stops the workers after the current URL, so the DB and the browsers are closed
+			return await new BandSpider(database).run(options, stopOnSignals());
 		}
 	} finally {
 		await database.close();
@@ -48,4 +50,5 @@ const main = async (): Promise<void> => {
 
 main().catch(error => {
 	logger.fatal(error, logMessage(LogSource.Main, error.message));
+	process.exitCode = 1;
 });

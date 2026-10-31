@@ -44,7 +44,9 @@ export class BandSpider {
 			type,
 			docker,
 			browser,
-		}: BandSpiderOptions
+		}: BandSpiderOptions,
+		/** When aborted, every worker stops after its current URL. */
+		stop: AbortSignal = new AbortController().signal,
 	): Promise<void> {
 
 		logger.debug('DB preparing ...');
@@ -76,6 +78,7 @@ export class BandSpider {
 					queue,
 					type,
 					id,
+					stop,
 				);
 			});
 		logger.debug('Jobs started!');
@@ -114,14 +117,35 @@ export class BandSpider {
 		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
+		stop: AbortSignal,
 	) {
 		if (isNullOrUndefined(this.statistic.start)) {
 			this.statistic.start = new Date().getTime()
 		}
 
-		while (true) {
+		try {
+			await this.processQueue(source, queue, type, id, stop);
+		} finally {
+			await source.close();
+		}
+		logger.info(
+			logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] Completed!`)
+		);
+	}
+
+	private async processQueue(
+		source: PageSource,
+		queue: ProcessingQueue,
+		type: UrlType,
+		id: number,
+		stop: AbortSignal,
+	): Promise<void> {
+		while (!stop.aborted) {
 			// do not take a URL, nor refill the queue, while the pause after HTTP 429 is active
 			await this.rateLimitGate.wait();
+			if (stop.aborted) {
+				break;
+			}
 
 			// fill queue
 			if (queue.size === 0) {
@@ -177,11 +201,6 @@ export class BandSpider {
 
 			await source.afterUrl();
 		}
-
-		await source.close();
-		logger.info(
-			logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] Completed!`)
-		);
 	}
 
 	private async processUrl(
