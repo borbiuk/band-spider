@@ -1,10 +1,10 @@
-import dns from 'dns/promises';
 import { Browser, HTTPResponse, LaunchOptions, Page } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
-import { delay, isAccountUrl, isItemUrl, isNullOrUndefined, logMessage } from '../common/utils';
+import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
+import { isAccountUrl, isItemUrl, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { BandSpiderOptions } from '../index';
 import { processAccount } from './account/account-handler';
@@ -16,6 +16,13 @@ export enum UrlType {
 	Item = 'item',
 }
 
+enum UrlResult {
+	Processed,
+	Failed,
+	/** Bandcamp answered HTTP 429: the URL is not counted as failed and is tried again after the pause. */
+	RateLimited,
+}
+
 // The page is replaced often to free the memory of the renderer, the whole browser rarely.
 const PAGE_RECREATE_INTERVAL = 1;
 const BROWSER_RELAUNCH_INTERVAL = 500;
@@ -25,10 +32,14 @@ export class BandSpider {
 		processed: 0,
 		skipped: 0,
 		failed: 0,
+		rateLimited: 0,
 		start: null
 	};
 
 	private database: BandDatabase;
+
+	// one pause for all workers after HTTP 429
+	private readonly rateLimitGate = new RateLimitGate();
 
 	public async run(
 		{
@@ -145,11 +156,8 @@ export class BandSpider {
 		while (true) {
 			i++;
 
-			// do not make a call if changing of IP is in progress
-			if (ProxyClient.initialize.isProcessing) {
-				await delay(2_000);
-				continue;
-			}
+			// do not take a URL, nor refill the queue, while the pause after HTTP 429 is active
+			await this.rateLimitGate.wait();
 
 			// fill queue
 			if (queue.size === 0) {
@@ -166,7 +174,7 @@ export class BandSpider {
 			}
 
 			// process
-			const isProcessed = await this.processUrl(
+			const result = await this.processUrl(
 				event,
 				page,
 				id,
@@ -177,8 +185,13 @@ export class BandSpider {
 			);
 
 			// update statistic
-			if (isProcessed) {
+			if (result === UrlResult.Processed) {
 				this.statistic.processed++;
+				this.rateLimitGate.reportSuccess();
+			} else if (result === UrlResult.RateLimited) {
+				this.statistic.rateLimited++;
+				// not lost: if the queue is full, the next refill from the DB picks it up
+				queue.enqueue(event.url);
 			} else {
 				this.statistic.failed++;
 			}
@@ -187,7 +200,7 @@ export class BandSpider {
 				logger.debug(
 					logMessage(
 						LogSource.Main,
-						`Processed: ${successColor(this.statistic.processed).padEnd(4)}; Failed: ${errorColor(this.statistic.failed).padEnd(4)}; Speed: ${speedColor((this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)).padEnd(4)}`
+						`Processed: ${successColor(this.statistic.processed).padEnd(4)}; Failed: ${errorColor(this.statistic.failed).padEnd(4)}; Rate limited: ${this.statistic.rateLimited}; Speed: ${speedColor((this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)).padEnd(4)}`
 							.padStart(240)
 					)
 				);
@@ -216,7 +229,7 @@ export class BandSpider {
 		page: Page,
 		pageIndex: number,
 		onNewUrls: (urls: string[]) => void,
-	): Promise<boolean> {
+	): Promise<UrlResult> {
 		try {
 			let processed = false;
 			if (event.type === UrlType.Account) {
@@ -234,8 +247,19 @@ export class BandSpider {
 				}
 				await this.database.item.updateBusy(event.id, false);
 			}
-			return processed;
+			return processed ? UrlResult.Processed : UrlResult.Failed;
 		} catch (error) {
+			// HTTP 429 is not a failure of the item: only release it, so it stays a candidate
+			if (error instanceof RateLimitedError) {
+				if (event.type === UrlType.Account) {
+					await this.database.account.updateBusy(event.id, false);
+				} else if (event.type === UrlType.Item) {
+					await this.database.item.updateBusy(event.id, false);
+				}
+				this.pauseOnRateLimit(error.url, error.retryAfter);
+				return UrlResult.RateLimited;
+			}
+
 			console.log('\n\n\n\n\n\n\n\nTHIS SHOULD NOT BE HERE !!!!\n\n\n\n\n\n\n\n\n\n\n\n\n\n')
 			let source: LogSource = LogSource.Unknown;
 			if (event.type === UrlType.Account) {
@@ -252,7 +276,7 @@ export class BandSpider {
 				logger.warn(
 					logMessage(source, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), event.url)
 				);
-				return true;
+				return UrlResult.Processed;
 			}
 
 			logger.error(
@@ -260,7 +284,18 @@ export class BandSpider {
 				logMessage(source, `[${pageIndex}] Processing failed: ${error.message}`, event.url)
 			);
 
-			return false;
+			return UrlResult.Failed;
+		}
+	}
+
+	/** Starts the shared pause and logs one line when a new pause starts. */
+	private pauseOnRateLimit(url: string, retryAfter?: string): void {
+		const pause = this.rateLimitGate.trip(retryAfter);
+		if (pause.started) {
+			logger.warn(
+				{ url, status: 429, retryAfter: retryAfter ?? null, pauseSeconds: Math.round(pause.pauseMs / 1000), level: pause.level },
+				logMessage(LogSource.Browser, 'HTTP 429, all workers paused')
+			);
 		}
 	}
 
@@ -356,19 +391,9 @@ export class BandSpider {
 			: pages[0];
 
 		// response handling
-		page.on('response', async (httpResponse: HTTPResponse) => {
-			if (httpResponse.status() !== 429) {
-				return;
-			}
-
-			try {
-				const url = new URL(httpResponse.url());
-				const { address } = await dns.lookup(url.hostname);
-				console.log('IP:' + address);
-
-				await ProxyClient.initialize.changeIp();
-			} catch (e) {
-				logger.error(e, logMessage(LogSource.Browser, 'IP error', httpResponse.url()))
+		page.on('response', (httpResponse: HTTPResponse) => {
+			if (httpResponse.status() === 429) {
+				this.pauseOnRateLimit(httpResponse.url(), httpResponse.headers()['retry-after']);
 			}
 		});
 

@@ -1,6 +1,7 @@
 import { Page } from 'puppeteer';
 import { accountColor, albumColor, dateColor, itemColor, logger, LogSource, tagColor } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
+import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { saveItemPageData } from './clients/item-db-client';
@@ -22,6 +23,9 @@ export async function processItem(
 	try {
 		itemPageData = await readItemPage(url, page);
 	} catch (e) {
+		if (e instanceof RateLimitedError) {
+			throw e;
+		}
 		logger.error(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${e.message}`.padEnd(61), url));
 		return false;
 	}
