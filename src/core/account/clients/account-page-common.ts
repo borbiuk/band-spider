@@ -1,6 +1,7 @@
 import { ApiRefusedError, asError } from '../../../common/errors';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isAccountUrl, isItemUrl, isNullOrUndefined, originalUrl } from '../../../common/utils';
+import { AccountScanMarks } from '../../../models/account-scan-marks';
 import { AccountTab } from '../../../models/account-tab';
 import { AccountPageData } from '../models/account-page-data';
 import { AccountTabData, defaultAccountTabData, errorAccountTabData } from '../models/account-tab-data';
@@ -83,6 +84,8 @@ export interface TabSource {
 	endpoint: string;
 	/** Field of an API record holding the URL. */
 	urlField: keyof FanRecord;
+	/** Key of the tab in the scan marks of an account. */
+	markKey: keyof AccountScanMarks;
 	isValidUrl: (url: string) => boolean;
 }
 
@@ -92,6 +95,7 @@ export const TAB_SOURCES: { [tab in AccountTab]: TabSource } = {
 		dataKey: 'collection_data',
 		endpoint: 'collection_items',
 		urlField: 'item_url',
+		markKey: 'collection',
 		isValidUrl: isItemUrl,
 	},
 	[AccountTab.Wishlist]: {
@@ -99,6 +103,7 @@ export const TAB_SOURCES: { [tab in AccountTab]: TabSource } = {
 		dataKey: 'wishlist_data',
 		endpoint: 'wishlist_items',
 		urlField: 'item_url',
+		markKey: 'wishlist',
 		isValidUrl: isItemUrl,
 	},
 	[AccountTab.Followers]: {
@@ -106,6 +111,7 @@ export const TAB_SOURCES: { [tab in AccountTab]: TabSource } = {
 		dataKey: 'followers_data',
 		endpoint: 'followers',
 		urlField: 'trackpipe_url',
+		markKey: 'followers',
 		isValidUrl: isAccountUrl,
 	},
 	[AccountTab.Following]: {
@@ -113,6 +119,7 @@ export const TAB_SOURCES: { [tab in AccountTab]: TabSource } = {
 		dataKey: 'following_fans_data',
 		endpoint: 'following_fans',
 		urlField: 'trackpipe_url',
+		markKey: 'following',
 		isValidUrl: isAccountUrl,
 	},
 };
@@ -124,16 +131,21 @@ export const TAB_SOURCES: { [tab in AccountTab]: TabSource } = {
  * @param url - URL of the account page.
  * @param blob - The parsed `#pagedata` blob.
  * @param requestApi - Sends one API request.
+ * @param marks - Where the last complete read of each tab began. A tab with a mark is read only up
+ * to the batch that holds it, because everything older was read then.
  */
 export async function buildAccountPageData(
 	url: string,
 	blob: FanPageBlob,
 	requestApi: ApiRequest,
+	marks: AccountScanMarks = {},
 ): Promise<AccountPageData> {
-	const collection = await readAccountTab(url, blob, AccountTab.Collection, requestApi);
-	const wishlist = await readAccountTab(url, blob, AccountTab.Wishlist, requestApi);
-	const following = await readAccountTab(url, blob, AccountTab.Following, requestApi);
-	const followers = await readAccountTab(url, blob, AccountTab.Followers, requestApi);
+	const read = (tab: AccountTab) => readAccountTab(url, blob, tab, requestApi, marks[TAB_SOURCES[tab].markKey]);
+
+	const collection = await read(AccountTab.Collection);
+	const wishlist = await read(AccountTab.Wishlist);
+	const following = await read(AccountTab.Following);
+	const followers = await read(AccountTab.Followers);
 
 	return {
 		url,
@@ -146,14 +158,16 @@ export async function buildAccountPageData(
 }
 
 /**
- * Collects every URL of the specified account tab: the batch embedded in the page, then the rest
- * from the API.
+ * Collects the URLs of the specified account tab: the batch embedded in the page, then the rest
+ * from the API. Bandcamp gives the newest records first, so the read stops after the batch that
+ * holds `mark`: the records after it were saved by the last complete read.
  */
 async function readAccountTab(
 	pageUrl: string,
 	blob: FanPageBlob,
 	tabType: AccountTab,
 	requestApi: ApiRequest,
+	mark?: string | null,
 ): Promise<AccountTabData> {
 	try {
 		const source: TabSource = TAB_SOURCES[tabType];
@@ -164,7 +178,11 @@ async function readAccountTab(
 		}
 
 		const embedded: string[] = readEmbeddedUrls(blob, source);
-		const { urls: fetched, refused } = await fetchRemainingUrls(blob, source, requestApi);
+		const markInEmbedded = holdsMark(embedded, mark);
+		const walk: ApiWalk = markInEmbedded
+			? { urls: [], refused: null, complete: true, stoppedAtMark: true }
+			: await fetchRemainingUrls(blob, source, requestApi, mark);
+		const { urls: fetched, refused } = walk;
 
 		// Keeping what arrived before the refusal would stamp a half-read account as processed.
 		if (refused?.status === 429) {
@@ -180,7 +198,13 @@ async function readAccountTab(
 			.map(x => originalUrl(x))
 			.filter(x => source.isValidUrl(x));
 
-		return { total, urls: [...new Set(urls)] };
+		return {
+			total,
+			urls: [...new Set(urls)],
+			// without a token to walk on, the tab is complete only when the page carries all of it
+			complete: walk.complete || embedded.length >= total,
+			...(walk.stoppedAtMark ? { stoppedAtMark: true } : {}),
+		};
 	} catch (e) {
 		if (e instanceof RateLimitedError || e instanceof ApiRefusedError) {
 			throw e;
@@ -203,47 +227,64 @@ function readEmbeddedUrls(blob: FanPageBlob, source: TabSource): string[] {
 		.filter((x: string) => !isNullOrUndefined(x));
 }
 
+/** Tells if a batch of record URLs holds the mark. URLs are compared without their query. */
+function holdsMark(urls: string[], mark?: string | null): boolean {
+	return !isNullOrUndefined(mark) && urls.some(x => originalUrl(x) === mark);
+}
+
+interface ApiWalk {
+	/** The URLs of the records after the embedded batch. */
+	urls: string[];
+	/** The answer that stopped the walk, when the API refused a request. */
+	refused: ApiAnswer | null;
+	/** The API reported the end of the tab, or a page held the mark. */
+	complete: boolean;
+	stoppedAtMark?: boolean;
+}
+
 /**
- * Walks the API from the token the page was rendered with until it runs out of pages.
- *
- * @returns The URLs of every record after the embedded batch, and the answer that stopped the walk.
+ * Walks the API from the token the page was rendered with until it runs out of pages, or until a
+ * page holds `mark`.
  */
 async function fetchRemainingUrls(
 	blob: FanPageBlob,
 	source: TabSource,
 	requestApi: ApiRequest,
-): Promise<{ urls: string[], refused: ApiAnswer | null }> {
+	mark?: string | null,
+): Promise<ApiWalk> {
 	const urls: string[] = [];
 
 	const fanId: number = blob.fan_data?.fan_id;
 	const firstToken: string = blob[source.dataKey]?.last_token;
 	if (isNullOrUndefined(fanId) || isNullOrUndefined(firstToken)) {
-		return { urls, refused: null };
+		return { urls, refused: null, complete: false };
 	}
 
 	let token: string = firstToken;
 	for (let i = 0; i < API_PAGE_LIMIT && !!token; i++) {
 		const answer = await requestApi(source.endpoint, { fan_id: fanId, older_than_token: token, count: API_PAGE_SIZE });
 		if (answer.status < 200 || answer.status >= 300) {
-			return { urls, refused: answer };
+			return { urls, refused: answer, complete: false };
 		}
 
 		const body = answer.body;
 
 		// Follower tabs answer with `followeers`, item tabs with `items`.
 		const records: FanRecord[] = body.followeers ?? body.items ?? [];
-		for (const record of records) {
-			if (record?.[source.urlField]) {
-				urls.push(record[source.urlField]);
-			}
+		const page: string[] = records.map(record => record?.[source.urlField]).filter(x => !!x);
+		urls.push(...page);
+
+		if (holdsMark(page, mark)) {
+			return { urls, refused: null, complete: true, stoppedAtMark: true };
 		}
 
 		// The token repeats itself once the last page is reached.
 		if (!body.more_available || !body.last_token || body.last_token === token) {
-			break;
+			return { urls, refused: null, complete: true };
 		}
 		token = body.last_token;
 	}
 
-	return { urls, refused: null };
+	// stopped by API_PAGE_LIMIT: the older records were not read
+	return { urls, refused: null, complete: false };
 }

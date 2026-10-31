@@ -1,5 +1,6 @@
 import { DataSource, EntityManager } from 'typeorm';
 import { AccountEntity } from './entities/account-entity';
+import { AccountScanEntity } from './entities/account-scan-entity';
 import { FollowerEntity } from './entities/follower-entity';
 import { ItemEntity } from './entities/item-entity';
 import { ItemToAccountEntity } from './entities/item-to-account-entity';
@@ -26,6 +27,15 @@ export interface DatabaseConfig {
 	/** Create or update the schema from the entities when the DB is opened. */
 	synchronize: boolean,
 }
+
+/**
+ * Tables added after the schema of existing DB files was made. `synchronize` is off for an existing
+ * file, so they are created here. The definitions are the same that TypeORM makes for a new file,
+ * so a later sync sees no difference; a test checks that.
+ */
+export const SCHEMA_ADDITIONS: string[] = [
+	'CREATE TABLE IF NOT EXISTS "account-scans" ("accountId" integer PRIMARY KEY NOT NULL, "collection" varchar(512), "wishlist" varchar(512), "followers" varchar(512), "following" varchar(512))',
+];
 
 /** The part of a better-sqlite3 connection that `prepareDatabase` uses. */
 interface SqliteConnection {
@@ -55,6 +65,7 @@ const createDataSource = ({ file, synchronize }: DatabaseConfig): DataSource => 
 	migrations: [],
 	entities: [
 		AccountEntity,
+		AccountScanEntity,
 		FollowerEntity,
 		ItemEntity,
 		ItemToAccountEntity,
@@ -87,9 +98,12 @@ export class BandDatabase {
 		this.superTag = new SuperTagRepository(manager);
 	}
 
-	/** Opens the SQLite file with the tuning pragmas and creates the schema if asked. */
+	/** Opens the SQLite file with the tuning pragmas, creates the schema if asked, and adds new tables. */
 	public static async open(config: DatabaseConfig): Promise<BandDatabase> {
 		const dataSource: DataSource = await createDataSource(config).initialize();
+		for (const statement of SCHEMA_ADDITIONS) {
+			await dataSource.query(statement);
+		}
 		return new BandDatabase(dataSource, dataSource.manager);
 	}
 

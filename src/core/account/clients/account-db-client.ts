@@ -32,6 +32,15 @@ export async function saveAccountPageData(
 		// Save that account was processed now
 		await transaction.account.updateProcessingDate(accountId);
 
+		// A tab read to its end (or to its mark) starts the next read: keep a URL of its newest batch.
+		// The marks of tabs that were not read to their end stay as they were.
+		await transaction.account.updateScanMarks(accountId, {
+			collection: scanMark(data.collection),
+			wishlist: scanMark(data.wishlist),
+			followers: scanMark(data.followers),
+			following: scanMark(data.following),
+		});
+
 		return {
 			collection,
 			wishlist,
@@ -119,3 +128,10 @@ async function readAndSaveAccountData(
 	};
 }
 
+/** The mark of a tab after this read: its first URL (from the newest batch), null when empty. */
+function scanMark(tab: AccountTabData): string | null | undefined {
+	if (!tab.complete) {
+		return undefined;
+	}
+	return tab.urls[0] ?? null;
+}

@@ -2,6 +2,7 @@ import type { Page } from 'puppeteer';
 import { PageNotFoundError } from '../../../common/errors';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isNullOrUndefined } from '../../../common/utils';
+import { AccountScanMarks } from '../../../models/account-scan-marks';
 import { AccountPageData } from '../models/account-page-data';
 import { ACCOUNT_SELECTORS, API_BASE, ApiAnswer, buildAccountPageData, FanPageBlob } from './account-page-common';
 
@@ -12,6 +13,7 @@ export const ACCOUNT_NAVIGATION_TIMEOUT_MS = 3_000;
 export async function readAccountPage(
 	url: string,
 	page: Page,
+	marks: AccountScanMarks = {},
 ): Promise<AccountPageData> {
 	const response = await page.goto(url, { timeout: ACCOUNT_NAVIGATION_TIMEOUT_MS, waitUntil: 'domcontentloaded' });
 	if (response?.status() === 429) {
@@ -23,7 +25,7 @@ export async function readAccountPage(
 		throw new PageNotFoundError();
 	}
 
-	return await buildAccountPageData(url, blob, (endpoint, body) => requestApi(page, endpoint, body));
+	return await buildAccountPageData(url, blob, (endpoint, body) => requestApi(page, endpoint, body), marks);
 }
 
 /**

@@ -45,6 +45,10 @@ npm run db:accounts:reverse
 npm run db:items:reverse
 ```
 
+When an account is read again, every tab that was read to its end before is read only up to its newest
+records from that read: Bandcamp lists the newest records first, so the older ones are saved already. The app keeps
+these marks in the `account-scans` table; a tab without a mark (or whose marked record is gone) is read in full.
+
 To link tags to super tags:
 
 ```shell

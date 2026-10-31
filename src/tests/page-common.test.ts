@@ -167,10 +167,10 @@ describe('buildAccountPageData', () => {
 
 		assert.deepEqual(data, {
 			url: fanUrl,
-			collection: { total: 0, urls: [] },
-			wishlist: { total: 0, urls: [] },
-			following: { total: 0, urls: [] },
-			followers: { total: 0, urls: [] },
+			collection: { total: 0, urls: [], complete: true },
+			wishlist: { total: 0, urls: [], complete: true },
+			following: { total: 0, urls: [], complete: true },
+			followers: { total: 0, urls: [], complete: true },
 			errors: [],
 		});
 		assert.equal(calls.length, 0);
@@ -197,6 +197,7 @@ describe('buildAccountPageData', () => {
 		assert.deepEqual(data.collection, {
 			total: 5,
 			urls: ['https://x.bandcamp.com/album/one', 'https://x.bandcamp.com/track/two', 'https://y.bandcamp.com/album/three'],
+			complete: true,
 		});
 		assert.deepEqual(calls, [
 			{ endpoint: 'collection_items', body: { fan_id: 7, older_than_token: 't0', count: 20 } },
@@ -248,8 +249,8 @@ describe('buildAccountPageData', () => {
 
 		const data = await buildAccountPageData(fanUrl, blob, requestApi);
 
-		assert.deepEqual(data.followers, { total: 3, urls: ['https://bandcamp.com/one', 'https://bandcamp.com/three'] });
-		assert.deepEqual(data.following, { total: 1, urls: ['https://bandcamp.com/two'] }, 'no token: only the embedded batch');
+		assert.deepEqual(data.followers, { total: 3, urls: ['https://bandcamp.com/one', 'https://bandcamp.com/three'], complete: true });
+		assert.deepEqual(data.following, { total: 1, urls: ['https://bandcamp.com/two'], complete: true }, 'no token: only the embedded batch, which is all of it');
 		assert.deepEqual(calls.map(x => x.endpoint), ['followers']);
 	});
 
@@ -264,7 +265,7 @@ describe('buildAccountPageData', () => {
 
 		const data = await buildAccountPageData(fanUrl, blob, requestApi);
 
-		assert.deepEqual(data.collection, { total: 2, urls: ['https://x.bandcamp.com/album/one'] });
+		assert.deepEqual(data.collection, { total: 2, urls: ['https://x.bandcamp.com/album/one'], complete: false }, 'one of two read: not complete');
 		assert.equal(calls.length, 0);
 	});
 
@@ -313,8 +314,8 @@ describe('buildAccountPageData', () => {
 
 		const data = await buildAccountPageData(fanUrl, blob, requestApi);
 
-		assert.deepEqual(data.collection, { total: 0, urls: [], error: boom });
-		assert.deepEqual(data.wishlist, { total: 1, urls: ['https://x.bandcamp.com/album/w'] });
+		assert.deepEqual(data.collection, { total: 0, urls: [], complete: false, error: boom });
+		assert.deepEqual(data.wishlist, { total: 1, urls: ['https://x.bandcamp.com/album/w'], complete: true });
 		assert.deepEqual(data.errors, [boom]);
 	});
 });
@@ -338,3 +339,75 @@ describe('page selectors', () => {
 		assert.deepEqual(ACCOUNT_SELECTORS, { pageBlob: '#pagedata' });
 	});
 });
+
+describe('buildAccountPageData with scan marks', () => {
+	const fanUrl = 'https://bandcamp.com/fan';
+	const album = (n: number) => `https://x.bandcamp.com/album/a${n}`;
+
+	// collection: 2 records in the page, then 3 API pages of 2 records each (a2..a7)
+	const blob = () => ({
+		...emptyBlob(),
+		collection_data: tab(8, 't0'),
+		item_cache: { collection: { a: { item_url: album(0) }, b: { item_url: album(1) + '?from=fan' } } },
+	});
+	const pages = () => fakeApi((_call, i) => ({
+		status: 200,
+		body: { items: [{ item_url: album(2 + 2 * i) }, { item_url: album(3 + 2 * i) }], more_available: i < 2, last_token: `t${i + 1}` },
+	}));
+
+	it('reads the whole tab without a mark', async () => {
+		const { calls, requestApi } = pages();
+		const data = await buildAccountPageData(fanUrl, blob(), requestApi);
+
+		assert.equal(calls.length, 3);
+		assert.equal(data.collection.urls.length, 8);
+		assert.equal(data.collection.complete, true);
+		assert.equal(data.collection.stoppedAtMark, undefined);
+	});
+
+	it('makes no API call when the page batch holds the mark (compared without the query)', async () => {
+		const { calls, requestApi } = pages();
+		const data = await buildAccountPageData(fanUrl, blob(), requestApi, { collection: album(1) });
+
+		assert.equal(calls.length, 0);
+		assert.deepEqual(data.collection, { total: 8, urls: [album(0), album(1)], complete: true, stoppedAtMark: true });
+	});
+
+	it('stops after the API page that holds the mark', async () => {
+		const { calls, requestApi } = pages();
+		const data = await buildAccountPageData(fanUrl, blob(), requestApi, { collection: album(5) });
+
+		assert.equal(calls.length, 2, 'the third page is not requested');
+		assert.deepEqual(data.collection.urls, [0, 1, 2, 3, 4, 5].map(album));
+		assert.equal(data.collection.complete, true);
+		assert.equal(data.collection.stoppedAtMark, true);
+	});
+
+	it('reads the whole tab when the mark is gone, for example a hidden item', async () => {
+		const { calls, requestApi } = pages();
+		const data = await buildAccountPageData(fanUrl, blob(), requestApi, { collection: 'https://x.bandcamp.com/album/gone' });
+
+		assert.equal(calls.length, 3);
+		assert.equal(data.collection.complete, true);
+		assert.equal(data.collection.stoppedAtMark, undefined);
+	});
+
+	it('uses the mark of each tab only for that tab', async () => {
+		const { calls, requestApi } = pages();
+		await buildAccountPageData(fanUrl, blob(), requestApi, { wishlist: album(0), followers: album(1), following: null });
+
+		assert.equal(calls.length, 3, 'the collection has no mark, so it is read to its end');
+	});
+
+	it('is not complete when the walk ends at API_PAGE_LIMIT', async () => {
+		const endless = fakeApi((_call, i) => ({
+			status: 200,
+			body: { items: [{ item_url: `https://x.bandcamp.com/track/${i}` }], more_available: true, last_token: `t${i + 1}` },
+		}));
+		const data = await buildAccountPageData(fanUrl, { ...emptyBlob(), collection_data: tab(100_000, 't0') }, endless.requestApi);
+
+		assert.equal(endless.calls.length, API_PAGE_LIMIT);
+		assert.equal(data.collection.complete, false);
+	});
+});
+

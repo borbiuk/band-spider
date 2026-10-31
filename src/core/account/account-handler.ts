@@ -18,10 +18,13 @@ export async function processAccount(
 	onNewUrls: (urls: string[]) => void = () => { },
 ): Promise<boolean> {
 
+	// tabs that were read to their end before are read only up to their newest records
+	const marks = await database.account.getScanMarks(id);
+
 	// read data from the page
 	let accountPageData: AccountPageData
 	try {
-		accountPageData = await reader.readAccountPage(url);
+		accountPageData = await reader.readAccountPage(url, marks);
 	} catch (e) {
 		if (e instanceof RateLimitedError) {
 			throw e;
@@ -40,6 +43,10 @@ export async function processAccount(
 	}
 
 	logAccountPageStatistic(url, pageIndex, accountPageStatistic);
+	const stopped = (['collection', 'wishlist', 'followers', 'following'] as const).filter(tab => accountPageData[tab].stoppedAtMark);
+	if (stopped.length !== 0) {
+		logger.debug(logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Read up to the saved records: ${stopped.join(', ')}`, url));
+	}
 	onNewUrls([
 		...accountPageStatistic.collection.newUrls,
 		...accountPageStatistic.wishlist.newUrls,

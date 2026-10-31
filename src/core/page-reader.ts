@@ -1,5 +1,6 @@
 import type { Page } from 'puppeteer';
 import { HttpClient } from '../common/http-client';
+import { AccountScanMarks } from '../models/account-scan-marks';
 import { AccountPageData } from './account/models/account-page-data';
 import { readAccountPage } from './account/clients/account-browser-reader';
 import { readAccountPageByFetch } from './account/clients/account-http-reader';
@@ -10,7 +11,8 @@ import { ItemPageData } from './item/models/item-page-data';
 /** Reads the data of Bandcamp pages. The handlers do not care how the page is loaded. */
 export interface PageReader {
 	readItemPage(url: string): Promise<ItemPageData>;
-	readAccountPage(url: string): Promise<AccountPageData>;
+	/** @param marks - Where the last complete read of each tab began; see `buildAccountPageData`. */
+	readAccountPage(url: string, marks?: AccountScanMarks): Promise<AccountPageData>;
 }
 
 /** Plain HTTP requests, no browser. The default. */
@@ -22,8 +24,8 @@ export class FetchPageReader implements PageReader {
 		return readItemPageByFetch(url, this.http);
 	}
 
-	public readAccountPage(url: string): Promise<AccountPageData> {
-		return readAccountPageByFetch(url, this.http);
+	public readAccountPage(url: string, marks?: AccountScanMarks): Promise<AccountPageData> {
+		return readAccountPageByFetch(url, this.http, marks);
 	}
 }
 
@@ -41,8 +43,8 @@ export class BrowserPageReader implements PageReader {
 		return readItemPage(url, this.page);
 	}
 
-	public readAccountPage(url: string): Promise<AccountPageData> {
-		return readAccountPage(url, this.page);
+	public readAccountPage(url: string, marks?: AccountScanMarks): Promise<AccountPageData> {
+		return readAccountPage(url, this.page, marks);
 	}
 }
 
