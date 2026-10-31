@@ -12,7 +12,6 @@ import { BrowserPageSource, BrowserPool } from './browser/browser-page-source';
 import { processItem } from './item/item-handler';
 import { FetchPageReader, PageReader, PageSource } from './page-reader';
 import { ProcessingQueue, QueueEvent } from './processing-queue';
-import { ProxyClient } from './proxy/proxy-client';
 
 /** What `processUrl` needs to process one URL type. */
 interface UrlTypeHandler {
@@ -70,9 +69,6 @@ export class BandSpider {
 			this.database
 		);
 		logger.debug('Queue ready!');
-
-		// change IP
-		await ProxyClient.initialize.changeIp(true);
 
 		const createSource = browser
 			? this.createBrowserSourceFactory(headless, docker)
