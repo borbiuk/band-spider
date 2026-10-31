@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ACCOUNT_NAVIGATION_TIMEOUT_MS } from '../core/account/clients/account-page-client';
+import { ACCOUNT_NAVIGATION_TIMEOUT_MS } from '../core/account/clients/account-browser-reader';
 import {
 	BROWSER_RELAUNCH_INTERVAL,
 	BROWSERLESS_ENDPOINT,
@@ -8,7 +8,7 @@ import {
 	PAGE_RECREATE_INTERVAL,
 	shouldBlock,
 } from '../core/browser/browser-page-source';
-import { ITEM_NAVIGATION_TIMEOUT_MS } from '../core/item/clients/item-page-client';
+import { ITEM_NAVIGATION_TIMEOUT_MS } from '../core/item/clients/item-browser-reader';
 
 const request = (resourceType: string, method: string, url: string) => ({
 	resourceType: () => resourceType,

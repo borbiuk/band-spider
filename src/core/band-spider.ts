@@ -308,7 +308,7 @@ export class BandSpider {
 	): Promise<void> {
 		let urls: string[] = await this.getInitialUrlsToProcess(type);
 		if (urls.length !== 0) {
-			await queue.enqueueButch(urls);
+			await queue.enqueueBatch(urls);
 		}
 	}
 

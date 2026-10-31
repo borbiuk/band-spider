@@ -62,12 +62,12 @@ describe('ProcessingQueue', () => {
 		assert.equal(queue.size, 500);
 	});
 
-	it('enqueueButch is refused only when the queue is already full', () => {
+	it('enqueueBatch is refused only when the queue is already full', () => {
 		const queue = new ProcessingQueue([], createDatabase().database, 3);
 
-		assert.equal(queue.enqueueButch([album(1), 'bad', album(2), album(3), album(4)]), true);
+		assert.equal(queue.enqueueBatch([album(1), 'bad', album(2), album(3), album(4)]), true);
 		assert.equal(queue.size, 3, 'stops adding at the capacity');
-		assert.equal(queue.enqueueButch([album(5)]), false);
+		assert.equal(queue.enqueueBatch([album(5)]), false);
 	});
 
 	it('dequeue returns null for an empty queue', async () => {

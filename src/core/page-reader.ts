@@ -1,10 +1,10 @@
 import type { Page } from 'puppeteer';
 import { HttpClient } from '../common/http-client';
 import { AccountPageData } from './account/models/account-page-data';
-import { readAccountPageByFetch } from './account/clients/account-fetch-client';
-import { readAccountPage } from './account/clients/account-page-client';
-import { readItemPageByFetch } from './item/clients/item-fetch-client';
-import { readItemPage } from './item/clients/item-page-client';
+import { readAccountPage } from './account/clients/account-browser-reader';
+import { readAccountPageByFetch } from './account/clients/account-http-reader';
+import { readItemPage } from './item/clients/item-browser-reader';
+import { readItemPageByFetch } from './item/clients/item-http-reader';
 import { ItemPageData } from './item/models/item-page-data';
 
 /** Reads the data of Bandcamp pages. The handlers do not care how the page is loaded. */
