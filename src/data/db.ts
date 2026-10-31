@@ -17,6 +17,7 @@ import { TagRepository } from './repositories/tag-repository';
 // With synchronous NORMAL the last commits can be lost on power loss, but the DB is not corrupted.
 const SQLITE_BUSY_TIMEOUT_MS = 5000;
 const SQLITE_CACHE_SIZE_KB = 512 * 1024;
+// SQLite clamps this to its compile-time MAX_MMAP_SIZE, which is about 2 GB in better-sqlite3.
 const SQLITE_MMAP_SIZE_BYTES = 8 * 1024 * 1024 * 1024;
 
 export interface DatabaseConfig {
@@ -26,11 +27,30 @@ export interface DatabaseConfig {
 	synchronize: boolean,
 }
 
+/** The part of a better-sqlite3 connection that `prepareDatabase` uses. */
+interface SqliteConnection {
+	pragma(source: string): unknown;
+}
+
+/**
+ * Sets the tuning pragmas on the raw connection. TypeORM calls it right after it opens the file, so
+ * they apply to everything after, also to the schema sync of a new DB. `journal_mode = WAL` comes
+ * from `enableWAL` and `busy_timeout` from `timeout`.
+ */
+const prepareDatabase = (connection: SqliteConnection): void => {
+	connection.pragma('synchronous = NORMAL');
+	connection.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KB}`);
+	connection.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
+	connection.pragma('temp_store = MEMORY');
+};
+
 const createDataSource = ({ file, synchronize }: DatabaseConfig): DataSource => new DataSource({
 	type: 'better-sqlite3',
 	database: file,
 	synchronize,
 	enableWAL: true,
+	timeout: SQLITE_BUSY_TIMEOUT_MS,
+	prepareDatabase,
 	logging: false,
 	migrations: [],
 	entities: [
@@ -44,15 +64,6 @@ const createDataSource = ({ file, synchronize }: DatabaseConfig): DataSource => 
 		TagToSuperTagEntity,
 	]
 });
-
-const applyPragmas = async (dataSource: DataSource): Promise<void> => {
-	await dataSource.query('PRAGMA journal_mode = WAL');
-	await dataSource.query('PRAGMA synchronous = NORMAL');
-	await dataSource.query(`PRAGMA cache_size = -${SQLITE_CACHE_SIZE_KB}`);
-	await dataSource.query(`PRAGMA mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
-	await dataSource.query('PRAGMA temp_store = MEMORY');
-	await dataSource.query(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
-};
 
 /**
  * The database of the app. The entry point opens it once and passes it to the code that needs it.
@@ -76,10 +87,9 @@ export class BandDatabase {
 		this.superTag = new SuperTagRepository(manager);
 	}
 
-	/** Opens the SQLite file, creates the schema if asked, and applies the pragmas. */
+	/** Opens the SQLite file with the tuning pragmas and creates the schema if asked. */
 	public static async open(config: DatabaseConfig): Promise<BandDatabase> {
 		const dataSource: DataSource = await createDataSource(config).initialize();
-		await applyPragmas(dataSource);
 		return new BandDatabase(dataSource, dataSource.manager);
 	}
 
