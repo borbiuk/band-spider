@@ -2,10 +2,14 @@
 	"name": "band-spider",
 	"version": "1.0.0",
 	"description": "",
-	"main": "index.js",
+	"private": true,
+	"main": "dist/index.js",
 	"type": "commonjs",
+	"engines": {
+		"node": "^22.13.0 || >=24.11.0"
+	},
 	"scripts": {
-		"build": "rm -rf dist && npx tsc",
+		"build": "rm -rf dist && tsc",
 		"db:accounts": "npm run build && node ./dist/index.js --headless --account",
 		"db:items": "npm run build && node ./dist/index.js --headless",
 		"db:accounts:browser": "npm run build && node ./dist/index.js --headless --account --browser",
@@ -27,17 +31,21 @@
 		"cli-color": "2.0.4",
 		"fuse.js": "7.5.0",
 		"pino": "10.4.0",
+		"pino-pretty": "13.2.0",
 		"puppeteer": "25.16.0",
 		"puppeteer-extra": "3.3.6",
 		"puppeteer-extra-plugin-stealth": "2.11.2",
+		"reflect-metadata": "0.2.2",
 		"typeorm": "1.1.2"
 	},
 	"devDependencies": {
 		"@types/cli-color": "2.0.6",
 		"@types/node": "26.6.6",
-		"@types/pino-pretty": "5.0.0",
-		"@types/puppeteer": "7.0.4",
-		"pino-pretty": "13.2.0",
 		"typescript": "7.0.2"
+	},
+	"overrides": {
+		"typeorm": {
+			"better-sqlite3": "$better-sqlite3"
+		}
 	}
 }
