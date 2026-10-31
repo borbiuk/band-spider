@@ -1,4 +1,4 @@
-import { Page } from 'puppeteer';
+import type { Page } from 'puppeteer';
 import { isAlbumUrl, isTrackUrl } from '../../../common/utils';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { ProxyClient } from '../../proxy/proxy-client';

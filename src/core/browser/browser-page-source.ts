@@ -1,6 +1,5 @@
-import { Browser, HTTPResponse, LaunchOptions, Page } from 'puppeteer';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import type { Browser, HTTPResponse, LaunchOptions, Page } from 'puppeteer';
+import type { PuppeteerExtra } from 'puppeteer-extra';
 import { logger, LogSource } from '../../common/logger';
 import { isNullOrUndefined, logMessage } from '../../common/utils';
 import { BrowserPageReader, PageSource } from '../page-reader';
@@ -11,6 +10,26 @@ export const BROWSERLESS_ENDPOINT = 'ws://localhost:3000';
 // The page is replaced often to free the memory of the renderer, the whole browser rarely.
 export const PAGE_RECREATE_INTERVAL = 1;
 export const BROWSER_RELAUNCH_INTERVAL = 500;
+
+let puppeteerWithStealth: Promise<PuppeteerExtra> | undefined;
+
+/**
+ * Loads Puppeteer and registers the stealth plugin, once. The packages are loaded on first use, so
+ * the HTTP mode does not load Puppeteer at all.
+ */
+const loadPuppeteer = (): Promise<PuppeteerExtra> => {
+	puppeteerWithStealth ??= (async () => {
+		const extra = await import('puppeteer-extra');
+		const stealth = await import('puppeteer-extra-plugin-stealth');
+
+		// `puppeteer-extra` is CommonJS: `import()` wraps its `module.exports` in `default`. The types
+		// describe the ES module shape, so the cast is needed.
+		const puppeteer = extra.default as unknown as PuppeteerExtra;
+		puppeteer.use(stealth.default());
+		return puppeteer;
+	})();
+	return puppeteerWithStealth;
+};
 
 /** Command line flags of a locally launched Chrome. */
 export const CHROME_ARGS: string[] = [
@@ -78,15 +97,13 @@ export interface BrowserPoolOptions {
 }
 
 /**
- * The browsers of all workers, one per worker id. Creating the pool registers the stealth plugin
- * and closes all browsers on SIGINT.
+ * The browsers of all workers, one per worker id. Creating the pool sets up closing all browsers on
+ * SIGINT. Puppeteer with the stealth plugin is loaded before the first browser starts.
  */
 export class BrowserPool {
 	private readonly browsers: { [id: number]: Browser } = {};
 
 	constructor(private readonly options: BrowserPoolOptions) {
-		puppeteer.use(StealthPlugin());
-
 		// configure browsers closing on exit
 		process.on('SIGINT', async () => {
 			await Promise.allSettled(Object.values(this.browsers).map(x => x.close()));
@@ -138,6 +155,8 @@ export class BrowserPool {
 	}
 
 	private async getBrowser(): Promise<Browser> {
+		const puppeteer = await loadPuppeteer();
+
 		if (this.options.docker) {
 			return await puppeteer.connect({
 				browserWSEndpoint: BROWSERLESS_ENDPOINT,

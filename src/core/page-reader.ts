@@ -1,4 +1,4 @@
-import { Page } from 'puppeteer';
+import type { Page } from 'puppeteer';
 import { HttpClient } from '../common/http-client';
 import { AccountPageData } from './account/models/account-page-data';
 import { readAccountPageByFetch } from './account/clients/account-fetch-client';
