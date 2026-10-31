@@ -9,7 +9,7 @@ import { saveAccountPageData } from '../core/account/clients/account-db-client';
 import { AccountPageData } from '../core/account/models/account-page-data';
 import { saveItemPageData } from '../core/item/clients/item-db-client';
 import { ItemPageData } from '../core/item/models/item-page-data';
-import { BandDatabase } from '../data/db';
+import { BandDatabase, SCHEMA_ADDITIONS } from '../data/db';
 
 // tests run from `dist/tests`, the fixtures stay in `src/tests/fixtures`
 const SCHEMA_FIXTURE = path.join(__dirname, '../../src/tests/fixtures/schema.json');
@@ -74,6 +74,31 @@ describe('reopening an existing file', () => {
 				['wal', 1, -512 * 1024, 2, 5000, 2147418112],
 			);
 			assert.equal((await reopened.query('SELECT COUNT(*) AS n FROM items'))[0].n, 0);
+		} finally {
+			await reopened.close();
+		}
+	});
+});
+
+describe('schema additions', () => {
+	it('creates account-scans in an existing file the same way a new file gets it', async () => {
+		const file = path.join(tempDir, 'old-schema.sqlite');
+		const created = await BandDatabase.open({ file, synchronize: true });
+		const fresh = (await created.query("SELECT sql FROM sqlite_master WHERE name = 'account-scans'"))[0].sql;
+		// an existing file from before the table existed
+		await created.query('DROP TABLE "account-scans"');
+		await created.close();
+
+		const reopened = await BandDatabase.open({ file, synchronize: false });
+		try {
+			const added = (await reopened.query("SELECT sql FROM sqlite_master WHERE name = 'account-scans'"))[0].sql;
+			assert.equal(added, fresh);
+			assert.equal(SCHEMA_ADDITIONS.length, 1);
+
+			// TypeORM would change nothing in this file
+			const pending = await (reopened as unknown as { dataSource: { driver: { createSchemaBuilder(): { log(): Promise<{ upQueries: unknown[] }> } } } })
+				.dataSource.driver.createSchemaBuilder().log();
+			assert.deepEqual(pending.upQueries, []);
 		} finally {
 			await reopened.close();
 		}
@@ -349,6 +374,28 @@ describe('saveItemPageData', () => {
 	});
 });
 
+describe('scan marks', () => {
+	it('are empty for an account that was never read', async () => {
+		const { entity } = await db.account.insert('https://bandcamp.com/marks-new');
+		assert.deepEqual(await db.account.getScanMarks(entity.id), {});
+	});
+
+	it('change only the tabs that are given', async () => {
+		const { entity } = await db.account.insert('https://bandcamp.com/marks-update');
+
+		await db.account.updateScanMarks(entity.id, { collection: 'https://x.bandcamp.com/album/a', wishlist: null });
+		await db.account.updateScanMarks(entity.id, { collection: undefined, followers: 'https://bandcamp.com/f' });
+		await db.account.updateScanMarks(entity.id, {});
+
+		assert.deepEqual(await db.account.getScanMarks(entity.id), {
+			collection: 'https://x.bandcamp.com/album/a',
+			wishlist: null,
+			followers: 'https://bandcamp.com/f',
+			following: null,
+		});
+	});
+});
+
 describe('saveAccountPageData', () => {
 	const items = ['https://acc.bandcamp.com/album/one', 'https://acc.bandcamp.com/track/two'];
 	const follower = 'https://bandcamp.com/acc-follower';
@@ -356,10 +403,11 @@ describe('saveAccountPageData', () => {
 
 	const pageData = (url: string): AccountPageData => ({
 		url,
-		collection: { total: 3, urls: items },
-		wishlist: { total: 1, urls: [items[1]] },
-		followers: { total: 1, urls: [follower] },
-		following: { total: 2, urls: [followed] },
+		// collection and following were not read to their end
+		collection: { total: 3, urls: items, complete: false },
+		wishlist: { total: 1, urls: [items[1]], complete: true },
+		followers: { total: 1, urls: [follower], complete: true },
+		following: { total: 2, urls: [followed], complete: false },
 		errors: [],
 	});
 
@@ -394,6 +442,13 @@ describe('saveAccountPageData', () => {
 
 		const row = (await query('SELECT lastProcessingDate FROM accounts WHERE id = ?', [account.id]))[0];
 		assert.ok(row.lastProcessingDate !== null);
+
+		assert.deepEqual(await db.account.getScanMarks(account.id), {
+			collection: null,
+			wishlist: items[1],
+			followers: follower,
+			following: null,
+		}, 'only the tabs read to their end get a mark');
 	});
 
 	it('finds nothing new when the same page is saved again', async () => {

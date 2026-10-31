@@ -212,7 +212,7 @@ describe('account reader', () => {
 			'https://x.bandcamp.com/album/two',
 			'https://x.bandcamp.com/track/three',
 		]);
-		assert.deepEqual(data.followers, { total: 0, urls: [] });
+		assert.deepEqual(data.followers, { total: 0, urls: [], complete: true });
 		assert.equal(calls[0].url, '/api/fancollection/1/collection_items');
 		assert.equal(calls[0].count, 20);
 		assert.equal(calls[0].fan_id, 7);

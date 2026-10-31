@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import { PageNotFoundError } from '../../../common/errors';
 import { getPageHtml, HttpClient } from '../../../common/http-client';
 import { isNullOrUndefined } from '../../../common/utils';
+import { AccountScanMarks } from '../../../models/account-scan-marks';
 import { AccountPageData } from '../models/account-page-data';
 import { ACCOUNT_SELECTORS, API_BASE, buildAccountPageData, FanPageBlob } from './account-page-common';
 
@@ -14,6 +15,7 @@ import { ACCOUNT_SELECTORS, API_BASE, buildAccountPageData, FanPageBlob } from '
 export async function readAccountPageByFetch(
 	url: string,
 	http: HttpClient,
+	marks: AccountScanMarks = {},
 ): Promise<AccountPageData> {
 	const html = await getPageHtml(http, url);
 
@@ -28,7 +30,7 @@ export async function readAccountPageByFetch(
 			status: answer.status,
 			body: answer.status >= 200 && answer.status < 300 ? JSON.parse(answer.body) : undefined,
 		};
-	});
+	}, marks);
 }
 
 /** Reads the JSON blob the page embeds for its own front-end. Null when the page carries none. */

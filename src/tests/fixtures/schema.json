@@ -7,6 +7,12 @@
 	},
 	{
 		"type": "table",
+		"name": "account-scans",
+		"tbl_name": "account-scans",
+		"sql": "CREATE TABLE \"account-scans\" (\"accountId\" integer PRIMARY KEY NOT NULL, \"collection\" varchar(512), \"wishlist\" varchar(512), \"followers\" varchar(512), \"following\" varchar(512))"
+	},
+	{
+		"type": "table",
 		"name": "accounts",
 		"tbl_name": "accounts",
 		"sql": "CREATE TABLE \"accounts\" (\"id\" integer PRIMARY KEY AUTOINCREMENT NOT NULL, \"url\" varchar(512) NOT NULL, \"lastProcessingDate\" date, \"isBusy\" boolean NOT NULL DEFAULT (0), \"failedCount\" integer NOT NULL DEFAULT (0), CONSTRAINT \"UQ_552c1c20aa3547ce59bec7abba4\" UNIQUE (\"url\"))"

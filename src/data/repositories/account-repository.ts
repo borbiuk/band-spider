@@ -1,7 +1,9 @@
 import { EntityManager, IsNull, LessThan, Or } from 'typeorm';
 import { chunk, isNullOrUndefined } from '../../common/utils';
+import { AccountScanMarks } from '../../models/account-scan-marks';
 import { InsertResult } from '../../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
+import { AccountScanEntity } from '../entities/account-scan-entity';
 import { FollowerEntity } from '../entities/follower-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 import { insertRelation, insertUnique } from './insert-helpers';
@@ -117,6 +119,29 @@ export class AccountRepository {
 	public async addFollower(followedId: number, followerId: number): Promise<boolean> {
 		return await insertRelation(this.manager.getRepository(FollowerEntity), { followedId, followerId }, { lostRace: true });
 	};
+
+	/** The marks of the last complete read of each tab; empty when the account was never read. */
+	public async getScanMarks(accountId: number): Promise<AccountScanMarks> {
+		const row = await this.manager.getRepository(AccountScanEntity).findOne({ where: { accountId } });
+		if (isNullOrUndefined(row)) {
+			return {};
+		}
+
+		const { collection, wishlist, followers, following } = row;
+		return { collection, wishlist, followers, following };
+	}
+
+	/** Stores the marks of the tabs that were read to their end; other tabs keep their marks. */
+	public async updateScanMarks(accountId: number, marks: AccountScanMarks): Promise<void> {
+		const changed = Object.fromEntries(Object.entries(marks).filter(([, value]) => value !== undefined));
+		if (Object.keys(changed).length === 0) {
+			return;
+		}
+
+		const repository = this.manager.getRepository(AccountScanEntity);
+		const existing = await repository.findOne({ where: { accountId } });
+		await repository.save({ ...existing, ...changed, accountId });
+	}
 
 	public async resetAllBusy(): Promise<void> {
 		await this.manager.getRepository(AccountEntity)
