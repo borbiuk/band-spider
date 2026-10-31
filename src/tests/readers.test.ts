@@ -237,7 +237,8 @@ describe('http client', () => {
 		handler = () => ({ status: 200 });
 		const sleeps: number[] = [];
 		let time = 1_000;
-		const gate = new RateLimitGate({ now: () => time, sleep: async ms => { sleeps.push(ms); time += ms; } });
+		// no jitter: a random pause made the clock fractional and the sum below inexact
+		const gate = new RateLimitGate({ now: () => time, random: () => 0, sleep: async ms => { sleeps.push(ms); time += ms; } });
 		gate.trip('2');
 
 		const client = new HttpClient(gate, {
@@ -255,5 +256,45 @@ describe('http client', () => {
 		sleeps.length = 0;
 		await client.get('https://x.bandcamp.com/b');
 		assert.deepEqual(sleeps, [1_000], 'waited min + jitter (500 + 0.5 * 1000)');
+	});
+
+	it('cancels a request that takes longer than the timeout', async () => {
+		const waitForAbort: typeof fetch = (_input, init) => new Promise<Response>((_resolve, reject) => {
+			init.signal.addEventListener('abort', () => reject(init.signal.reason));
+		});
+		const client = new HttpClient(new RateLimitGate(), { fetchFn: waitForAbort, minDelayMs: 0, maxDelayMs: 0, timeoutMs: 50 });
+
+		await assert.rejects(client.get('https://x.bandcamp.com/slow'), { name: 'TimeoutError' });
+	});
+
+	it('sends browser headers on GET and JSON headers on POST', async () => {
+		const seen: { method: string, headers: http.IncomingHttpHeaders, body: string }[] = [];
+		handler = (req, body) => {
+			seen.push({ method: req.method, headers: req.headers, body });
+			return { status: 200, body: 'ok' };
+		};
+		const client = createClient();
+
+		assert.deepEqual(await client.get('https://x.bandcamp.com/a'), { status: 200, body: 'ok' });
+		await client.postJson('https://x.bandcamp.com/api', { a: 1 });
+
+		const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+		const [get, post] = seen;
+		assert.equal(get.method, 'GET');
+		assert.equal(get.headers['user-agent'], userAgent);
+		assert.equal(get.headers['accept-language'], 'en-US,en;q=0.9');
+		assert.equal(get.headers['accept'], 'text/html,application/xhtml+xml');
+		assert.equal(get.headers['cookie'], undefined);
+		assert.equal(post.method, 'POST');
+		assert.equal(post.headers['user-agent'], userAgent);
+		assert.equal(post.headers['accept'], 'application/json');
+		assert.equal(post.headers['content-type'], 'application/json');
+		assert.equal(post.body, '{"a":1}');
+	});
+
+	it('returns other statuses as they are', async () => {
+		handler = () => ({ status: 503, body: 'down' });
+
+		assert.deepEqual(await createClient().get('https://x.bandcamp.com/a'), { status: 503, body: 'down' });
 	});
 });

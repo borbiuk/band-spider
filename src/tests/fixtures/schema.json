@@ -1,0 +1,56 @@
+[
+	{
+		"type": "index",
+		"name": "IDX_829d66d4947b53d10d511e80f4",
+		"tbl_name": "items",
+		"sql": "CREATE INDEX \"IDX_829d66d4947b53d10d511e80f4\" ON \"items\" (\"albumId\") "
+	},
+	{
+		"type": "table",
+		"name": "accounts",
+		"tbl_name": "accounts",
+		"sql": "CREATE TABLE \"accounts\" (\"id\" integer PRIMARY KEY AUTOINCREMENT NOT NULL, \"url\" varchar(512) NOT NULL, \"lastProcessingDate\" date, \"isBusy\" boolean NOT NULL DEFAULT (0), \"failedCount\" integer NOT NULL DEFAULT (0), CONSTRAINT \"UQ_552c1c20aa3547ce59bec7abba4\" UNIQUE (\"url\"))"
+	},
+	{
+		"type": "table",
+		"name": "followers",
+		"tbl_name": "followers",
+		"sql": "CREATE TABLE \"followers\" (\"followerId\" integer NOT NULL, \"followedId\" integer NOT NULL, PRIMARY KEY (\"followerId\", \"followedId\"))"
+	},
+	{
+		"type": "table",
+		"name": "items",
+		"tbl_name": "items",
+		"sql": "CREATE TABLE \"items\" (\"id\" integer PRIMARY KEY AUTOINCREMENT NOT NULL, \"url\" varchar(512) NOT NULL, \"releaseDate\" date, \"imageUrl\" varchar(512), \"lastProcessingDate\" date, \"isBusy\" boolean NOT NULL DEFAULT (0), \"failedCount\" integer NOT NULL DEFAULT (0), \"albumId\" integer, CONSTRAINT \"UQ_296d62dba3927bafd8fd0aefc22\" UNIQUE (\"url\"), CONSTRAINT \"FK_829d66d4947b53d10d511e80f4f\" FOREIGN KEY (\"albumId\") REFERENCES \"items\" (\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION)"
+	},
+	{
+		"type": "table",
+		"name": "items-to-accounts",
+		"tbl_name": "items-to-accounts",
+		"sql": "CREATE TABLE \"items-to-accounts\" (\"itemId\" integer NOT NULL, \"accountId\" integer NOT NULL, \"wishlist\" boolean NOT NULL DEFAULT (0), CONSTRAINT \"FK_795cd497f53706b0f9267ccfe17\" FOREIGN KEY (\"itemId\") REFERENCES \"items\" (\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION, CONSTRAINT \"FK_684fc77dc5328669f73f9c53dfa\" FOREIGN KEY (\"accountId\") REFERENCES \"accounts\" (\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION, PRIMARY KEY (\"itemId\", \"accountId\"))"
+	},
+	{
+		"type": "table",
+		"name": "items-to-tags",
+		"tbl_name": "items-to-tags",
+		"sql": "CREATE TABLE \"items-to-tags\" (\"itemId\" integer NOT NULL, \"tagId\" integer NOT NULL, CONSTRAINT \"FK_9d06a71bf292bd744f1f7bf3218\" FOREIGN KEY (\"itemId\") REFERENCES \"items\" (\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION, CONSTRAINT \"FK_af9d7dec79b6af6dfbee5dcbde8\" FOREIGN KEY (\"tagId\") REFERENCES \"tags\" (\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION, PRIMARY KEY (\"itemId\", \"tagId\"))"
+	},
+	{
+		"type": "table",
+		"name": "super-tags",
+		"tbl_name": "super-tags",
+		"sql": "CREATE TABLE \"super-tags\" (\"id\" integer PRIMARY KEY AUTOINCREMENT NOT NULL, \"name\" varchar(64) NOT NULL, CONSTRAINT \"UQ_07c965393382b8f6b46464eae7e\" UNIQUE (\"name\"))"
+	},
+	{
+		"type": "table",
+		"name": "tags",
+		"tbl_name": "tags",
+		"sql": "CREATE TABLE \"tags\" (\"id\" integer PRIMARY KEY AUTOINCREMENT NOT NULL, \"name\" varchar(64) NOT NULL, CONSTRAINT \"UQ_d90243459a697eadb8ad56e9092\" UNIQUE (\"name\"))"
+	},
+	{
+		"type": "table",
+		"name": "tags-to-super-tags",
+		"tbl_name": "tags-to-super-tags",
+		"sql": "CREATE TABLE \"tags-to-super-tags\" (\"tagId\" integer NOT NULL, \"superTagId\" integer NOT NULL, CONSTRAINT \"FK_98532bb607346dfdde485852469\" FOREIGN KEY (\"tagId\") REFERENCES \"tags\" (\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION, CONSTRAINT \"FK_78485c5b85b89e77f0072ddfabe\" FOREIGN KEY (\"superTagId\") REFERENCES \"super-tags\" (\"id\") ON DELETE NO ACTION ON UPDATE NO ACTION, PRIMARY KEY (\"tagId\", \"superTagId\"))"
+	}
+]
