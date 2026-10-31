@@ -4,8 +4,10 @@ node_modules/
 dist/
 tmp/
 temp/
-package-lock.json
 .DS_Store
-band_db.sqlite
-logfile.log
+# SQLite files and their -wal / -shm / -journal side files
+*.sqlite*
+# made and removed by scripts/re-create-db.sh
+dump.sql
+*.log
 backup/
