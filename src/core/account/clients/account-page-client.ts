@@ -1,4 +1,5 @@
 import { Page } from 'puppeteer';
+import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isAccountUrl, isItemUrl, isNullOrUndefined, originalUrl } from '../../../common/utils';
 import { AccountTab } from '../../../models/account-tab';
 import { AccountPageData } from '../models/account-page-data';
@@ -70,7 +71,10 @@ export async function readAccountPage(
 	url: string,
 	page: Page,
 ): Promise<AccountPageData> {
-	await page.goto(url, { timeout: 3_000, waitUntil: 'domcontentloaded' });
+	const response = await page.goto(url, { timeout: 3_000, waitUntil: 'domcontentloaded' });
+	if (response?.status() === 429) {
+		throw new RateLimitedError(url, response.headers()['retry-after']);
+	}
 
 	const blob = await readPageBlob(page);
 	if (isNullOrUndefined(blob)) {
@@ -126,6 +130,9 @@ async function readAccountTab(page: Page, blob: any, tabType: AccountTab): Promi
 		const { urls: fetched, refusedStatus } = await fetchRemainingUrls(page, blob, source);
 
 		// Keeping what arrived before the refusal would stamp a half-read account as processed.
+		if (refusedStatus === 429) {
+			throw new RateLimitedError(page.url());
+		}
 		if (!isNullOrUndefined(refusedStatus)) {
 			const error = new Error(`Fan collection API refused "${source.endpoint}" with status ${refusedStatus}`);
 			error[RATE_LIMITED] = true;
@@ -139,7 +146,7 @@ async function readAccountTab(page: Page, blob: any, tabType: AccountTab): Promi
 
 		return { total, urls: [...new Set(urls)] };
 	} catch (e) {
-		if (e?.[RATE_LIMITED]) {
+		if (e instanceof RateLimitedError || e?.[RATE_LIMITED]) {
 			throw e;
 		}
 		return errorAccountTabData(e);

@@ -11,6 +11,7 @@ import {
 	onlyUnique,
 	originalUrl
 } from '../../../common/utils';
+import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { ProxyClient } from '../../proxy/proxy-client';
 import { ItemPageData } from '../models/item-page-data';
 import { defaultItemTabData, errorItemData, ItemTabData } from '../models/item-tab-data';
@@ -37,9 +38,12 @@ export async function readItemPage(
 	page: Page,
 ): Promise<ItemPageData> {
 	try {
-		await page.goto(url, { timeout: 3_500, waitUntil: 'domcontentloaded' })
+		const response = await page.goto(url, { timeout: 3_500, waitUntil: 'domcontentloaded' });
+		if (response?.status() === 429) {
+			throw new RateLimitedError(url, response.headers()['retry-after']);
+		}
 	} catch (e) {
-		if (e.message.includes('Navigation timeout')) {
+		if (!(e instanceof RateLimitedError) && e.message.includes('Navigation timeout')) {
 			await ProxyClient.initialize.changeIp();
 		}
 

@@ -1,6 +1,7 @@
 import { Page } from 'puppeteer';
 import { followerColor, itemColor, logger, LogSource } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
+import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
 import { saveAccountPageData } from './clients/account-db-client';
@@ -22,6 +23,9 @@ export async function processAccount(
 	try {
 		accountPageData = await readAccountPage(url, page);
 	} catch (e) {
+		if (e instanceof RateLimitedError) {
+			throw e;
+		}
 		logger.error(logMessage(LogSource.Account,  `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${e.message}`, url));
 		return false;
 	}
