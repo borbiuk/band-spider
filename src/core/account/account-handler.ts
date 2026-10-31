@@ -1,11 +1,10 @@
-import { Page } from 'puppeteer';
 import { followerColor, itemColor, logger, LogSource } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
 import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
+import { PageReader } from '../page-reader';
 import { saveAccountPageData } from './clients/account-db-client';
-import { readAccountPage } from './clients/account-page-client';
 import { AccountPageData } from './models/account-page-data';
 import { AccountPageStatistic } from './models/account-page-statistic';
 import { AccountTabStatistic } from './models/account-tab-statistic';
@@ -13,7 +12,7 @@ import { AccountTabStatistic } from './models/account-tab-statistic';
 export async function processAccount(
 	{ id, url }: QueueEvent,
 	database: BandDatabase,
-	page: Page,
+	reader: PageReader,
 	pageIndex: number,
 	onNewUrls: (urls: string[]) => void = () => { },
 ): Promise<boolean> {
@@ -21,7 +20,7 @@ export async function processAccount(
 	// read data from the page
 	let accountPageData: AccountPageData
 	try {
-		accountPageData = await readAccountPage(url, page);
+		accountPageData = await reader.readAccountPage(url);
 	} catch (e) {
 		if (e instanceof RateLimitedError) {
 			throw e;

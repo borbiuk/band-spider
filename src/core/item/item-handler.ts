@@ -1,11 +1,10 @@
-import { Page } from 'puppeteer';
 import { accountColor, albumColor, dateColor, itemColor, logger, LogSource, tagColor } from '../../common/logger';
 import { QueueEvent } from '../../common/processing-queue';
 import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
 import { BandDatabase } from '../../data/db';
+import { PageReader } from '../page-reader';
 import { saveItemPageData } from './clients/item-db-client';
-import { readItemPage } from './clients/item-page-client';
 import { ItemPageData } from './models/item-page-data';
 import { ItemPageStatistic } from './models/item-page-statistic';
 import { ItemTabStatistic } from './models/item-tab-statistic';
@@ -13,7 +12,7 @@ import { ItemTabStatistic } from './models/item-tab-statistic';
 export async function processItem(
 	{ id, url }: QueueEvent,
 	database: BandDatabase,
-	page: Page,
+	reader: PageReader,
 	pageIndex: number,
 	onNewUrls: (urls: string[]) => void = () => { },
 ): Promise<boolean> {
@@ -21,7 +20,7 @@ export async function processItem(
 	// read data from the page
 	let itemPageData: ItemPageData;
 	try {
-		itemPageData = await readItemPage(url, page);
+		itemPageData = await reader.readItemPage(url);
 	} catch (e) {
 		if (e instanceof RateLimitedError) {
 			throw e;
