@@ -5,12 +5,15 @@ import { isNullOrUndefined } from '../../../common/utils';
 import { AccountPageData } from '../models/account-page-data';
 import { API_BASE, ApiAnswer, buildAccountPageData } from './account-page-common';
 
+/** How long the browser waits for an account page to load. */
+export const ACCOUNT_NAVIGATION_TIMEOUT_MS = 3_000;
+
 /** Reads an account page in the browser. Used with the `--browser` flag. */
 export async function readAccountPage(
 	url: string,
 	page: Page,
 ): Promise<AccountPageData> {
-	const response = await page.goto(url, { timeout: 3_000, waitUntil: 'domcontentloaded' });
+	const response = await page.goto(url, { timeout: ACCOUNT_NAVIGATION_TIMEOUT_MS, waitUntil: 'domcontentloaded' });
 	if (response?.status() === 429) {
 		throw new RateLimitedError(url, response.headers()['retry-after']);
 	}
