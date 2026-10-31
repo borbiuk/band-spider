@@ -10,12 +10,16 @@ export interface QueueEvent {
 }
 
 export class ProcessingQueue {
+	// same content as `urls`, for O(1) membership checks
+	private readonly known: Set<string>;
+
 	constructor(
 		private readonly urls: string[] = [],
 		private readonly database: BandDatabase,
 		private readonly capacity: number = 500
 	) {
 		this.urls = urls.filter(onlyUnique);
+		this.known = new Set(this.urls);
 	}
 
 	public get size(): number {
@@ -33,11 +37,12 @@ export class ProcessingQueue {
 			return false;
 		}
 
-		if (this.urls.includes(url)) {
+		if (this.known.has(url)) {
 			return false;
 		}
 
 		this.urls.push(url);
+		this.known.add(url);
 
 		return true;
 	}
@@ -59,10 +64,12 @@ export class ProcessingQueue {
 		if (isEmptyString(url)) {
 			return null;
 		}
+		this.known.delete(url);
 
 		if (isItemUrl(url)) {
 			const { entity } = await this.database.item.insert(url);
 			if (entity.isBusy) {
+				this.putBack(url);
 				return null;
 			}
 
@@ -71,7 +78,12 @@ export class ProcessingQueue {
 
 		if (isAccountUrl(url)) {
 			const { entity } = await this.database.account.insert(url);
-			if (isNullOrUndefined(entity) || entity.isBusy) {
+			if (isNullOrUndefined(entity)) {
+				return null;
+			}
+
+			if (entity.isBusy) {
+				this.putBack(url);
 				return null;
 			}
 
@@ -84,6 +96,16 @@ export class ProcessingQueue {
 		await this.database.item.removeByUrl(url);
 
 		return null;
+	}
+
+	/** Returns a URL that could not be processed right now, so it is not lost. */
+	private putBack(url: string): void {
+		if (this.known.has(url)) {
+			return;
+		}
+
+		this.urls.push(url);
+		this.known.add(url);
 	}
 
 	private shiftRandom(array: string[]): string {

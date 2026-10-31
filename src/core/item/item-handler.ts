@@ -14,6 +14,7 @@ export async function processItem(
 	database: BandDatabase,
 	page: Page,
 	pageIndex: number,
+	onNewUrls: (urls: string[]) => void = () => { },
 ): Promise<boolean> {
 
 	// read data from the page
@@ -35,6 +36,7 @@ export async function processItem(
 	}
 
 	logItemPageStatistic(url, pageIndex, itemPageStatistic);
+	onNewUrls(itemPageStatistic.newUrls);
 
 	const result = itemPageData.errors.length === 0;
 	if (!result) {

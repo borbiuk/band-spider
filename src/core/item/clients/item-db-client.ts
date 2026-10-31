@@ -11,10 +11,13 @@ export async function saveItemPageData(
 	database: BandDatabase
 ): Promise<ItemPageStatistic> {
 
+	const newUrls: string[] = [];
+
 	const accounts = await saveAccountsData(
 		itemId,
 		data.accounts,
 		database,
+		newUrls,
 	);
 
 	const tags = await saveTagsData(
@@ -33,12 +36,14 @@ export async function saveItemPageData(
 		itemId,
 		data.album,
 		database,
+		newUrls,
 	);
 
 	const tracks = await saveTracksData(
 		itemId,
 		data.tracks,
 		database,
+		newUrls,
 	);
 
 	await database.item.updateImageUrl(itemId, data.imageUrl.data);
@@ -51,14 +56,16 @@ export async function saveItemPageData(
 		tags,
 		releaseDate,
 		album,
-		tracks
+		tracks,
+		newUrls,
 	}
 }
 
 async function saveAccountsData(
 	itemId: number,
 	{ data }: ItemTabData<string[]>,
-	database: BandDatabase
+	database: BandDatabase,
+	newUrls: string[]
 ): Promise<ItemTabStatistic> {
 	if (isNullOrUndefined(data)) {
 		return defaultItemTabStatistic;
@@ -72,6 +79,7 @@ async function saveAccountsData(
 		const { entity: { id }, isInserted } = await database.account.insert(accountUrl);
 		if (isInserted) {
 			newAccountCount++;
+			newUrls.push(accountUrl);
 		}
 
 		const added = await database.account.addItem(id, itemId);
@@ -139,13 +147,17 @@ async function saveReleaseDateData(
 async function saveAlbumData(
 	trackId: number,
 	{ data }: ItemTabData<string>,
-	database: BandDatabase
+	database: BandDatabase,
+	newUrls: string[]
 ): Promise<ItemTabStatistic> {
 	if (isNullOrUndefined(data)) {
 		return defaultItemTabStatistic;
 	}
 
 	const { entity: { id }, isInserted } = await database.item.insert(data);
+	if (isInserted) {
+		newUrls.push(data);
+	}
 	const added = await database.item.updateTrackAlbum(trackId, id);
 
 	return {
@@ -158,7 +170,8 @@ async function saveAlbumData(
 async function saveTracksData(
 	albumId: number,
 	{ data }: ItemTabData<string[]>,
-	database: BandDatabase
+	database: BandDatabase,
+	newUrls: string[]
 ): Promise<ItemTabStatistic> {
 	if (isNullOrUndefined(data)) {
 		return defaultItemTabStatistic;
@@ -171,6 +184,7 @@ async function saveTracksData(
 		const { entity: { id }, isInserted } = await database.item.insert(track);
 		if (isInserted) {
 			newTracksCount++;
+			newUrls.push(track);
 		}
 
 		const added = await database.item.updateTrackAlbum(id, albumId);

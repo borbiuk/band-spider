@@ -14,6 +14,7 @@ export async function processAccount(
 	database: BandDatabase,
 	page: Page,
 	pageIndex: number,
+	onNewUrls: (urls: string[]) => void = () => { },
 ): Promise<boolean> {
 
 	// read data from the page
@@ -35,6 +36,12 @@ export async function processAccount(
 	}
 
 	logAccountPageStatistic(url, pageIndex, accountPageStatistic);
+	onNewUrls([
+		...accountPageStatistic.collection.newUrls,
+		...accountPageStatistic.wishlist.newUrls,
+		...accountPageStatistic.followers.newUrls,
+		...accountPageStatistic.following.newUrls,
+	]);
 
 	const result = accountPageData.errors.length === 0;
 	if (!result) {

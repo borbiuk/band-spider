@@ -53,20 +53,22 @@ async function saveAccountItems(
 	database: BandDatabase,
 	manager: EntityManager
 ): Promise<AccountTabStatistic> {
-	let newCount: number = 0;
+	let newUrls: string[] = [];
 	let newRelationsCount: number = 0;
 
 	if (pageReadResult.urls.length !== 0) {
-		const { ids, newUrls } = await database.item.insertMany(pageReadResult.urls, manager);
-		newCount = newUrls.length;
+		const inserted = await database.item.insertMany(pageReadResult.urls, manager);
+		newUrls = inserted.newUrls;
+		const ids = inserted.ids;
 		newRelationsCount = await database.account.addItems(accountId, ids, wishlist, manager);
 	}
 
 	return {
 		total: pageReadResult.total,
 		allScraped: pageReadResult.total === pageReadResult.urls.length,
-		newRecords: newCount,
+		newRecords: newUrls.length,
 		newRelations: newRelationsCount,
+		newUrls,
 	};
 }
 
@@ -87,6 +89,7 @@ async function readAndSaveAccountData(
 ): Promise<AccountTabStatistic> {
 	const entityIds: number[] = [];
 
+	const newUrls: string[] = [];
 	let newCount: number = 0;
 	let newRelationsCount: number = 0;
 
@@ -97,6 +100,7 @@ async function readAndSaveAccountData(
 
 		if (isInserted) {
 			newCount++;
+			newUrls.push(entityUrl);
 		}
 	}
 
@@ -113,6 +117,7 @@ async function readAndSaveAccountData(
 		allScraped: pageReadResult.total === pageReadResult.urls.length,
 		newRecords: newCount,
 		newRelations: newRelationsCount,
+		newUrls,
 	};
 }
 

@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
-import { delay, isNullOrUndefined, logMessage } from '../common/utils';
+import { delay, isAccountUrl, isItemUrl, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { BandSpiderOptions } from '../index';
 import { processAccount } from './account/account-handler';
@@ -151,6 +151,10 @@ export class BandSpider {
 				event,
 				page,
 				id,
+				// feed new URLs straight into the queue, the DB scan stays as the refill path
+				(urls) => urls
+					.filter(x => this.isUrlOfType(type, x))
+					.forEach(x => queue.enqueue(x)),
 			);
 
 			// update statistic
@@ -190,19 +194,20 @@ export class BandSpider {
 		event: QueueEvent,
 		page: Page,
 		pageIndex: number,
+		onNewUrls: (urls: string[]) => void,
 	): Promise<boolean> {
 		try {
 			let processed = false;
 			if (event.type === UrlType.Account) {
 				await this.database.account.updateBusy(event.id, true);
-				processed = await processAccount(event, this.database, page, pageIndex);
+				processed = await processAccount(event, this.database, page, pageIndex, onNewUrls);
 				if (!processed) {
 					await this.database.account.updateFailed(event.id)
 				}
 				await this.database.account.updateBusy(event.id, false);
 			} else if (event.type === UrlType.Item) {
 				await this.database.item.updateBusy(event.id, true);
-				processed = await processItem(event, this.database, page, pageIndex);
+				processed = await processItem(event, this.database, page, pageIndex, onNewUrls);
 				if (!processed) {
 					await this.database.item.updateFailed(event.id)
 				}
@@ -235,6 +240,21 @@ export class BandSpider {
 			);
 
 			return false;
+		}
+	}
+
+	/**
+	 * Tells if a URL is of the kind this run processes, the same as the `getNotProcessed` filters do:
+	 * accounts for the account run, only track URLs for the item run.
+	 */
+	private isUrlOfType(type: UrlType, url: string): boolean {
+		switch (type) {
+			case UrlType.Account:
+				return isAccountUrl(url);
+			case UrlType.Item:
+				return isItemUrl(url) && url.toLowerCase().includes('/track/');
+			default:
+				return false;
 		}
 	}
 
