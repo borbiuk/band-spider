@@ -16,6 +16,10 @@ export enum UrlType {
 	Item = 'item',
 }
 
+// The page is replaced often to free the memory of the renderer, the whole browser rarely.
+const PAGE_RECREATE_INTERVAL = 1;
+const BROWSER_RELAUNCH_INTERVAL = 500;
+
 export class BandSpider {
 	private readonly statistic = {
 		processed: 0,
@@ -80,7 +84,7 @@ export class BandSpider {
 				logger.debug(
 					logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] created!`)
 				);
-				return await this.getPage(browser, headless);
+				return await this.getPage(browser, headless, true);
 			}
 			catch (e) {
 				if (!safe) {
@@ -93,12 +97,25 @@ export class BandSpider {
 
 		}
 
+		// closes the page and opens a new one with the same setup in the same browser
+		const recreatePage = async (id: number, oldPage: Page): Promise<Page> => {
+			try {
+				const page = await this.getPage(browsersList[id], headless, false);
+				await oldPage.close().catch(() => { });
+				return page;
+			} catch (e) {
+				logger.error(e, logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] page recreation failed, relaunching browser`));
+				return await recreateBrowser(id);
+			}
+		}
+
 		// create jobs
 		logger.debug(`${concurrencyBrowsers} Jobs (Browsers) init starting...`);
 		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
 				return this.startPageProcessing(
 					recreateBrowser,
+					recreatePage,
 					queue,
 					type,
 					id,
@@ -112,6 +129,7 @@ export class BandSpider {
 
 	private async startPageProcessing(
 		recreateBrowser: (id: number) => Promise<Page>,
+		recreatePage: (id: number, page: Page) => Promise<Page>,
 		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
@@ -179,8 +197,10 @@ export class BandSpider {
 				// }
 			}
 
-			if (i % 50 === 0) {
+			if (i % BROWSER_RELAUNCH_INTERVAL === 0) {
 				page = await recreateBrowser(id);
+			} else if (i % PAGE_RECREATE_INTERVAL === 0) {
+				page = await recreatePage(id, page);
 			}
 		}
 
@@ -327,8 +347,9 @@ export class BandSpider {
 	private async getPage(
 		browser: Browser,
 		headless: boolean,
+		reuseFirstPage: boolean,
 	): Promise<Page> {
-		const pages = await browser.pages();
+		const pages = reuseFirstPage ? await browser.pages() : [];
 		const page = isNullOrUndefined(pages) || pages.length === 0
 			? await browser.newPage()
 			: pages[0];
