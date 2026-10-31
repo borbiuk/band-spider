@@ -5,36 +5,35 @@
 	"main": "index.js",
 	"type": "commonjs",
 	"scripts": {
-		"build": "npx tsc",
-		"db:accounts": "npx ts-node ./src/index.ts --headless --account",
-		"db:items": "npx ts-node ./src/index.ts --headless",
-		"debug:db:accounts": "npx ts-node ./src/index.ts --account",
-		"debug:db:items": "npx ts-node ./src/index.ts",
-		"docker:db:accounts": "npx ts-node ./src/index.ts --headless --account --docker",
-		"docker:db:items": "npx ts-node ./src/index.ts --headless --docker",
-		"superTag": "npx ts-node ./src/index.ts --superTag",
+		"build": "rm -rf dist && npx tsc",
+		"db:accounts": "npm run build && node ./dist/index.js --headless --account",
+		"db:items": "npm run build && node ./dist/index.js --headless",
+		"debug:db:accounts": "npm run build && node ./dist/index.js --account",
+		"debug:db:items": "npm run build && node ./dist/index.js",
+		"docker:db:accounts": "npm run build && node ./dist/index.js --headless --account --docker",
+		"docker:db:items": "npm run build && node ./dist/index.js --headless --docker",
+		"superTag": "npm run build && node ./dist/index.js --superTag",
 		"install-browser": "npx @puppeteer/browsers install chrome@stable"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
+		"better-sqlite3": "13.0.3",
 		"cli-color": "2.0.4",
-		"fuse.js": "7.1.0",
-		"pino": "9.6.0",
-		"puppeteer": "24.4.0",
+		"fuse.js": "7.5.0",
+		"pino": "10.4.0",
+		"puppeteer": "25.16.0",
 		"puppeteer-extra": "3.3.6",
 		"puppeteer-extra-plugin-stealth": "2.11.2",
-		"sqlite3": "5.1.7",
-		"typeorm": "0.3.21"
+		"typeorm": "1.1.2"
 	},
 	"devDependencies": {
 		"@types/cli-color": "2.0.6",
-		"@types/node": "22.13.14",
+		"@types/node": "26.6.6",
 		"@types/pino-pretty": "5.0.0",
 		"@types/puppeteer": "7.0.4",
-		"pino-pretty": "13.0.0",
-		"ts-node": "10.9.2",
-		"typescript": "5.8.2"
+		"pino-pretty": "13.2.0",
+		"typescript": "7.0.2"
 	}
 }

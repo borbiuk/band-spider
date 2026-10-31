@@ -1,5 +1,4 @@
-import { DataSource, IsNull, LessThan, MoreThan, Or } from 'typeorm';
-import { ILike } from 'typeorm/find-options/operator/ILike';
+import { DataSource, ILike, IsNull, LessThan, MoreThan, Or } from 'typeorm';
 import { isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';

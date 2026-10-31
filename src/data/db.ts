@@ -14,8 +14,8 @@ import { SuperTagRepository } from './repositories/super-tag-repository';
 import { TagRepository } from './repositories/tag-repository';
 
 const appDataSource: DataSource = new DataSource({
-	type: 'sqlite',
-	database: 'band_db.sqlite',
+	type: 'better-sqlite3',
+	database: process.env.BAND_DB_PATH ?? 'band_db.sqlite',
 	synchronize: true,
 	logging: false,
 	migrations: [],
