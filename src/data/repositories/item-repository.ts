@@ -3,6 +3,7 @@ import { chunk, isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
+import { insertUnique } from './insert-helpers';
 
 const DB_BATCH_SIZE = 500;
 
@@ -34,20 +35,6 @@ export class ItemRepository {
 			.getMany();
 	}
 
-	public async getById(itemId: number): Promise<ItemEntity> {
-		return await this.manager.getRepository(ItemEntity).findOne({ where: { id: itemId } });
-	}
-
-	public async getByUrl(itemUrl: string): Promise<ItemEntity> {
-		return await this.manager.getRepository(ItemEntity)
-			.findOne({ where: { url: itemUrl } });
-	};
-
-	public async isAlreadyProcessed(url: string): Promise<boolean> {
-		const existed = await this.getByUrl(url);
-		return isNullOrUndefined(existed) ? false : !isNullOrUndefined(existed.lastProcessingDate);
-	}
-
 	public async resetAllBusy(): Promise<void> {
 		await this.manager.getRepository(ItemEntity)
 			.createQueryBuilder()
@@ -58,27 +45,11 @@ export class ItemRepository {
 	}
 
 	public async insert(itemUrl: string): Promise<InsertResult<ItemEntity>> {
-		const repository = this.manager.getRepository(ItemEntity);
-
-		let existingRecord = await repository.findOne({ where: { url: itemUrl } });
-		if (!isNullOrUndefined(existingRecord)) {
-			return { entity: existingRecord, isInserted: false };
-		}
-
-		try {
-			const insertResult = await repository.insert({ url: itemUrl });
-			const insertedEntity: ItemEntity = {
-				...(insertResult.generatedMaps[0] as ItemEntity),
-				url: itemUrl,
-			};
-			return { entity: insertedEntity, isInserted: true };
-		} catch (error) {
-			existingRecord = await repository.findOne({ where: { url: itemUrl } });
-			if (!isNullOrUndefined(existingRecord)) {
-				return { entity: existingRecord, isInserted: false };
-			}
-			throw error;
-		}
+		return await insertUnique(
+			this.manager.getRepository(ItemEntity),
+			{ url: itemUrl },
+			generated => ({ ...(generated as ItemEntity), url: itemUrl }),
+		);
 	};
 
 	/**
@@ -158,21 +129,6 @@ export class ItemRepository {
 			.set({ imageUrl })
 			.where('id = :itemId AND (imageUrl IS NULL OR imageUrl <> :imageUrl)', { itemId, imageUrl })
 			.execute();
-	}
-
-	public async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
-		const repository = this.manager.getRepository(ItemEntity);
-
-		const { entity } = await this.insert(trackUrl);
-
-		if (entity.albumId === album.id) {
-			return false;
-		}
-
-		entity.albumId = album.id;
-		await repository.save(entity);
-
-		return true;
 	}
 
 	public async updateTrackAlbum(trackId: number, albumId: number): Promise<boolean> {

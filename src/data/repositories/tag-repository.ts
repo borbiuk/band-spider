@@ -1,8 +1,8 @@
 import { EntityManager } from 'typeorm';
-import { isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { ItemToTagEntity } from '../entities/item-to-tag-entity';
 import { TagEntity } from '../entities/tag-entity';
+import { insertRelation, insertUnique } from './insert-helpers';
 
 export class TagRepository {
 	constructor(
@@ -25,59 +25,14 @@ export class TagRepository {
 	public async insert(tag: string): Promise<InsertResult<TagEntity>> {
 		tag = tag.toLowerCase();
 
-		const repository = this.manager.getRepository(TagEntity);
-
-		let existingRecord: TagEntity = await repository.findOne({ where: { name: tag } });
-		if (!isNullOrUndefined(existingRecord)) {
-			return { entity: existingRecord, isInserted: false };
-		}
-
-		try {
-			const insertResult = await repository.insert({ name: tag });
-			const insertedEntity: TagEntity = {
-				...(insertResult.generatedMaps[0] as TagEntity),
-				name: tag,
-			};
-			return { entity: insertedEntity, isInserted: true, };
-		} catch (error) {
-			existingRecord = await repository.findOne({ where: { name: tag } });
-			if (!isNullOrUndefined(existingRecord)) {
-				return { entity: existingRecord, isInserted: false, };
-			}
-			throw error;
-		}
+		return await insertUnique(
+			this.manager.getRepository(TagEntity),
+			{ name: tag },
+			generated => ({ ...(generated as TagEntity), name: tag }),
+		);
 	};
 
 	public async addItem(tagId: number, itemId: number): Promise<boolean> {
-		const repository = this.manager.getRepository(ItemToTagEntity);
-
-		let existingRecord: ItemToTagEntity = await repository.findOne({
-			where: {
-				itemId: itemId,
-				tagId: tagId,
-			}
-		});
-
-		if (!isNullOrUndefined(existingRecord)) {
-			return false;
-		}
-
-		try {
-			await repository.insert({ itemId: itemId, tagId: tagId });
-			return true;
-		} catch (e) {
-			existingRecord = await repository.findOne({
-				where: {
-					itemId: itemId,
-					tagId: tagId,
-				}
-			});
-
-			if (!isNullOrUndefined(existingRecord)) {
-				return false;
-			}
-
-			throw e;
-		}
+		return await insertRelation(this.manager.getRepository(ItemToTagEntity), { itemId, tagId }, { lostRace: false });
 	};
 }
