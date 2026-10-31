@@ -1,8 +1,7 @@
 import type { Page } from 'puppeteer';
 import { isAlbumUrl, isTrackUrl } from '../../../common/utils';
-import { asError, errorMessage } from '../../../common/errors';
+import { asError } from '../../../common/errors';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
-import { ProxyClient } from '../../proxy/proxy-client';
 import { ItemPageData } from '../models/item-page-data';
 import { buildItemPageData, ITEM_SELECTORS, NOT_FOUND_TITLE, RawItemPage } from './item-page-common';
 
@@ -14,17 +13,9 @@ export async function readItemPage(
 	url: string,
 	page: Page,
 ): Promise<ItemPageData> {
-	try {
-		const response = await page.goto(url, { timeout: ITEM_NAVIGATION_TIMEOUT_MS, waitUntil: 'domcontentloaded' });
-		if (response?.status() === 429) {
-			throw new RateLimitedError(url, response.headers()['retry-after']);
-		}
-	} catch (e) {
-		if (!(e instanceof RateLimitedError) && errorMessage(e).includes('Navigation timeout')) {
-			await ProxyClient.initialize.changeIp();
-		}
-
-		throw e;
+	const response = await page.goto(url, { timeout: ITEM_NAVIGATION_TIMEOUT_MS, waitUntil: 'domcontentloaded' });
+	if (response?.status() === 429) {
+		throw new RateLimitedError(url, response.headers()['retry-after']);
 	}
 
 	const wantAlbum = isTrackUrl(url);

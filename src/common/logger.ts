@@ -52,7 +52,6 @@ export enum LogSource {
 	Item = '📀',
 	Tag = '🏷',
 	Date = '📅',
-	Proxy = '📡',
 	Data = '🗄',
 	Unknown = '❓',
 }

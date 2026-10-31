@@ -1,6 +1,5 @@
 import { LogSource, urlColor } from './logger';
 
-export const delay = async (timeout: number = 300) => await new Promise(resolve => setTimeout(resolve, timeout));
 export const onlyUnique = <T>(value: T, index: number, array: T[]): boolean => array.indexOf(value) === index
 export const chunk = <T>(array: T[], size: number): T[][] => {
 	const result: T[][] = [];
