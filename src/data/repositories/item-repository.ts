@@ -1,4 +1,4 @@
-import { DataSource, EntityManager, ILike, IsNull, LessThan, MoreThan, Or } from 'typeorm';
+import { EntityManager, ILike, IsNull, LessThan, MoreThan, Or } from 'typeorm';
 import { chunk, isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';
@@ -8,12 +8,12 @@ const DB_BATCH_SIZE = 500;
 
 export class ItemRepository {
 	constructor(
-		private readonly dataSource: DataSource
+		private readonly manager: EntityManager
 	) {
 	}
 
 	public async getNotProcessed(): Promise<ItemEntity[]> {
-		return await this.dataSource.getRepository(ItemEntity).find({
+		return await this.manager.getRepository(ItemEntity).find({
 			where: {
 				lastProcessingDate: IsNull(),
 				isBusy: false,
@@ -27,7 +27,7 @@ export class ItemRepository {
 	};
 
 	public async getUserItems(accountId: number): Promise<ItemEntity[]> {
-		return await this.dataSource.getRepository(ItemEntity).createQueryBuilder('item')
+		return await this.manager.getRepository(ItemEntity).createQueryBuilder('item')
 			.innerJoin('item.itemToAccount', 'itemToAccount')
 			.where('itemToAccount.accountId = :accountId', { accountId: accountId })
 			//.where({ failedCount: MoreThan(0) })
@@ -35,11 +35,11 @@ export class ItemRepository {
 	}
 
 	public async getById(itemId: number): Promise<ItemEntity> {
-		return await this.dataSource.getRepository(ItemEntity).findOne({ where: { id: itemId } });
+		return await this.manager.getRepository(ItemEntity).findOne({ where: { id: itemId } });
 	}
 
 	public async getByUrl(itemUrl: string): Promise<ItemEntity> {
-		return await this.dataSource.getRepository(ItemEntity)
+		return await this.manager.getRepository(ItemEntity)
 			.findOne({ where: { url: itemUrl } });
 	};
 
@@ -49,7 +49,7 @@ export class ItemRepository {
 	}
 
 	public async resetAllBusy(): Promise<void> {
-		await this.dataSource.getRepository(ItemEntity)
+		await this.manager.getRepository(ItemEntity)
 			.createQueryBuilder()
 			.update()
 			.set({ isBusy: false })
@@ -58,7 +58,7 @@ export class ItemRepository {
 	}
 
 	public async insert(itemUrl: string): Promise<InsertResult<ItemEntity>> {
-		const repository = this.dataSource.getRepository(ItemEntity);
+		const repository = this.manager.getRepository(ItemEntity);
 
 		let existingRecord = await repository.findOne({ where: { url: itemUrl } });
 		if (!isNullOrUndefined(existingRecord)) {
@@ -87,17 +87,14 @@ export class ItemRepository {
 	 *
 	 * @returns ids in the same order as `urls` (duplicates give the same id) and the URLs that did not exist before.
 	 */
-	public async insertMany(
-		urls: string[],
-		manager: EntityManager | DataSource = this.dataSource
-	): Promise<{ ids: number[], newUrls: string[] }> {
+	public async insertMany(urls: string[]): Promise<{ ids: number[], newUrls: string[] }> {
 		const idByUrl = new Map<string, number>();
 		const newUrls: string[] = [];
 
 		for (const part of chunk([...new Set(urls)], DB_BATCH_SIZE)) {
 			const placeholders = part.map(() => '?').join(',');
 
-			const existing: { id: number, url: string }[] = await manager.query(
+			const existing: { id: number, url: string }[] = await this.manager.query(
 				`SELECT id, url FROM items WHERE url IN (${placeholders})`, part
 			);
 			existing.forEach(x => idByUrl.set(x.url, x.id));
@@ -107,10 +104,10 @@ export class ItemRepository {
 				continue;
 			}
 
-			await manager.query(
+			await this.manager.query(
 				`INSERT OR IGNORE INTO items(url) VALUES ${missing.map(() => '(?)').join(',')}`, missing
 			);
-			const inserted: { id: number, url: string }[] = await manager.query(
+			const inserted: { id: number, url: string }[] = await this.manager.query(
 				`SELECT id, url FROM items WHERE url IN (${missing.map(() => '?').join(',')})`, missing
 			);
 			inserted.forEach(x => idByUrl.set(x.url, x.id));
@@ -122,7 +119,7 @@ export class ItemRepository {
 
 	public async updateReleaseDate(itemId: number, date: Date): Promise<boolean> {
 		// Write only when the release date is not set yet
-		const result = await this.dataSource.getRepository(ItemEntity)
+		const result = await this.manager.getRepository(ItemEntity)
 			.createQueryBuilder()
 			.update()
 			.set({ releaseDate: date })
@@ -132,11 +129,11 @@ export class ItemRepository {
 	}
 
 	public async updateBusy(itemId: number, isBusy: boolean): Promise<void> {
-		await this.dataSource.getRepository(ItemEntity).update({ id: itemId }, { isBusy });
+		await this.manager.getRepository(ItemEntity).update({ id: itemId }, { isBusy });
 	}
 
 	public async updateFailed(itemId: number, clear: boolean = false): Promise<void> {
-		await this.dataSource.getRepository(ItemEntity)
+		await this.manager.getRepository(ItemEntity)
 			.createQueryBuilder()
 			.update()
 			.set({ failedCount: clear ? 0 : () => 'COALESCE(failedCount, 0) + 1' })
@@ -145,7 +142,7 @@ export class ItemRepository {
 	}
 
 	public async updateProcessingDate(itemId: number): Promise<void> {
-		await this.dataSource.getRepository(ItemEntity)
+		await this.manager.getRepository(ItemEntity)
 			.update({ id: itemId }, { lastProcessingDate: new Date() });
 	}
 
@@ -155,7 +152,7 @@ export class ItemRepository {
 		}
 
 		// Write only when the value differs
-		await this.dataSource.getRepository(ItemEntity)
+		await this.manager.getRepository(ItemEntity)
 			.createQueryBuilder()
 			.update()
 			.set({ imageUrl })
@@ -164,7 +161,7 @@ export class ItemRepository {
 	}
 
 	public async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
-		const repository = this.dataSource.getRepository(ItemEntity);
+		const repository = this.manager.getRepository(ItemEntity);
 
 		const { entity } = await this.insert(trackUrl);
 
@@ -179,7 +176,7 @@ export class ItemRepository {
 	}
 
 	public async updateTrackAlbum(trackId: number, albumId: number): Promise<boolean> {
-		const repository = this.dataSource.getRepository(ItemEntity);
+		const repository = this.manager.getRepository(ItemEntity);
 
 		const item = await repository.findOne({ where: { id: trackId } });
 		if (item.albumId === albumId) {
@@ -192,14 +189,14 @@ export class ItemRepository {
 	}
 
 	public async removeByUrl(itemUrl: string): Promise<void> {
-		const repository = this.dataSource.getRepository(ItemEntity)
+		const repository = this.manager.getRepository(ItemEntity)
 
 		const existingRecord = await repository.findOne({ where: { url: itemUrl } });
 		if (isNullOrUndefined(existingRecord)) {
 			return;
 		}
 
-		await this.dataSource.getRepository(ItemToAccountEntity)
+		await this.manager.getRepository(ItemToAccountEntity)
 			.delete({ itemId: existingRecord.id });
 
 		await repository.delete({ url: existingRecord.url });

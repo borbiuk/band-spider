@@ -1,6 +1,4 @@
-import fs from 'fs';
-import { DataSource } from 'typeorm';
-import { isNullOrUndefined } from '../common/utils';
+import { DataSource, EntityManager } from 'typeorm';
 import { AccountEntity } from './entities/account-entity';
 import { FollowerEntity } from './entities/follower-entity';
 import { ItemEntity } from './entities/item-entity';
@@ -14,8 +12,6 @@ import { ItemRepository } from './repositories/item-repository';
 import { SuperTagRepository } from './repositories/super-tag-repository';
 import { TagRepository } from './repositories/tag-repository';
 
-const DB_FILE = process.env.BAND_DB_PATH ?? 'band_db.sqlite';
-
 // SQLite tuning for a large (multi-GB) database with many small writes.
 // WAL + synchronous NORMAL avoid an fsync on every commit; the cache and mmap speed up reads.
 // With synchronous NORMAL the last commits can be lost on power loss, but the DB is not corrupted.
@@ -23,13 +19,16 @@ const SQLITE_BUSY_TIMEOUT_MS = 5000;
 const SQLITE_CACHE_SIZE_KB = 512 * 1024;
 const SQLITE_MMAP_SIZE_BYTES = 8 * 1024 * 1024 * 1024;
 
-// The schema is created only for a new DB file, or when DB_SYNCHRONIZE=true is set explicitly.
-// Running synchronize on every start is slow on a big DB and can change the schema unexpectedly.
-const synchronize: boolean = process.env.DB_SYNCHRONIZE === 'true' || !fs.existsSync(DB_FILE);
+export interface DatabaseConfig {
+	/** Path of the SQLite file. */
+	file: string,
+	/** Create or update the schema from the entities when the DB is opened. */
+	synchronize: boolean,
+}
 
-const appDataSource: DataSource = new DataSource({
+const createDataSource = ({ file, synchronize }: DatabaseConfig): DataSource => new DataSource({
 	type: 'better-sqlite3',
-	database: DB_FILE,
+	database: file,
 	synchronize,
 	enableWAL: true,
 	logging: false,
@@ -46,41 +45,61 @@ const appDataSource: DataSource = new DataSource({
 	]
 });
 
-export class BandDatabase {
-	private static instance: BandDatabase;
+const applyPragmas = async (dataSource: DataSource): Promise<void> => {
+	await dataSource.query('PRAGMA journal_mode = WAL');
+	await dataSource.query('PRAGMA synchronous = NORMAL');
+	await dataSource.query(`PRAGMA cache_size = -${SQLITE_CACHE_SIZE_KB}`);
+	await dataSource.query(`PRAGMA mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
+	await dataSource.query('PRAGMA temp_store = MEMORY');
+	await dataSource.query(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+};
 
+/**
+ * The database of the app. The entry point opens it once and passes it to the code that needs it.
+ *
+ * TypeORM's better-sqlite3 driver uses one connection for everything. So a transaction is safe only
+ * while one worker writes: a write of another worker during the transaction would become part of it.
+ */
+export class BandDatabase {
 	public readonly account: AccountRepository;
 	public readonly item: ItemRepository;
 	public readonly tag: TagRepository;
 	public readonly superTag: SuperTagRepository;
 
-	public readonly dataSource: DataSource;
-
-	private constructor(dataSource: DataSource) {
-		this.dataSource = dataSource;
-
-		this.account = new AccountRepository(this.dataSource);
-		this.item = new ItemRepository(this.dataSource);
-		this.tag = new TagRepository(this.dataSource);
-		this.superTag = new SuperTagRepository(this.dataSource);
+	private constructor(
+		private readonly dataSource: DataSource,
+		private readonly manager: EntityManager,
+	) {
+		this.account = new AccountRepository(manager);
+		this.item = new ItemRepository(manager);
+		this.tag = new TagRepository(manager);
+		this.superTag = new SuperTagRepository(manager);
 	}
 
-	private static async applyPragmas(dataSource: DataSource): Promise<void> {
-		await dataSource.query('PRAGMA journal_mode = WAL');
-		await dataSource.query('PRAGMA synchronous = NORMAL');
-		await dataSource.query(`PRAGMA cache_size = -${SQLITE_CACHE_SIZE_KB}`);
-		await dataSource.query(`PRAGMA mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
-		await dataSource.query('PRAGMA temp_store = MEMORY');
-		await dataSource.query(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+	/** Opens the SQLite file, creates the schema if asked, and applies the pragmas. */
+	public static async open(config: DatabaseConfig): Promise<BandDatabase> {
+		const dataSource: DataSource = await createDataSource(config).initialize();
+		await applyPragmas(dataSource);
+		return new BandDatabase(dataSource, dataSource.manager);
 	}
 
-	public static async initialize(): Promise<BandDatabase> {
-		if (isNullOrUndefined(BandDatabase.instance)) {
-			const dataSource: DataSource = await appDataSource.initialize();
-			await BandDatabase.applyPragmas(dataSource);
-			BandDatabase.instance = new BandDatabase(dataSource);
+	/**
+	 * Runs `work` in one transaction. Everything written through the given database is part of it;
+	 * the transaction is committed when `work` resolves and rolled back when it throws.
+	 */
+	public transaction<T>(work: (database: BandDatabase) => Promise<T>): Promise<T> {
+		return this.manager.transaction(manager => work(new BandDatabase(this.dataSource, manager)));
+	}
+
+	/** Runs raw SQL. For maintenance code and tests. */
+	public query(sql: string, parameters: unknown[] = []): Promise<any[]> {
+		return this.manager.query(sql, parameters);
+	}
+
+	/** Closes the connection. */
+	public async close(): Promise<void> {
+		if (this.dataSource.isInitialized) {
+			await this.dataSource.destroy();
 		}
-
-		return BandDatabase.instance;
 	}
 }

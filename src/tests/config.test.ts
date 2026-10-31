@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { describe, it } from 'node:test';
-import { BandSpiderOptions, PARALLEL_BROWSERS_COUNT, parseOptions } from '../config';
+import { after, describe, it } from 'node:test';
+import { BandSpiderOptions, DEFAULT_DB_FILE, PARALLEL_BROWSERS_COUNT, parseOptions, readDatabaseConfig } from '../config';
 import { UrlType } from '../models/url-type';
 
 // tests run from `dist/tests`
@@ -57,4 +58,29 @@ describe('parseOptions', () => {
 			assert.deepEqual(parseOptions(args), want);
 		});
 	}
+});
+
+describe('readDatabaseConfig', () => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-config-'));
+	const existing = path.join(dir, 'existing.sqlite');
+	fs.writeFileSync(existing, '');
+	const missing = path.join(dir, 'missing.sqlite');
+
+	after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+	it('uses band_db.sqlite when BAND_DB_PATH is not set', () => {
+		assert.equal(DEFAULT_DB_FILE, 'band_db.sqlite');
+		assert.equal(readDatabaseConfig({}).file, 'band_db.sqlite');
+	});
+
+	it('uses BAND_DB_PATH', () => {
+		assert.equal(readDatabaseConfig({ BAND_DB_PATH: existing }).file, existing);
+	});
+
+	it('creates the schema only for a new file or with DB_SYNCHRONIZE=true', () => {
+		assert.equal(readDatabaseConfig({ BAND_DB_PATH: missing }).synchronize, true);
+		assert.equal(readDatabaseConfig({ BAND_DB_PATH: existing }).synchronize, false);
+		assert.equal(readDatabaseConfig({ BAND_DB_PATH: existing, DB_SYNCHRONIZE: 'true' }).synchronize, true);
+		assert.equal(readDatabaseConfig({ BAND_DB_PATH: existing, DB_SYNCHRONIZE: '1' }).synchronize, false);
+	});
 });
