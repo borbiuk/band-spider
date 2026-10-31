@@ -3,7 +3,7 @@ import { PageNotFoundError } from '../../../common/errors';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isNullOrUndefined } from '../../../common/utils';
 import { AccountPageData } from '../models/account-page-data';
-import { API_BASE, ApiAnswer, buildAccountPageData, FanPageBlob } from './account-page-common';
+import { ACCOUNT_SELECTORS, API_BASE, ApiAnswer, buildAccountPageData, FanPageBlob } from './account-page-common';
 
 /** How long the browser waits for an account page to load. */
 export const ACCOUNT_NAVIGATION_TIMEOUT_MS = 3_000;
@@ -34,7 +34,7 @@ export async function readAccountPage(
  */
 async function readPageBlob(page: Page): Promise<FanPageBlob | null> {
 	return await page
-		.$eval('#pagedata', (element): FanPageBlob => JSON.parse(element.getAttribute('data-blob')))
+		.$eval(ACCOUNT_SELECTORS.pageBlob, (element): FanPageBlob => JSON.parse(element.getAttribute('data-blob')))
 		.catch((): null => null);
 }
 

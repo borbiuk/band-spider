@@ -3,7 +3,7 @@ import { PageNotFoundError } from '../../../common/errors';
 import { getPageHtml, HttpClient } from '../../../common/http-client';
 import { isNullOrUndefined } from '../../../common/utils';
 import { AccountPageData } from '../models/account-page-data';
-import { API_BASE, buildAccountPageData, FanPageBlob } from './account-page-common';
+import { ACCOUNT_SELECTORS, API_BASE, buildAccountPageData, FanPageBlob } from './account-page-common';
 
 /**
  * Reads an account page with plain HTTP requests. Gives the same data as `readAccountPage`.
@@ -34,7 +34,7 @@ export async function readAccountPageByFetch(
 /** Reads the JSON blob the page embeds for its own front-end. Null when the page carries none. */
 function readPageBlob(html: string): FanPageBlob | null {
 	try {
-		return JSON.parse(cheerio.load(html)('#pagedata').attr('data-blob'));
+		return JSON.parse(cheerio.load(html)(ACCOUNT_SELECTORS.pageBlob).attr('data-blob'));
 	} catch {
 		return null;
 	}
