@@ -7,12 +7,14 @@ import { describe, it } from 'node:test';
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
 const scripts: Record<string, string> = packageJson.scripts;
 
-const KNOWN_FLAGS = ['--headless', '--account', '--docker', '--superTag', '--browser'];
+const KNOWN_FLAGS = ['--headless', '--account', '--docker', '--superTag', '--browser', '--reverse'];
 
 /** Flags passed to the app by every script that runs it. */
 const APP_RUNS: Record<string, string[]> = {
 	'db:accounts': ['--headless', '--account'],
 	'db:items': ['--headless'],
+	'db:accounts:reverse': ['--headless', '--account', '--reverse'],
+	'db:items:reverse': ['--headless', '--reverse'],
 	'db:accounts:browser': ['--headless', '--account', '--browser'],
 	'db:items:browser': ['--headless', '--browser'],
 	'debug:db:accounts': ['--account', '--browser'],

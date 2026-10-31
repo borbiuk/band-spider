@@ -229,6 +229,32 @@ describe('repositories', () => {
 	});
 });
 
+describe('getNotProcessed order', () => {
+	it('gives the newest rows first only when asked', async () => {
+		const tracks = Array.from({ length: 5 }, (_, i) => `https://order.bandcamp.com/track/t${i}`);
+		const fans = Array.from({ length: 5 }, (_, i) => `https://bandcamp.com/order-fan-${i}`);
+		for (const url of tracks) await db.item.insert(url);
+		for (const url of fans) await db.account.insert(url);
+
+		const ids = (rows: { id: number, url: string }[], prefix: string) => rows.filter(x => x.url.startsWith(prefix)).map(x => x.id);
+		const isAscending = (xs: number[]) => xs.every((x, i) => i === 0 || xs[i - 1] < x);
+		const isDescending = (xs: number[]) => xs.every((x, i) => i === 0 || xs[i - 1] > x);
+
+		const oldestItems = ids(await db.item.getNotProcessed(), 'https://order.bandcamp.com/');
+		const newestItems = ids(await db.item.getNotProcessed(true), 'https://order.bandcamp.com/');
+		const oldestAccounts = ids(await db.account.getNotProcessed(), 'https://bandcamp.com/order-fan-');
+		const newestAccounts = ids(await db.account.getNotProcessed(true), 'https://bandcamp.com/order-fan-');
+
+		assert.equal(oldestItems.length, 5);
+		assert.ok(isAscending(oldestItems), 'default: lowest id first');
+		assert.ok(isDescending(newestItems), 'newest first: highest id first');
+		assert.deepEqual([...newestItems].reverse(), oldestItems);
+		assert.ok(isAscending(oldestAccounts));
+		assert.ok(isDescending(newestAccounts));
+		assert.deepEqual([...newestAccounts].reverse(), oldestAccounts);
+	});
+});
+
 describe('saveItemPageData', () => {
 	const albumUrl = 'https://save.bandcamp.com/album/the-album';
 	const trackUrls = ['https://save.bandcamp.com/track/one', 'https://save.bandcamp.com/track/two'];

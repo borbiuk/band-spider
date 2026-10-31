@@ -37,6 +37,14 @@ To process saved tracks:
 npm run db:items
 ```
 
+Each run takes the unprocessed rows in batches of 400, by default the oldest first (lowest id). To start from the
+newest rows (highest id) instead:
+
+```shell
+npm run db:accounts:reverse
+npm run db:items:reverse
+```
+
 To link tags to super tags:
 
 ```shell

@@ -13,7 +13,11 @@ export class ItemRepository {
 	) {
 	}
 
-	public async getNotProcessed(): Promise<ItemEntity[]> {
+	/**
+	 * @param newestFirst - Take the items with the highest id first. Otherwise the order is not set,
+	 * which in SQLite gives the lowest ids first.
+	 */
+	public async getNotProcessed(newestFirst: boolean = false): Promise<ItemEntity[]> {
 		return await this.manager.getRepository(ItemEntity).find({
 			where: {
 				lastProcessingDate: IsNull(),
@@ -23,6 +27,7 @@ export class ItemRepository {
 				// url: ILike('%/album/%'),
 				url: ILike('%/track/%'),
 			},
+			order: newestFirst ? { id: 'DESC' } : undefined,
 			take: 400
 		});
 	};
