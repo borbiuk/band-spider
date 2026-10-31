@@ -59,9 +59,10 @@ export class BandSpider {
 
 		// configure browsers closing on exit
 		const browsersList: { [id: number]: Browser } = {};
-		process.on('SIGINT', () => {
-			Object.values(browsersList).forEach(x => (x.close()));
+		process.on('SIGINT', async () => {
+			await Promise.allSettled(Object.values(browsersList).map(x => x.close()));
 			logger.warn('Browsers closed');
+			process.exit();
 		});
 
 		const recreateBrowser = async (id: number, safe = true): Promise<Page> => {

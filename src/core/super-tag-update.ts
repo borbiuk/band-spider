@@ -45,7 +45,7 @@ export class SuperTagUpdate {
 			// fill tags
 			if (tags.length === 0) {
 				logger.info('Tags search...');
-				tags = await this.database.tag.getAll(page++, take)
+				tags = await this.database.tag.getAll(++page, take)
 			}
 		}
 	}
