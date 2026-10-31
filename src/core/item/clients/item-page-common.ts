@@ -15,6 +15,23 @@ import { defaultItemTabData, errorItemData, ItemTabData } from '../models/item-t
 
 export const NOT_FOUND_TITLE = 'Sorry, that something isn’t here.';
 
+/** CSS selectors of the item page. Both readers use them, so they read the same elements. */
+export const ITEM_SELECTORS = {
+	/** Its text is `NOT_FOUND_TITLE` on the "not found" page. */
+	title: 'h2',
+	credits: '.tralbumData.tralbum-credits',
+	albumLink: '#buyAlbumLink',
+	image: '#tralbumArt img',
+	/** The supporters rendered in the page. */
+	supporters: 'a.fan.pic',
+	tags: 'a.tag',
+	trackLinks: 'table.track_list#track_table a',
+	/** JSON of the first supporters and whether more exist. Only the HTTP reader uses it. */
+	supportersBlob: '#collectors-data',
+	/** JSON with the id and the type of the item. Only the HTTP reader uses it. */
+	tralbum: '[data-tralbum]',
+} as const;
+
 /** Everything the item page needs, read from the page. `null` means the selector matched nothing. */
 export interface RawItemPage {
 	notFound: boolean,
@@ -67,7 +84,7 @@ export function buildItemPageData(
 
 	const imageUrl: ItemTabData<string> = readError
 		? errorItemData(readError)
-		: (raw.image === null ? errorItemData(selectorNotFound('#tralbumArt img')) : { data: raw.image.src });
+		: (raw.image === null ? errorItemData(selectorNotFound(ITEM_SELECTORS.image)) : { data: raw.image.src });
 
 	return {
 		url,
@@ -91,7 +108,7 @@ function readPageAccounts(hrefs: (string | null)[]): ItemTabData<string[]> {
 
 function parseReleaseDate(content: string | null): ItemTabData<Date> {
 	if (content === null) {
-		return errorItemData(selectorNotFound('.tralbumData.tralbum-credits'));
+		return errorItemData(selectorNotFound(ITEM_SELECTORS.credits));
 	}
 
 	const match = content.match(/(?:released|releases) (\w+ \d{1,2}, \d{4})/);
@@ -123,7 +140,7 @@ function parseTrackAlbum(albumLink: { href: string | null } | null, url: string)
 	const domain = protocol + '//' + hostname;
 
 	if (albumLink === null) {
-		return errorItemData(selectorNotFound('#buyAlbumLink'));
+		return errorItemData(selectorNotFound(ITEM_SELECTORS.albumLink));
 	}
 
 	return isEmptyString(albumLink.href)

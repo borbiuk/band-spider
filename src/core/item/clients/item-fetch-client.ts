@@ -4,7 +4,7 @@ import { getPageHtml, HttpClient, HttpResponse } from '../../../common/http-clie
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isAlbumUrl, isNullOrUndefined, isTrackUrl } from '../../../common/utils';
 import { ItemPageData } from '../models/item-page-data';
-import { buildItemPageData, NOT_FOUND_TITLE, RawItemPage } from './item-page-common';
+import { buildItemPageData, ITEM_SELECTORS, NOT_FOUND_TITLE, RawItemPage } from './item-page-common';
 
 /** Supporters per request to the thumbs API. */
 const SUPPORTERS_PAGE_SIZE = 100;
@@ -45,10 +45,10 @@ async function parseItemPage(url: string, html: string, http: HttpClient): Promi
 	const wantAlbum = isTrackUrl(url);
 	const wantTracks = isAlbumUrl(url);
 
-	const h2 = $('h2').first();
-	const credits = $('.tralbumData.tralbum-credits').first();
-	const albumLink = $('#buyAlbumLink').first();
-	const image = $('#tralbumArt img').first();
+	const h2 = $(ITEM_SELECTORS.title).first();
+	const credits = $(ITEM_SELECTORS.credits).first();
+	const albumLink = $(ITEM_SELECTORS.albumLink).first();
+	const image = $(ITEM_SELECTORS.image).first();
 
 	const notFound = h2.length > 0 && h2.text().trim() === NOT_FOUND_TITLE;
 
@@ -70,13 +70,13 @@ async function parseItemPage(url: string, html: string, http: HttpClient): Promi
 		notFound,
 		accounts,
 		accountsError,
-		tags: $('a.tag').map((_, x) => $(x).text().trim()).get(),
+		tags: $(ITEM_SELECTORS.tags).map((_, x) => $(x).text().trim()).get(),
 		credits: credits.length === 0 ? null : credits.text(),
 		albumLink: wantAlbum
 			? (albumLink.length === 0 ? null : { href: albumLink.attr('href') ?? null })
 			: undefined,
 		trackLinks: wantTracks
-			? $('table.track_list#track_table a').map((_, x) => $(x).attr('href') ?? null).get()
+			? $(ITEM_SELECTORS.trackLinks).map((_, x) => $(x).attr('href') ?? null).get()
 			: undefined,
 		image: image.length === 0 ? null : { src: new URL(image.attr('src') ?? '', url).href },
 	};
@@ -87,10 +87,10 @@ async function parseItemPage(url: string, html: string, http: HttpClient): Promi
  * thumbs API of the same band host, one batch after another, until it says nothing is left.
  */
 async function readSupporters($: cheerio.CheerioAPI, url: string, postJson: PostJson): Promise<string[]> {
-	const blobText = $('#collectors-data').attr('data-blob');
+	const blobText = $(ITEM_SELECTORS.supportersBlob).attr('data-blob');
 	if (isNullOrUndefined(blobText)) {
 		// no blob: fall back to the supporters rendered in the page
-		return $('a.fan.pic').map((_, x) => $(x).attr('href') ?? null).get();
+		return $(ITEM_SELECTORS.supporters).map((_, x) => $(x).attr('href') ?? null).get();
 	}
 
 	const blob = JSON.parse(blobText);
@@ -98,7 +98,7 @@ async function readSupporters($: cheerio.CheerioAPI, url: string, postJson: Post
 	let more: boolean = !!blob.more_thumbs_available;
 
 	if (more) {
-		const tralbum = JSON.parse($('[data-tralbum]').first().attr('data-tralbum') ?? 'null');
+		const tralbum = JSON.parse($(ITEM_SELECTORS.tralbum).first().attr('data-tralbum') ?? 'null');
 		if (isNullOrUndefined(tralbum?.id) || isNullOrUndefined(tralbum?.item_type)) {
 			throw new Error('Supporters are not complete: "data-tralbum" is missing');
 		}

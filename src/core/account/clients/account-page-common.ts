@@ -12,6 +12,12 @@ import { AccountTabData, defaultAccountTabData, errorAccountTabData } from '../m
  */
 export const API_BASE = 'https://bandcamp.com/api/fancollection/1/';
 
+/** CSS selectors of the fan page. Both readers use them. */
+export const ACCOUNT_SELECTORS = {
+	/** Its `data-blob` attribute holds the JSON blob of the page. */
+	pageBlob: '#pagedata',
+} as const;
+
 /**
  * Items per API request. The API advances only about 20 new records per call whatever `count` is,
  * a larger value just returns the same records again (about 4.5 times as many duplicates for 100).

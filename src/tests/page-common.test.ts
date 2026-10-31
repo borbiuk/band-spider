@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { RateLimitedError } from '../common/rate-limit-gate';
 import {
+	ACCOUNT_SELECTORS,
 	API_PAGE_LIMIT,
 	API_PAGE_SIZE,
 	ApiAnswer,
 	buildAccountPageData,
 	TAB_SOURCES,
 } from '../core/account/clients/account-page-common';
-import { buildItemPageData, NOT_FOUND_TITLE, RawItemPage } from '../core/item/clients/item-page-common';
+import { buildItemPageData, ITEM_SELECTORS, NOT_FOUND_TITLE, RawItemPage } from '../core/item/clients/item-page-common';
 import { AccountTab } from '../models/account-tab';
 
 const raw = (overrides: Partial<RawItemPage> = {}): RawItemPage => ({
@@ -315,5 +316,25 @@ describe('buildAccountPageData', () => {
 		assert.deepEqual(data.collection, { total: 0, urls: [], error: boom });
 		assert.deepEqual(data.wishlist, { total: 1, urls: ['https://x.bandcamp.com/album/w'] });
 		assert.deepEqual(data.errors, [boom]);
+	});
+});
+
+describe('page selectors', () => {
+	it('keep the selectors of the item page', () => {
+		assert.deepEqual(ITEM_SELECTORS, {
+			title: 'h2',
+			credits: '.tralbumData.tralbum-credits',
+			albumLink: '#buyAlbumLink',
+			image: '#tralbumArt img',
+			supporters: 'a.fan.pic',
+			tags: 'a.tag',
+			trackLinks: 'table.track_list#track_table a',
+			supportersBlob: '#collectors-data',
+			tralbum: '[data-tralbum]',
+		});
+	});
+
+	it('keep the selector of the fan page blob', () => {
+		assert.deepEqual(ACCOUNT_SELECTORS, { pageBlob: '#pagedata' });
 	});
 });
