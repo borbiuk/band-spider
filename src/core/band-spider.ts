@@ -346,7 +346,9 @@ export class BandSpider {
 				}
 
 				const url = request.url();
-				if (request.method() === 'POST' && url !== 'https://bandcamp.com/api/fancollection/1/collection_items') {
+
+				// Account tabs are read from the fan collection API, so every method of it is needed.
+				if (request.method() === 'POST' && !url.startsWith('https://bandcamp.com/api/fancollection/1/')) {
 					request.abort();
 					return;
 				}
