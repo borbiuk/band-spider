@@ -56,7 +56,27 @@ describe('database setup', () => {
 		assert.equal(await pragma('cache_size'), -512 * 1024);
 		assert.equal(await pragma('temp_store'), 2, 'MEMORY');
 		assert.equal(await pragma('busy_timeout'), 5000);
-		assert.ok(Number(await pragma('mmap_size')) > 0, 'mmap is on (SQLite may clamp the size)');
+		assert.equal(await pragma('mmap_size'), 2147418112, '8 GB asked, SQLite clamps it to its MAX_MMAP_SIZE (about 2 GB)');
+		assert.equal(await pragma('foreign_keys'), 1);
+	});
+});
+
+describe('reopening an existing file', () => {
+	it('applies the same pragmas without a schema sync', async () => {
+		const file = path.join(tempDir, 'reopen.sqlite');
+		await (await BandDatabase.open({ file, synchronize: true })).close();
+
+		const reopened = await BandDatabase.open({ file, synchronize: false });
+		try {
+			const pragma = async (name: string) => Object.values((await reopened.query(`PRAGMA ${name}`))[0])[0];
+			assert.deepEqual(
+				[await pragma('journal_mode'), await pragma('synchronous'), await pragma('cache_size'), await pragma('temp_store'), await pragma('busy_timeout'), await pragma('mmap_size')],
+				['wal', 1, -512 * 1024, 2, 5000, 2147418112],
+			);
+			assert.equal((await reopened.query('SELECT COUNT(*) AS n FROM items'))[0].n, 0);
+		} finally {
+			await reopened.close();
+		}
 	});
 });
 
