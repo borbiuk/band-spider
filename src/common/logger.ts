@@ -1,8 +1,11 @@
-import pretty from 'pino-pretty';
-import fs from 'fs';
 import clc from 'cli-color';
+import pino, { Logger } from 'pino';
+import pretty from 'pino-pretty';
 
-const pino = require('pino');
+const level = 'debug';
+
+/** The log file of the app, relative to the working directory. */
+export const LOG_FILE = 'logfile.log';
 
 // Pretty print configuration for console output
 const prettyStream = pretty({
@@ -12,51 +15,21 @@ const prettyStream = pretty({
 	ignore: 'pid,hostname',
 });
 
-const level = 'debug';
-const file: boolean = false;
+// Every log line goes to all of these streams: the console now, the file after `logToFile`.
+const streams = pino.multistream([{ level, stream: prettyStream }]);
 
-// Create the log file stream only when file logging is enabled
-const fileStream = file ? fs.createWriteStream('logfile.log', { flags: 'a' }) : null;
+export const logger: Logger = pino({ level }, streams);
 
-// Log to console with pretty formatting
-const consoleLogger = pino({ level }, prettyStream);
-
-// Log to file
-const fileLogger = file ? pino({ level }, fileStream) : null;
-
-// Create a custom logger object to log to both console and file
-export const logger = {
-	info: (...args) => {
-		consoleLogger.info(...args);
-		if (file) {
-			fileLogger.info(...args);
-		}
-	},
-	debug: (...args) => {
-		consoleLogger.debug(...args);
-		if (file) {
-			fileLogger.debug(...args);
-		}
-	},
-	error: (...args) => {
-		consoleLogger.error(...args);
-		if (file) {
-			fileLogger.error(...args);
-		}
-	},
-	warn: (...args) => {
-		consoleLogger.warn(...args);
-		if (file) {
-			fileLogger.warn(...args);
-		}
-	},
-	fatal: (...args) => {
-		consoleLogger.fatal(...args);
-		if (file) {
-			fileLogger.fatal(...args);
-		}
-	},
-};
+/**
+ * Also writes every log line to a file, as one JSON object per line. The entry point calls it, so
+ * tests and scripts that only import the logger do not create the file.
+ *
+ * @param path - The log file. New lines are added at its end.
+ */
+export function logToFile(path: string = LOG_FILE): void {
+	// sync writes: nothing is lost when the process exits
+	streams.add({ level, stream: pino.destination({ dest: path, append: true, mkdir: true, sync: true }) });
+}
 
 export const accountColor = clc.xterm(215);
 export const albumColor = clc.xterm(229);

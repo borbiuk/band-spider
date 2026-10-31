@@ -1,11 +1,14 @@
 import 'reflect-metadata';
-import { logger, LogSource } from './common/logger';
+import { logger, LogSource, logToFile } from './common/logger';
 import { logMessage } from './common/utils';
 import { BandSpiderOptions, parseOptions } from './config';
 import { BandSpider } from './core/band-spider';
 import { SuperTagUpdate } from './core/super-tag-update';
 
 const main = async (): Promise<void> => {
+
+	// Log to the console and to the log file
+	logToFile();
 
 	// Read arguments
 	const args: string[] = process.argv.slice(2);
