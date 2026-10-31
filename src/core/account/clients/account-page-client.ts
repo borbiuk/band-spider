@@ -1,28 +1,86 @@
-import { ElementHandle, Page } from 'puppeteer';
+import { Page } from 'puppeteer';
 import { isAccountUrl, isItemUrl, isNullOrUndefined, originalUrl } from '../../../common/utils';
 import { AccountTab } from '../../../models/account-tab';
-import { ProxyClient } from '../../proxy/proxy-client';
 import { AccountPageData } from '../models/account-page-data';
 import { AccountTabData, defaultAccountTabData, errorAccountTabData } from '../models/account-tab-data';
+
+/**
+ * A fan page no longer keeps the whole collection in the DOM. Bandcamp embeds the first batch of
+ * every tab in a JSON blob on `#pagedata` and serves the rest from a paged API. Clicking tabs and
+ * scrolling returns only what is already rendered, so both are skipped here.
+ */
+const API_BASE = 'https://bandcamp.com/api/fancollection/1/';
+
+/** Items per API request. Bandcamp accepts larger pages than the 20 it renders by default. */
+const API_PAGE_SIZE = 100;
+
+/** Stops a fan with a huge collection from holding a browser forever. */
+const API_PAGE_LIMIT = 200;
+
+/**
+ * Marks the error raised when the API refuses a request. A truncated tab must not be saved as a
+ * complete one, so this travels up and fails the whole account instead.
+ */
+const RATE_LIMITED = Symbol('rateLimited');
+
+interface TabSource {
+	/** Key inside `item_cache` holding the batch embedded in the page. */
+	cacheKey: string;
+	/** Key of the blob section holding the total and the pagination token. */
+	dataKey: string;
+	/** API method serving the rest of the tab. */
+	endpoint: string;
+	/** Field of an API record holding the URL. */
+	urlField: string;
+	isValidUrl: (url: string) => boolean;
+}
+
+const TAB_SOURCES: { [tab in AccountTab]: TabSource } = {
+	[AccountTab.Collection]: {
+		cacheKey: 'collection',
+		dataKey: 'collection_data',
+		endpoint: 'collection_items',
+		urlField: 'item_url',
+		isValidUrl: isItemUrl,
+	},
+	[AccountTab.Wishlist]: {
+		cacheKey: 'wishlist',
+		dataKey: 'wishlist_data',
+		endpoint: 'wishlist_items',
+		urlField: 'item_url',
+		isValidUrl: isItemUrl,
+	},
+	[AccountTab.Followers]: {
+		cacheKey: 'followers',
+		dataKey: 'followers_data',
+		endpoint: 'followers',
+		urlField: 'trackpipe_url',
+		isValidUrl: isAccountUrl,
+	},
+	[AccountTab.Following]: {
+		cacheKey: 'following_fans',
+		dataKey: 'following_fans_data',
+		endpoint: 'following_fans',
+		urlField: 'trackpipe_url',
+		isValidUrl: isAccountUrl,
+	},
+};
 
 export async function readAccountPage(
 	url: string,
 	page: Page,
 ): Promise<AccountPageData> {
-	try {
-		await page.goto(url, { timeout: 3_000, waitUntil: 'domcontentloaded' });
-	} catch (e) {
-		// if (e.message.includes('Navigation timeout')) {
-		// 	await ProxyClient.initialize.changeIp();
-		// }
+	await page.goto(url, { timeout: 3_000, waitUntil: 'domcontentloaded' });
 
-		throw e;
+	const blob = await readPageBlob(page);
+	if (isNullOrUndefined(blob)) {
+		throw new Error('Page did not exist');
 	}
 
-	const collection = await readAccountTab(page, AccountTab.Collection, 20);
-	const wishlist = await readAccountTab(page, AccountTab.Wishlist, 20);
-	const following = await readAccountTab(page, AccountTab.Following, 40);
-	const followers = await readAccountTab(page, AccountTab.Followers, 45);
+	const collection = await readAccountTab(page, blob, AccountTab.Collection);
+	const wishlist = await readAccountTab(page, blob, AccountTab.Wishlist);
+	const following = await readAccountTab(page, blob, AccountTab.Following);
+	const followers = await readAccountTab(page, blob, AccountTab.Followers);
 
 	return {
 		url,
@@ -35,189 +93,133 @@ export async function readAccountPage(
 }
 
 /**
- * Reads data from the specified account page tab and returns a result containing the total number of items and their URLs.
+ * Reads the JSON blob the page embeds for its own front-end.
  *
  * @param page - Puppeteer page instance.
- * @param tabType - Type of account tab to read (Collection, Wishlist, Followers, or Following).
- * @param countOnPage - The maximum number of items displayed on the page by default.
+ * @returns A promise that resolves to the parsed blob, or null when the page carries none.
+ */
+async function readPageBlob(page: Page): Promise<any> {
+	return await page
+		.$eval('#pagedata', element => JSON.parse(element.getAttribute('data-blob')))
+		.catch(() => null);
+}
+
+/**
+ * Collects every URL of the specified account tab: the batch embedded in the page, then the rest
+ * from the API.
+ *
+ * @param page - Puppeteer page instance.
+ * @param blob - The parsed `#pagedata` blob.
+ * @param tabType - Type of account tab to read.
  * @returns A promise that resolves to the total number of items and their URLs.
  */
-async function readAccountTab(page: Page, tabType: AccountTab, countOnPage: number): Promise<AccountTabData> {
+async function readAccountTab(page: Page, blob: any, tabType: AccountTab): Promise<AccountTabData> {
 	try {
-		const totalCount = await getTabItemsCount(page, tabType);
-		if (isNullOrUndefined(totalCount) || totalCount <= 0) {
+		const source: TabSource = TAB_SOURCES[tabType];
+
+		const total: number = blob[source.dataKey]?.item_count ?? 0;
+		if (total <= 0) {
 			return defaultAccountTabData;
 		}
 
-		const container = await getTabContainer(page, tabType);
-		if (isNullOrUndefined(container)) {
-			return defaultAccountTabData;
+		const embedded: string[] = readEmbeddedUrls(blob, source);
+		const { urls: fetched, refusedStatus } = await fetchRemainingUrls(page, blob, source);
+
+		// Keeping what arrived before the refusal would stamp a half-read account as processed.
+		if (!isNullOrUndefined(refusedStatus)) {
+			const error = new Error(`Fan collection API refused "${source.endpoint}" with status ${refusedStatus}`);
+			error[RATE_LIMITED] = true;
+			throw error;
 		}
 
-		// TODO: scrolling did not working in headless mode
-		if (totalCount > countOnPage) {
-			await scrollTab(page, container);
-		}
+		const urls = [...embedded, ...fetched]
+			.filter(x => !isNullOrUndefined(x))
+			.map(x => originalUrl(x))
+			.filter(x => source.isValidUrl(x));
 
-		const urls = await getTabUrls(container, tabType);
-
-		return getReadPageResult(totalCount, urls);
+		return { total, urls: [...new Set(urls)] };
 	} catch (e) {
+		if (e?.[RATE_LIMITED]) {
+			throw e;
+		}
 		return errorAccountTabData(e);
 	}
 }
 
 /**
- * Retrieves the total count of items for the specified account tab and made it active.
+ * Reads the URLs of the batch the page already carries, so the first API page can be skipped.
  *
- * @param page - Puppeteer page instance.
- * @param tabType - Type of account tab to read.
- * @returns A promise that resolves to the total count of items in the tab.
+ * @param blob - The parsed `#pagedata` blob.
+ * @param source - Where the tab keeps its data inside the blob.
+ * @returns The URLs found in the blob.
  */
-async function getTabItemsCount(page: Page, tabType: AccountTab): Promise<number> {
-	let gridName: string;
-	switch (tabType) {
-		case AccountTab.Collection:
-			gridName = 'collection'
-			break;
-		case AccountTab.Wishlist:
-			gridName = 'wishlist'
-			break;
-		case AccountTab.Followers:
-			gridName = 'followers'
-			break;
-		case AccountTab.Following:
-			gridName = 'following'
-			break;
-	}
-
-	const tabButtonContainer = await page.$(`[data-tab="${gridName}"]`);
-	if (isNullOrUndefined(tabButtonContainer)) {
-		return null;
-	}
-
-	await tabButtonContainer.click();
-	if (tabType === AccountTab.Following) {
-		const fansButtonContainer = await page.$('[data-tab="following-fans"]');
-		if (isNullOrUndefined(fansButtonContainer)) {
-			return null;
-		}
-		await fansButtonContainer.click();
-
-		return fansButtonContainer.$eval(
-			'.count',
-			el => parseInt(el.textContent.trim())
-		);
-	}
-
-	return await tabButtonContainer.$eval(
-		'.count',
-		el => parseInt(el.textContent.trim())
-	);
-}
-
-/**
- * Retrieves the container for the specified account tab that contains needed URLs.
- *
- * @param page - Puppeteer page instance.
- * @param tabType - Type of account tab to read.
- * @returns A promise that resolves to the container element.
- */
-async function getTabContainer(page: Page, tabType: AccountTab) {
-	let containerId: string;
-	switch (tabType) {
-		case AccountTab.Collection:
-			containerId = '#fan-container'
-			break;
-		case AccountTab.Wishlist:
-			containerId = '#wishlist-items-container'
-			break;
-		case AccountTab.Followers:
-			containerId = '#followers-container'
-			break;
-		case AccountTab.Following:
-			containerId = '#following-fans-container'
-			break;
-	}
-
-	return await page.$(containerId);
-}
-
-/**
- * Scrolls the specified account tab container to load and display all items.
- *
- * @param page - Puppeteer page instance.
- * @param container - The container element to scroll.
- */
-async function scrollTab(page: Page, container: ElementHandle) {
-	const showAllButton = await container.$('.show-more');
-	await showAllButton.click();
-
-	let isLoadingAvailable = true;
-	let height = (await container.boundingBox()).height;
-	let retry = 0;
-
-	while (isLoadingAvailable && retry < 1) {
-		try {
-			// scroll to end
-			await page.keyboard.down('End')
-
-			// wait on loader
-			await page.waitForNetworkIdle({ timeout: 5_000 });
-
-			// check is more scroll needed
-			const currentHeight = (await container.boundingBox()).height;
-			isLoadingAvailable = currentHeight !== height;
-			if (!isLoadingAvailable) {
-				return;
-			}
-
-			height = currentHeight;
-			retry = 0;
-		} catch (e) {
-			retry++;
-		}
-	}
-}
-
-/**
- * Retrieves the URLs from the specified account tab container.
- *
- * @param container - The container element from which to extract URLs.
- * @param tabType - Type of account tab to read.
- * @returns A promise that resolves to an array of URLs.
- */
-async function getTabUrls(container: ElementHandle, tabType: AccountTab) {
-	let selector: string;
-	let convert: (urls: string[]) => string[];
-	if (tabType === AccountTab.Collection || tabType === AccountTab.Wishlist) {
-		selector = 'a.item-link';
-		convert = (urls: string[]) => urls.filter(x => isItemUrl(x)).map(x => originalUrl(x));
-	} else if (tabType === AccountTab.Followers || tabType === AccountTab.Following) {
-		selector = 'a.fan-username';
-		convert = (urls: string[]) => urls.filter(x => isAccountUrl(x));
-	} else {
+function readEmbeddedUrls(blob: any, source: TabSource): string[] {
+	const cache = blob.item_cache?.[source.cacheKey];
+	if (isNullOrUndefined(cache)) {
 		return [];
 	}
 
-	const tabUrls = await container.$$eval(selector, (elements: HTMLAnchorElement[]) =>
-		elements.map((element) => element.href)
-	);
-
-	return convert(tabUrls);
+	return Object.values(cache)
+		.map((record: any) => record?.[source.urlField])
+		.filter((x: string) => !isNullOrUndefined(x));
 }
 
 /**
- * Returns the final result of the account page operation, containing the total count and URLs.
+ * Walks the API from the token the page was rendered with until it runs out of pages.
  *
- * @param totalCount - The total number of items in the tab.
- * @param urls - The array of URLs extracted from the tab.
- * @returns The account page result with the total count and URLs.
+ * The request is issued from the page itself so that it carries the same origin and headers as the
+ * ones the fan page makes on its own.
+ *
+ * @param page - Puppeteer page instance.
+ * @param blob - The parsed `#pagedata` blob.
+ * @param source - Where the tab keeps its data inside the blob.
+ * @returns The URLs of every record after the embedded batch, and the status that stopped the walk.
  */
-function getReadPageResult(totalCount: number, urls: string[]): AccountTabData {
-	return {
-		total: isNullOrUndefined(totalCount) || isNaN(totalCount) ? urls.length : totalCount,
-		urls
+async function fetchRemainingUrls(
+	page: Page,
+	blob: any,
+	source: TabSource
+): Promise<{ urls: string[], refusedStatus: number }> {
+	const fanId: number = blob.fan_data?.fan_id;
+	const firstToken: string = blob[source.dataKey]?.last_token;
+	if (isNullOrUndefined(fanId) || isNullOrUndefined(firstToken)) {
+		return { urls: [], refusedStatus: null };
 	}
-}
 
+	return await page.evaluate(
+		async (apiBase, endpoint, fanId, firstToken, urlField, pageSize, pageLimit) => {
+			const urls: string[] = [];
+			let token: string = firstToken;
+
+			for (let i = 0; i < pageLimit && !!token; i++) {
+				const response = await fetch(apiBase + endpoint, {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ fan_id: fanId, older_than_token: token, count: pageSize })
+				});
+				if (!response.ok) {
+					return { urls, refusedStatus: response.status };
+				}
+
+				const body = await response.json();
+
+				// Follower tabs answer with `followeers`, item tabs with `items`.
+				const records: any[] = body.followeers ?? body.items ?? [];
+				for (const record of records) {
+					if (record?.[urlField]) {
+						urls.push(record[urlField]);
+					}
+				}
+
+				// The token repeats itself once the last page is reached.
+				if (!body.more_available || !body.last_token || body.last_token === token) {
+					break;
+				}
+				token = body.last_token;
+			}
+
+			return { urls, refusedStatus: null };
+		},
+		API_BASE, source.endpoint, fanId, firstToken, source.urlField, API_PAGE_SIZE, API_PAGE_LIMIT
+	);
+}

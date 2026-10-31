@@ -14,7 +14,7 @@ import { ItemRepository } from './repositories/item-repository';
 import { SuperTagRepository } from './repositories/super-tag-repository';
 import { TagRepository } from './repositories/tag-repository';
 
-const DB_FILE = 'band_db.sqlite';
+const DB_FILE = process.env.BAND_DB_PATH ?? 'band_db.sqlite';
 
 // SQLite tuning for a large (multi-GB) database with many small writes.
 // WAL + synchronous NORMAL avoid an fsync on every commit; the cache and mmap speed up reads.
@@ -28,11 +28,10 @@ const SQLITE_MMAP_SIZE_BYTES = 8 * 1024 * 1024 * 1024;
 const synchronize: boolean = process.env.DB_SYNCHRONIZE === 'true' || !fs.existsSync(DB_FILE);
 
 const appDataSource: DataSource = new DataSource({
-	type: 'sqlite',
+	type: 'better-sqlite3',
 	database: DB_FILE,
 	synchronize,
 	enableWAL: true,
-	busyTimeout: SQLITE_BUSY_TIMEOUT_MS,
 	logging: false,
 	migrations: [],
 	entities: [
