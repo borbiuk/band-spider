@@ -1,8 +1,10 @@
-import { DataSource, ILike, IsNull, LessThan, MoreThan, Or } from 'typeorm';
-import { isNullOrUndefined } from '../../common/utils';
+import { DataSource, EntityManager, ILike, IsNull, LessThan, MoreThan, Or } from 'typeorm';
+import { chunk, isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
+
+const DB_BATCH_SIZE = 500;
 
 export class ItemRepository {
 	constructor(
@@ -78,6 +80,45 @@ export class ItemRepository {
 			throw error;
 		}
 	};
+
+	/**
+	 * Batch version of `insert` for the hot path: resolves many item URLs to ids with a few queries.
+	 * Each URL ends up exactly as `insert(url)` would leave it (only `url` is set, the rest are column defaults).
+	 *
+	 * @returns ids in the same order as `urls` (duplicates give the same id) and the URLs that did not exist before.
+	 */
+	public async insertMany(
+		urls: string[],
+		manager: EntityManager | DataSource = this.dataSource
+	): Promise<{ ids: number[], newUrls: string[] }> {
+		const idByUrl = new Map<string, number>();
+		const newUrls: string[] = [];
+
+		for (const part of chunk([...new Set(urls)], DB_BATCH_SIZE)) {
+			const placeholders = part.map(() => '?').join(',');
+
+			const existing: { id: number, url: string }[] = await manager.query(
+				`SELECT id, url FROM items WHERE url IN (${placeholders})`, part
+			);
+			existing.forEach(x => idByUrl.set(x.url, x.id));
+
+			const missing = part.filter(x => !idByUrl.has(x));
+			if (missing.length === 0) {
+				continue;
+			}
+
+			await manager.query(
+				`INSERT OR IGNORE INTO items(url) VALUES ${missing.map(() => '(?)').join(',')}`, missing
+			);
+			const inserted: { id: number, url: string }[] = await manager.query(
+				`SELECT id, url FROM items WHERE url IN (${missing.map(() => '?').join(',')})`, missing
+			);
+			inserted.forEach(x => idByUrl.set(x.url, x.id));
+			newUrls.push(...missing);
+		}
+
+		return { ids: urls.map(x => idByUrl.get(x)), newUrls };
+	}
 
 	public async updateReleaseDate(itemId: number, date: Date): Promise<boolean> {
 		const item: ItemEntity = await this.getById(itemId);

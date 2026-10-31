@@ -1,9 +1,11 @@
-import { DataSource, IsNull, LessThan, Or } from 'typeorm';
-import { isNullOrUndefined } from '../../common/utils';
+import { DataSource, EntityManager, IsNull, LessThan, Or } from 'typeorm';
+import { chunk, isNullOrUndefined } from '../../common/utils';
 import { InsertResult } from '../../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
 import { FollowerEntity } from '../entities/follower-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
+
+const DB_BATCH_SIZE = 500;
 
 export class AccountRepository {
 	constructor(
@@ -96,6 +98,48 @@ export class AccountRepository {
 			throw error;
 		}
 	};
+
+	/**
+	 * Batch version of `addItem`: links many items to one account with a few queries.
+	 * Same rules as `addItem`: an existing relation is not counted as new, but its `wishlist` flag is updated.
+	 *
+	 * @returns number of relations that did not exist before.
+	 */
+	public async addItems(
+		accountId: number,
+		itemIds: number[],
+		wishlist: boolean,
+		manager: EntityManager | DataSource = this.dataSource
+	): Promise<number> {
+		let newRelations = 0;
+
+		for (const part of chunk([...new Set(itemIds)], DB_BATCH_SIZE)) {
+			const existing: { itemId: number, wishlist: number }[] = await manager.query(
+				`SELECT itemId, wishlist FROM "items-to-accounts" WHERE accountId = ? AND itemId IN (${part.map(() => '?').join(',')})`,
+				[accountId, ...part]
+			);
+			const existingIds = new Set(existing.map(x => x.itemId));
+
+			const toUpdate = existing.filter(x => Boolean(x.wishlist) !== wishlist).map(x => x.itemId);
+			if (toUpdate.length !== 0) {
+				await manager.query(
+					`UPDATE "items-to-accounts" SET wishlist = ? WHERE accountId = ? AND itemId IN (${toUpdate.map(() => '?').join(',')})`,
+					[wishlist ? 1 : 0, accountId, ...toUpdate]
+				);
+			}
+
+			const toInsert = part.filter(x => !existingIds.has(x));
+			if (toInsert.length !== 0) {
+				await manager.query(
+					`INSERT OR IGNORE INTO "items-to-accounts"(itemId, accountId, wishlist) VALUES ${toInsert.map(() => '(?,?,?)').join(',')}`,
+					toInsert.flatMap(x => [x, accountId, wishlist ? 1 : 0])
+				);
+				newRelations += toInsert.length;
+			}
+		}
+
+		return newRelations;
+	}
 
 	public async addFollower(followedId: number, followerId: number): Promise<boolean> {
 		const repository = this.dataSource.getRepository(FollowerEntity);
