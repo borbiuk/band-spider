@@ -18,7 +18,7 @@ export class SuperTagRepository {
 	public async addTag(superTagId: number, tagId: number): Promise<boolean> {
 		const repository = this.dataSource.getRepository(TagToSuperTagEntity);
 
-		let existedRecord = repository.findOne({ where: { superTagId: superTagId, tagId: tagId } });
+		let existedRecord = await repository.findOne({ where: { superTagId: superTagId, tagId: tagId } });
 
 		if (!isNullOrUndefined(existedRecord)) {
 			return false;
@@ -28,7 +28,7 @@ export class SuperTagRepository {
 			await repository.insert({ superTagId: superTagId, tagId: tagId });
 			return true;
 		} catch (e) {
-			let existedRecord = repository.findOne({ where: { superTagId: superTagId, tagId: tagId } });
+			let existedRecord = await repository.findOne({ where: { superTagId: superTagId, tagId: tagId } });
 
 			if (!isNullOrUndefined(existedRecord)) {
 				return false;

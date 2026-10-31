@@ -4,9 +4,6 @@ import clc from 'cli-color';
 
 const pino = require('pino');
 
-// Create a writable stream to a log file
-const fileStream = fs.createWriteStream('logfile.log', { flags: 'a' });
-
 // Pretty print configuration for console output
 const prettyStream = pretty({
 	colorize: true,
@@ -18,11 +15,14 @@ const prettyStream = pretty({
 const level = 'debug';
 const file: boolean = false;
 
+// Create the log file stream only when file logging is enabled
+const fileStream = file ? fs.createWriteStream('logfile.log', { flags: 'a' }) : null;
+
 // Log to console with pretty formatting
 const consoleLogger = pino({ level }, prettyStream);
 
 // Log to file
-const fileLogger = pino({ level }, fileStream);
+const fileLogger = file ? pino({ level }, fileStream) : null;
 
 // Create a custom logger object to log to both console and file
 export const logger = {

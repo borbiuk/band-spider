@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { DataSource } from 'typeorm';
 import { isNullOrUndefined } from '../common/utils';
 import { AccountEntity } from './entities/account-entity';
@@ -13,10 +14,24 @@ import { ItemRepository } from './repositories/item-repository';
 import { SuperTagRepository } from './repositories/super-tag-repository';
 import { TagRepository } from './repositories/tag-repository';
 
+const DB_FILE = process.env.BAND_DB_PATH ?? 'band_db.sqlite';
+
+// SQLite tuning for a large (multi-GB) database with many small writes.
+// WAL + synchronous NORMAL avoid an fsync on every commit; the cache and mmap speed up reads.
+// With synchronous NORMAL the last commits can be lost on power loss, but the DB is not corrupted.
+const SQLITE_BUSY_TIMEOUT_MS = 5000;
+const SQLITE_CACHE_SIZE_KB = 512 * 1024;
+const SQLITE_MMAP_SIZE_BYTES = 8 * 1024 * 1024 * 1024;
+
+// The schema is created only for a new DB file, or when DB_SYNCHRONIZE=true is set explicitly.
+// Running synchronize on every start is slow on a big DB and can change the schema unexpectedly.
+const synchronize: boolean = process.env.DB_SYNCHRONIZE === 'true' || !fs.existsSync(DB_FILE);
+
 const appDataSource: DataSource = new DataSource({
 	type: 'better-sqlite3',
-	database: process.env.BAND_DB_PATH ?? 'band_db.sqlite',
-	synchronize: true,
+	database: DB_FILE,
+	synchronize,
+	enableWAL: true,
 	logging: false,
 	migrations: [],
 	entities: [
@@ -50,9 +65,19 @@ export class BandDatabase {
 		this.superTag = new SuperTagRepository(this.dataSource);
 	}
 
+	private static async applyPragmas(dataSource: DataSource): Promise<void> {
+		await dataSource.query('PRAGMA journal_mode = WAL');
+		await dataSource.query('PRAGMA synchronous = NORMAL');
+		await dataSource.query(`PRAGMA cache_size = -${SQLITE_CACHE_SIZE_KB}`);
+		await dataSource.query(`PRAGMA mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
+		await dataSource.query('PRAGMA temp_store = MEMORY');
+		await dataSource.query(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
+	}
+
 	public static async initialize(): Promise<BandDatabase> {
 		if (isNullOrUndefined(BandDatabase.instance)) {
 			const dataSource: DataSource = await appDataSource.initialize();
+			await BandDatabase.applyPragmas(dataSource);
 			BandDatabase.instance = new BandDatabase(dataSource);
 		}
 

@@ -138,25 +138,21 @@ export class AccountRepository {
 	}
 
 	public async updateBusy(accountId: number, isBusy: boolean): Promise<void> {
-		const account: AccountEntity = await this.getById(accountId);
-		account.isBusy = isBusy;
-		await this.dataSource.getRepository(AccountEntity).save(account);
+		await this.dataSource.getRepository(AccountEntity).update({ id: accountId }, { isBusy });
 	}
 
 	public async updateFailed(accountId: number, clear: boolean = false): Promise<void> {
-		const account: AccountEntity = await this.getById(accountId);
-		if (clear) {
-			account.failedCount = 0;
-		} else {
-			account.failedCount = isNullOrUndefined(account.failedCount) ? 1 : (account.failedCount + 1);
-		}
-		await this.dataSource.getRepository(AccountEntity).save(account);
+		await this.dataSource.getRepository(AccountEntity)
+			.createQueryBuilder()
+			.update()
+			.set({ failedCount: clear ? 0 : () => 'COALESCE(failedCount, 0) + 1' })
+			.where('id = :accountId', { accountId })
+			.execute();
 	}
 
 	public async updateProcessingDate(accountId: number): Promise<void> {
-		const account: AccountEntity = await this.getById(accountId);
-		account.lastProcessingDate = new Date();
-		await this.dataSource.getRepository(AccountEntity).save(account);
+		await this.dataSource.getRepository(AccountEntity)
+			.update({ id: accountId }, { lastProcessingDate: new Date() });
 	}
 
 	public async removeByUrl(accountUrl: string): Promise<void> {

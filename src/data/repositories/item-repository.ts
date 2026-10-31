@@ -80,36 +80,32 @@ export class ItemRepository {
 	};
 
 	public async updateReleaseDate(itemId: number, date: Date): Promise<boolean> {
-		const item: ItemEntity = await this.getById(itemId);
-		if (!isNullOrUndefined(item.releaseDate)) {
-			return false;
-		}
-
-		item.releaseDate = date;
-		await this.dataSource.getRepository(ItemEntity).save(item);
-		return true;
+		// Write only when the release date is not set yet
+		const result = await this.dataSource.getRepository(ItemEntity)
+			.createQueryBuilder()
+			.update()
+			.set({ releaseDate: date })
+			.where('id = :itemId AND releaseDate IS NULL', { itemId })
+			.execute();
+		return result.affected > 0;
 	}
 
 	public async updateBusy(itemId: number, isBusy: boolean): Promise<void> {
-		const item: ItemEntity = await this.getById(itemId);
-		item.isBusy = isBusy;
-		await this.dataSource.getRepository(ItemEntity).save(item);
+		await this.dataSource.getRepository(ItemEntity).update({ id: itemId }, { isBusy });
 	}
 
 	public async updateFailed(itemId: number, clear: boolean = false): Promise<void> {
-		const item: ItemEntity = await this.getById(itemId);
-		if (clear) {
-			item.failedCount = 0;
-		} else {
-			item.failedCount = isNullOrUndefined(item.failedCount) ? 1 : (item.failedCount + 1);
-		}
-		await this.dataSource.getRepository(ItemEntity).save(item);
+		await this.dataSource.getRepository(ItemEntity)
+			.createQueryBuilder()
+			.update()
+			.set({ failedCount: clear ? 0 : () => 'COALESCE(failedCount, 0) + 1' })
+			.where('id = :itemId', { itemId })
+			.execute();
 	}
 
 	public async updateProcessingDate(itemId: number): Promise<void> {
-		const item: ItemEntity = await this.getById(itemId);
-		item.lastProcessingDate = new Date();
-		await this.dataSource.getRepository(ItemEntity).save(item);
+		await this.dataSource.getRepository(ItemEntity)
+			.update({ id: itemId }, { lastProcessingDate: new Date() });
 	}
 
 	public async updateImageUrl(itemId: number,  imageUrl: string): Promise<void> {
@@ -117,11 +113,13 @@ export class ItemRepository {
 			return;
 		}
 
-		const item: ItemEntity = await this.getById(itemId);
-		if (isNullOrUndefined(imageUrl) || item.imageUrl !== imageUrl) {
-			item.imageUrl = imageUrl;
-			await this.dataSource.getRepository(ItemEntity).save(item);
-		}
+		// Write only when the value differs
+		await this.dataSource.getRepository(ItemEntity)
+			.createQueryBuilder()
+			.update()
+			.set({ imageUrl })
+			.where('id = :itemId AND (imageUrl IS NULL OR imageUrl <> :imageUrl)', { itemId, imageUrl })
+			.execute();
 	}
 
 	public async insertTrackToAlbum(trackUrl: string, album: ItemEntity): Promise<boolean> {
