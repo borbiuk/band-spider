@@ -2,6 +2,13 @@ import { accountColor, albumColor, dateColor, followerColor, itemColor, logger, 
 
 export const delay = async (timeout: number = 300) => await new Promise(resolve => setTimeout(resolve, timeout));
 export const onlyUnique = <T>(value: T, index: number, array: T[]): boolean => array.indexOf(value) === index
+export const chunk = <T>(array: T[], size: number): T[][] => {
+	const result: T[][] = [];
+	for (let i = 0; i < array.length; i += size) {
+		result.push(array.slice(i, i + size));
+	}
+	return result;
+};
 export const isNullOrUndefined = (x: unknown): boolean => x === null || x === undefined;
 export const isEmptyString = (x: string): boolean => isNullOrUndefined(x) || x.trim() === '';
 export const isAlbumUrl = (url: string): boolean => isValidUrl(url) && url.includes('/album/');

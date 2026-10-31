@@ -1,3 +1,4 @@
+import { EntityManager } from 'typeorm';
 import { BandDatabase } from '../../../data/db';
 import { InsertResult } from '../../../models/insert-result';
 import { AccountPageData } from '../models/account-page-data';
@@ -10,43 +11,65 @@ export async function saveAccountPageData(
 	data: AccountPageData,
 	database: BandDatabase
 ): Promise<AccountPageStatistic> {
-	const collection = await readAndSaveAccountData(
-		accountId,
-		data.collection,
-		(itemUrl: string) => database.item.insert(itemUrl),
-		(accountId, entityId) => database.account.addItem(accountId, entityId, false)
-	);
+	// One transaction per account page: one commit instead of one per row.
+	return await database.dataSource.transaction(async (manager) => {
+		const collection = await saveAccountItems(accountId, data.collection, false, database, manager);
+		const wishlist = await saveAccountItems(accountId, data.wishlist, true, database, manager);
 
-	const wishlist = await readAndSaveAccountData(
-		accountId,
-		data.wishlist,
-		(itemUrl: string) => database.item.insert(itemUrl),
-		(accountId, entityId) => database.account.addItem(accountId, entityId, true)
-	);
+		const followers = await readAndSaveAccountData(
+			accountId,
+			data.followers,
+			(accountUrl: string) => database.account.insert(accountUrl),
+			(accountId, entityId) => database.account.addFollower(accountId, entityId)
+		);
 
-	const followers = await readAndSaveAccountData(
-		accountId,
-		data.followers,
-		(accountUrl: string) => database.account.insert(accountUrl),
-		(accountId, entityId) => database.account.addFollower(accountId, entityId)
-	);
+		const following = await readAndSaveAccountData(
+			accountId,
+			data.following,
+			(accountUrl: string) => database.account.insert(accountUrl),
+			(accountId, entityId) => database.account.addFollower(entityId, accountId)
+		);
 
-	const following = await readAndSaveAccountData(
-		accountId,
-		data.following,
-		(accountUrl: string) => database.account.insert(accountUrl),
-		(accountId, entityId) => database.account.addFollower(entityId, accountId)
-	);
+		// Save that account was processed now
+		await database.account.updateProcessingDate(accountId);
 
-	// Save that account was processed now
-	await database.account.updateProcessingDate(accountId);
+		return {
+			collection,
+			wishlist,
+			followers,
+			following,
+		}
+	});
+}
+
+/**
+ * Saves the items of a collection or wishlist tab with batched queries.
+ * Gives the same statistic as `readAndSaveAccountData` with `item.insert` and `account.addItem`.
+ */
+async function saveAccountItems(
+	accountId: number,
+	pageReadResult: AccountTabData,
+	wishlist: boolean,
+	database: BandDatabase,
+	manager: EntityManager
+): Promise<AccountTabStatistic> {
+	let newUrls: string[] = [];
+	let newRelationsCount: number = 0;
+
+	if (pageReadResult.urls.length !== 0) {
+		const inserted = await database.item.insertMany(pageReadResult.urls, manager);
+		newUrls = inserted.newUrls;
+		const ids = inserted.ids;
+		newRelationsCount = await database.account.addItems(accountId, ids, wishlist, manager);
+	}
 
 	return {
-		collection,
-		wishlist,
-		followers,
-		following,
-	}
+		total: pageReadResult.total,
+		allScraped: pageReadResult.total === pageReadResult.urls.length,
+		newRecords: newUrls.length,
+		newRelations: newRelationsCount,
+		newUrls,
+	};
 }
 
 /**
@@ -66,6 +89,7 @@ async function readAndSaveAccountData(
 ): Promise<AccountTabStatistic> {
 	const entityIds: number[] = [];
 
+	const newUrls: string[] = [];
 	let newCount: number = 0;
 	let newRelationsCount: number = 0;
 
@@ -76,6 +100,7 @@ async function readAndSaveAccountData(
 
 		if (isInserted) {
 			newCount++;
+			newUrls.push(entityUrl);
 		}
 	}
 
@@ -92,6 +117,7 @@ async function readAndSaveAccountData(
 		allScraped: pageReadResult.total === pageReadResult.urls.length,
 		newRecords: newCount,
 		newRelations: newRelationsCount,
+		newUrls,
 	};
 }
 

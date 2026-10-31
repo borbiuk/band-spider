@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
-import { delay, isNullOrUndefined, logMessage } from '../common/utils';
+import { delay, isAccountUrl, isItemUrl, isNullOrUndefined, logMessage } from '../common/utils';
 import { BandDatabase } from '../data/db';
 import { BandSpiderOptions } from '../index';
 import { processAccount } from './account/account-handler';
@@ -15,6 +15,10 @@ export enum UrlType {
 	Account = 'account',
 	Item = 'item',
 }
+
+// The page is replaced often to free the memory of the renderer, the whole browser rarely.
+const PAGE_RECREATE_INTERVAL = 1;
+const BROWSER_RELAUNCH_INTERVAL = 500;
 
 export class BandSpider {
 	private readonly statistic = {
@@ -81,7 +85,7 @@ export class BandSpider {
 				logger.debug(
 					logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] created!`)
 				);
-				return await this.getPage(browser, headless);
+				return await this.getPage(browser, headless, true);
 			}
 			catch (e) {
 				if (!safe) {
@@ -94,12 +98,25 @@ export class BandSpider {
 
 		}
 
+		// closes the page and opens a new one with the same setup in the same browser
+		const recreatePage = async (id: number, oldPage: Page): Promise<Page> => {
+			try {
+				const page = await this.getPage(browsersList[id], headless, false);
+				await oldPage.close().catch(() => { });
+				return page;
+			} catch (e) {
+				logger.error(e, logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] page recreation failed, relaunching browser`));
+				return await recreateBrowser(id);
+			}
+		}
+
 		// create jobs
 		logger.debug(`${concurrencyBrowsers} Jobs (Browsers) init starting...`);
 		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
 			.map(async (_, id: number) => {
 				return this.startPageProcessing(
 					recreateBrowser,
+					recreatePage,
 					queue,
 					type,
 					id,
@@ -113,6 +130,7 @@ export class BandSpider {
 
 	private async startPageProcessing(
 		recreateBrowser: (id: number) => Promise<Page>,
+		recreatePage: (id: number, page: Page) => Promise<Page>,
 		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
@@ -152,6 +170,10 @@ export class BandSpider {
 				event,
 				page,
 				id,
+				// feed new URLs straight into the queue, the DB scan stays as the refill path
+				(urls) => urls
+					.filter(x => this.isUrlOfType(type, x))
+					.forEach(x => queue.enqueue(x)),
 			);
 
 			// update statistic
@@ -176,8 +198,10 @@ export class BandSpider {
 				// }
 			}
 
-			if (i % 50 === 0) {
+			if (i % BROWSER_RELAUNCH_INTERVAL === 0) {
 				page = await recreateBrowser(id);
+			} else if (i % PAGE_RECREATE_INTERVAL === 0) {
+				page = await recreatePage(id, page);
 			}
 		}
 
@@ -191,19 +215,20 @@ export class BandSpider {
 		event: QueueEvent,
 		page: Page,
 		pageIndex: number,
+		onNewUrls: (urls: string[]) => void,
 	): Promise<boolean> {
 		try {
 			let processed = false;
 			if (event.type === UrlType.Account) {
 				await this.database.account.updateBusy(event.id, true);
-				processed = await processAccount(event, this.database, page, pageIndex);
+				processed = await processAccount(event, this.database, page, pageIndex, onNewUrls);
 				if (!processed) {
 					await this.database.account.updateFailed(event.id)
 				}
 				await this.database.account.updateBusy(event.id, false);
 			} else if (event.type === UrlType.Item) {
 				await this.database.item.updateBusy(event.id, true);
-				processed = await processItem(event, this.database, page, pageIndex);
+				processed = await processItem(event, this.database, page, pageIndex, onNewUrls);
 				if (!processed) {
 					await this.database.item.updateFailed(event.id)
 				}
@@ -236,6 +261,21 @@ export class BandSpider {
 			);
 
 			return false;
+		}
+	}
+
+	/**
+	 * Tells if a URL is of the kind this run processes, the same as the `getNotProcessed` filters do:
+	 * accounts for the account run, only track URLs for the item run.
+	 */
+	private isUrlOfType(type: UrlType, url: string): boolean {
+		switch (type) {
+			case UrlType.Account:
+				return isAccountUrl(url);
+			case UrlType.Item:
+				return isItemUrl(url) && url.toLowerCase().includes('/track/');
+			default:
+				return false;
 		}
 	}
 
@@ -308,8 +348,9 @@ export class BandSpider {
 	private async getPage(
 		browser: Browser,
 		headless: boolean,
+		reuseFirstPage: boolean,
 	): Promise<Page> {
-		const pages = await browser.pages();
+		const pages = reuseFirstPage ? await browser.pages() : [];
 		const page = isNullOrUndefined(pages) || pages.length === 0
 			? await browser.newPage()
 			: pages[0];
