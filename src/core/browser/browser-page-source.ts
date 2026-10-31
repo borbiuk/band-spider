@@ -97,19 +97,13 @@ export interface BrowserPoolOptions {
 }
 
 /**
- * The browsers of all workers, one per worker id. Creating the pool sets up closing all browsers on
- * SIGINT. Puppeteer with the stealth plugin is loaded before the first browser starts.
+ * The browsers of all workers, one per worker id. Puppeteer with the stealth plugin is loaded before
+ * the first browser starts.
  */
 export class BrowserPool {
 	private readonly browsers: { [id: number]: Browser } = {};
 
 	constructor(private readonly options: BrowserPoolOptions) {
-		// configure browsers closing on exit
-		process.on('SIGINT', async () => {
-			await Promise.allSettled(Object.values(this.browsers).map(x => x.close()));
-			logger.warn('Browsers closed');
-			process.exit();
-		});
 	}
 
 	/** Closes the browser of the worker, if any, launches a new one and returns its first page. */
@@ -142,6 +136,20 @@ export class BrowserPool {
 
 	}
 
+	/** Closes the browser of the worker. With `--docker` this closes the remote browser too. */
+	public async closeBrowser(id: number): Promise<void> {
+		const browser = this.browsers[id];
+		if (isNullOrUndefined(browser)) {
+			return;
+		}
+
+		delete this.browsers[id];
+		await browser.close();
+		logger.debug(
+			logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] closed!`)
+		);
+	}
+
 	/** Closes the page and opens a new one with the same setup in the same browser. */
 	public async recreatePage(id: number, oldPage: Page): Promise<Page> {
 		try {
@@ -169,6 +177,11 @@ export class BrowserPool {
 					'--enable-automation'
 				],
 				args: CHROME_ARGS,
+				// The app handles SIGINT and SIGTERM itself: it finishes the current URL and closes the
+				// browser. Puppeteer's own handlers would kill Chrome and exit at once. Chrome runs in its
+				// own process group, so Ctrl-C in the terminal does not reach it.
+				handleSIGINT: false,
+				handleSIGTERM: false,
 			};
 			return await puppeteer.launch(launchOptions);
 		}
@@ -241,8 +254,10 @@ export class BrowserPageSource implements PageSource {
 		}
 	}
 
+	/** Closes the page and the browser of this worker. */
 	public async close(): Promise<void> {
-		await this.page.close();
+		await this.page.close().catch(() => { });
+		await this.pool.closeBrowser(this.id);
 	}
 
 	private setPage(page: Page): void {
