@@ -49,9 +49,17 @@ To start process saved albums/tracks:
 node run db:items
 ```
 
+## 🌐 How pages are read
+
+By default pages are read with plain HTTP requests (no Chrome is started), with a random pause of 0.5-1.5 s between
+requests and a shared pause after HTTP 429. To read pages with Puppeteer instead, add the `--browser` flag:
+
+- `npm run db:items:browser`
+- `npm run db:accounts:browser`
+
 ## 🕵️ Debug Mode
 
-By default browser will be running in `headless` mode, to run a browser with GUI use the `debug:` prefix in the command:
+The debug commands need a visible browser, so they always run with `--browser`. By default the browser runs in `headless` mode, to run a browser with GUI use the `debug:` prefix in the command:
 
 - `node run debug:file:accounts`
 - `node run debug:file:items`

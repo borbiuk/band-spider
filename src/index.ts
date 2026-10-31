@@ -10,6 +10,8 @@ export interface BandSpiderOptions {
 	type: UrlType,
 	docker: boolean,
 	superTag: boolean,
+	/** Read pages with Puppeteer instead of plain HTTP requests. */
+	browser: boolean,
 }
 
 // Count of parallel URL workers (Browsers).
@@ -25,6 +27,7 @@ const main = async (): Promise<void> => {
 		type: args.includes('--account') ? UrlType.Account : UrlType.Item,
 		docker: args.includes('--docker'),
 		superTag: args.includes('--superTag'),
+		browser: args.includes('--browser'),
 	};
 
 	// Run

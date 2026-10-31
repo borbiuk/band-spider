@@ -1,6 +1,7 @@
 import { Browser, HTTPResponse, LaunchOptions, Page } from 'puppeteer';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { HttpClient } from '../common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
 import { ProcessingQueue, QueueEvent } from '../common/processing-queue';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
@@ -9,6 +10,7 @@ import { BandDatabase } from '../data/db';
 import { BandSpiderOptions } from '../index';
 import { processAccount } from './account/account-handler';
 import { processItem } from './item/item-handler';
+import { BrowserPageReader, FetchPageReader, PageReader } from './page-reader';
 import { ProxyClient } from './proxy/proxy-client';
 
 export enum UrlType {
@@ -21,6 +23,14 @@ enum UrlResult {
 	Failed,
 	/** Bandcamp answered HTTP 429: the URL is not counted as failed and is tried again after the pause. */
 	RateLimited,
+}
+
+/** What a worker reads pages with, and what it does around it. */
+interface PageSource {
+	reader: PageReader;
+	/** Called after every processed URL. The browser source replaces its page and browser here. */
+	afterUrl: () => Promise<void>;
+	close: () => Promise<void>;
 }
 
 // The page is replaced often to free the memory of the renderer, the whole browser rarely.
@@ -47,9 +57,9 @@ export class BandSpider {
 			headless,
 			type,
 			docker,
+			browser,
 		}: BandSpiderOptions
 	): Promise<void> {
-		puppeteer.use(StealthPlugin());
 
 		// init database
 		logger.debug('DB synchronizing...')
@@ -71,6 +81,45 @@ export class BandSpider {
 
 		// change IP
 		await ProxyClient.initialize.changeIp(true);
+
+		const createSource = browser
+			? this.createBrowserSourceFactory(headless, docker)
+			: this.createFetchSourceFactory();
+
+		// create jobs
+		logger.debug(`${concurrencyBrowsers} Jobs (${browser ? 'Browsers' : 'HTTP'}) init starting...`);
+		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
+			.map(async (_, id: number) => {
+				return this.startPageProcessing(
+					await createSource(id),
+					queue,
+					type,
+					id,
+				);
+			});
+		logger.debug('Jobs started!');
+
+		// run jobs
+		await Promise.all(promises)
+	}
+
+	/** Plain HTTP: one client for all workers, so the pacing and the 429 pause are shared. */
+	private createFetchSourceFactory(): (id: number) => Promise<PageSource> {
+		const http = new HttpClient(this.rateLimitGate, {
+			onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(url, retryAfter),
+		});
+		const reader = new FetchPageReader(http);
+
+		return async () => ({
+			reader,
+			afterUrl: async () => { },
+			close: async () => { },
+		});
+	}
+
+	/** Puppeteer, the fallback used with `--browser`. */
+	private createBrowserSourceFactory(headless: boolean, docker: boolean): (id: number) => Promise<PageSource> {
+		puppeteer.use(StealthPlugin());
 
 		// configure browsers closing on exit
 		const browsersList: { [id: number]: Browser } = {};
@@ -121,27 +170,27 @@ export class BandSpider {
 			}
 		}
 
-		// create jobs
-		logger.debug(`${concurrencyBrowsers} Jobs (Browsers) init starting...`);
-		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
-			.map(async (_, id: number) => {
-				return this.startPageProcessing(
-					recreateBrowser,
-					recreatePage,
-					queue,
-					type,
-					id,
-				);
-			});
-		logger.debug('Jobs started!');
+		return async (id: number) => {
+			const reader = new BrowserPageReader(await recreateBrowser(id));
 
-		// run jobs
-		await Promise.all(promises)
+			let i = 0;
+			return {
+				reader,
+				afterUrl: async () => {
+					i++;
+					if (i % BROWSER_RELAUNCH_INTERVAL === 0) {
+						reader.page = await recreateBrowser(id);
+					} else if (i % PAGE_RECREATE_INTERVAL === 0) {
+						reader.page = await recreatePage(id, reader.page);
+					}
+				},
+				close: async () => await reader.page.close(),
+			};
+		};
 	}
 
 	private async startPageProcessing(
-		recreateBrowser: (id: number) => Promise<Page>,
-		recreatePage: (id: number, page: Page) => Promise<Page>,
+		source: PageSource,
 		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
@@ -150,12 +199,7 @@ export class BandSpider {
 			this.statistic.start = new Date().getTime()
 		}
 
-		let page = await recreateBrowser(id);
-
-		let i = 0;
 		while (true) {
-			i++;
-
 			// do not take a URL, nor refill the queue, while the pause after HTTP 429 is active
 			await this.rateLimitGate.wait();
 
@@ -176,7 +220,7 @@ export class BandSpider {
 			// process
 			const result = await this.processUrl(
 				event,
-				page,
+				source.reader,
 				id,
 				// feed new URLs straight into the queue, the DB scan stays as the refill path
 				(urls) => urls
@@ -211,14 +255,10 @@ export class BandSpider {
 				// }
 			}
 
-			if (i % BROWSER_RELAUNCH_INTERVAL === 0) {
-				page = await recreateBrowser(id);
-			} else if (i % PAGE_RECREATE_INTERVAL === 0) {
-				page = await recreatePage(id, page);
-			}
+			await source.afterUrl();
 		}
 
-		await page.close();
+		await source.close();
 		logger.info(
 			logMessage(LogSource.Browser, `[${String(id).padEnd(2)}] Completed!`)
 		);
@@ -226,7 +266,7 @@ export class BandSpider {
 
 	private async processUrl(
 		event: QueueEvent,
-		page: Page,
+		reader: PageReader,
 		pageIndex: number,
 		onNewUrls: (urls: string[]) => void,
 	): Promise<UrlResult> {
@@ -234,14 +274,14 @@ export class BandSpider {
 			let processed = false;
 			if (event.type === UrlType.Account) {
 				await this.database.account.updateBusy(event.id, true);
-				processed = await processAccount(event, this.database, page, pageIndex, onNewUrls);
+				processed = await processAccount(event, this.database, reader, pageIndex, onNewUrls);
 				if (!processed) {
 					await this.database.account.updateFailed(event.id)
 				}
 				await this.database.account.updateBusy(event.id, false);
 			} else if (event.type === UrlType.Item) {
 				await this.database.item.updateBusy(event.id, true);
-				processed = await processItem(event, this.database, page, pageIndex, onNewUrls);
+				processed = await processItem(event, this.database, reader, pageIndex, onNewUrls);
 				if (!processed) {
 					await this.database.item.updateFailed(event.id)
 				}
