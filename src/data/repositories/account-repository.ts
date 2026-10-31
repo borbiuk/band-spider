@@ -4,6 +4,7 @@ import { InsertResult } from '../../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
 import { FollowerEntity } from '../entities/follower-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
+import { insertRelation, insertUnique } from './insert-helpers';
 
 const DB_BATCH_SIZE = 500;
 
@@ -45,58 +46,26 @@ export class AccountRepository {
 	}
 
 	public async insert(accountUrl: string): Promise<InsertResult<AccountEntity>> {
-		const repository = this.manager.getRepository(AccountEntity);
-
-		let existingRecord: AccountEntity = await repository.findOne({ where: { url: accountUrl } });
-		if (!isNullOrUndefined(existingRecord)) {
-			return { entity: existingRecord, isInserted: false };
-		}
-
-		try {
-			const insertResult = await repository.insert({ url: accountUrl });
-			return { entity: insertResult.generatedMaps[0] as AccountEntity, isInserted: true };
-		} catch (error) {
-			existingRecord = await repository.findOne({ where: { url: accountUrl } });
-			if (!isNullOrUndefined(existingRecord)) {
-				return { entity: existingRecord, isInserted: false, };
-			}
-			throw error;
-		}
+		return await insertUnique(
+			this.manager.getRepository(AccountEntity),
+			{ url: accountUrl },
+			generated => generated as AccountEntity,
+		);
 	};
 
 	public async addItem(accountId: number, itemId: number, wishlist: boolean = false): Promise<boolean> {
 		const repository = this.manager.getRepository(ItemToAccountEntity);
 
-		let existingRecord = await repository.findOne({
-			where: {
-				itemId: itemId,
-				accountId: accountId,
-			}
-		});
-
-		if (!isNullOrUndefined(existingRecord)) {
-			if (existingRecord.wishlist !== wishlist) {
-				existingRecord.wishlist = wishlist;
-				await repository.save(existingRecord);
-			}
-			return false;
-		}
-
-		try {
-			await repository.insert({ itemId, accountId, wishlist });
-			return true;
-		} catch (error) {
-			existingRecord = await repository.findOne({
-				where: {
-					itemId: itemId,
-					accountId: accountId,
+		return await insertRelation(repository, { itemId, accountId }, {
+			row: { itemId, accountId, wishlist },
+			onExisting: async (existingRecord) => {
+				if (existingRecord.wishlist !== wishlist) {
+					existingRecord.wishlist = wishlist;
+					await repository.save(existingRecord);
 				}
-			});
-			if (!isNullOrUndefined(existingRecord)) {
-				return true;
-			}
-			throw error;
-		}
+			},
+			lostRace: true,
+		});
 	};
 
 	/**
@@ -141,34 +110,7 @@ export class AccountRepository {
 	}
 
 	public async addFollower(followedId: number, followerId: number): Promise<boolean> {
-		const repository = this.manager.getRepository(FollowerEntity);
-
-		let existingRecord = await repository.findOne({
-			where: {
-				followedId: followedId,
-				followerId: followerId,
-			}
-		});
-
-		if (!isNullOrUndefined(existingRecord)) {
-			return false;
-		}
-
-		try {
-			await repository.insert({ followedId, followerId });
-			return true;
-		} catch (error) {
-			existingRecord = await repository.findOne({
-				where: {
-					followedId: followedId,
-					followerId: followerId,
-				}
-			});
-			if (!isNullOrUndefined(existingRecord)) {
-				return true;
-			}
-			throw error;
-		}
+		return await insertRelation(this.manager.getRepository(FollowerEntity), { followedId, followerId }, { lostRace: true });
 	};
 
 	public async resetAllBusy(): Promise<void> {
