@@ -18,7 +18,7 @@
 		"debug:db:items": "npm run build && node ./dist/index.js --browser",
 		"docker:db:accounts": "npm run build && node ./dist/index.js --headless --account --docker --browser",
 		"docker:db:items": "npm run build && node ./dist/index.js --headless --docker --browser",
-		"test": "npm run build && node --test dist/tests/",
+		"test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
 		"superTag": "npm run build && node ./dist/index.js --superTag",
 		"install-browser": "npx @puppeteer/browsers install chrome@stable"
 	},
