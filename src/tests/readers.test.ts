@@ -168,12 +168,23 @@ describe('item reader', () => {
 			return true;
 		});
 
+		// a port nobody listens on: take a free one and close it again
+		const probe = http.createServer();
+		await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve));
+		const closedPort = (probe.address() as { port: number }).port;
+		await new Promise(resolve => probe.close(resolve));
+
 		const closed = new HttpClient(new RateLimitGate(), {
-			fetchFn: () => fetch('http://127.0.0.1:1/'),
+			fetchFn: () => fetch(`http://127.0.0.1:${closedPort}/`),
 			minDelayMs: 0,
 			maxDelayMs: 0,
 		});
-		await assert.rejects(readItemPageByFetch(itemUrl, closed), (e: Error) => !(e instanceof RateLimitedError));
+		await assert.rejects(readItemPageByFetch(itemUrl, closed), (e: Error) => {
+			assert.ok(!(e instanceof RateLimitedError));
+			assert.equal(e.message, `Request failed (ECONNREFUSED): ${itemUrl}`);
+			assert.ok(e.cause instanceof TypeError, 'the fetch error is kept as the cause');
+			return true;
+		});
 	});
 });
 

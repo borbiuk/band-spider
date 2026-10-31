@@ -1,4 +1,4 @@
-import { accountColor, albumColor, dateColor, followerColor, itemColor, logger, LogSource, tagColor, urlColor } from './logger';
+import { LogSource, urlColor } from './logger';
 
 export const delay = async (timeout: number = 300) => await new Promise(resolve => setTimeout(resolve, timeout));
 export const onlyUnique = <T>(value: T, index: number, array: T[]): boolean => array.indexOf(value) === index
@@ -29,19 +29,6 @@ export const isValidUrl = (urlString: string): boolean => {
 	}
 }
 
-export const waitOn = async (condition: () => boolean, timeout: number): Promise<boolean> => {
-	const start: number = Date.now();
-
-	while (Date.now() - start < timeout) {
-		if (condition()) {
-			return true;
-		}
-		await delay();
-	}
-
-	return false;
-}
-
 export const logMessage = (source: LogSource, message: string, url?: string): string => {
 	return isEmptyString(url)
 		? `\t${source} ${message}`
@@ -50,31 +37,3 @@ export const logMessage = (source: LogSource, message: string, url?: string): st
 
 export const minus = (value: number): string => value === 0 ? '•' : String(value);
 export const yesNo = (value: boolean | number): string => value ? '+' : '•';
-
-export const logItemProcessed = (
-	url: string,
-	pageIndex: number,
-	newAccounts: number,
-	totalAccounts: number,
-	albumInfo: { albumExtracted: boolean, albumRelationAlreadyExist: boolean },
-	tracksInfo: { extractedTracksCount: number, newTracksCount: number },
-	newTags: number,
-	totalTags: number,
-	releaseDateExtracted: boolean
-) => {
-	const accountsStat = accountColor(`${minus(newAccounts).padStart(3)}/${minus(totalAccounts).padEnd(3)}`);
-	const albumStat = albumColor(isNullOrUndefined(albumInfo)
-		? (isNullOrUndefined(tracksInfo)
-			? '•'.padEnd(5)
-			: `${minus(tracksInfo.newTracksCount).padStart(2)}/${minus(tracksInfo.extractedTracksCount).padEnd(2)}`)
-		: yesNo(albumInfo.albumExtracted).padEnd(5)
-	);
-	const tagsStat = tagColor(`${minus(newTags).padStart(2)}/${minus(totalTags).padEnd(2)}`);
-	const releaseDateStat = dateColor(yesNo(releaseDateExtracted));
-
-	const message = `[${String(pageIndex).padEnd(2)}] ${accountsStat} ${albumStat} ${tagsStat} ${releaseDateStat}`;
-
-	logger.info(
-		logMessage(LogSource.Item, message, url)
-	);
-}

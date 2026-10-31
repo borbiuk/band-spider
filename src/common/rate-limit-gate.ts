@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+
 /** First pause after a 429 when the server sends no `Retry-After`. Doubles on every next 429. */
 export const BASE_PAUSE_MS = 30_000;
 /** No pause is longer than this, also when `Retry-After` asks for more. */
@@ -76,7 +78,7 @@ export class RateLimitGate {
 		this.maxPauseMs = options.maxPauseMs ?? MAX_PAUSE_MS;
 		this.jitterRatio = options.jitterRatio ?? JITTER_RATIO;
 		this.now = options.now ?? Date.now;
-		this.sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
+		this.sleep = options.sleep ?? (ms => sleep(ms));
 		this.random = options.random ?? Math.random;
 	}
 
