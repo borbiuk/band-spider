@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
-import { HttpClient } from '../../../common/http-client';
+import { ApiRefusedError } from '../../../common/errors';
+import { getPageHtml, HttpClient } from '../../../common/http-client';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isAlbumUrl, isNullOrUndefined, isTrackUrl } from '../../../common/utils';
 import { ItemPageData } from '../models/item-page-data';
@@ -22,22 +23,16 @@ interface Supporter {
  * Reads an item page with plain HTTP requests. Gives the same data as `readItemPage`, except that
  * all supporters are read, not only the 60 the page renders.
  *
- * @throws 'Page did not exist' for HTTP 404, `RateLimitedError` for HTTP 429, a normal error for
- * any other failure, also when a request for more supporters is refused.
+ * @throws `PageNotFoundError` for HTTP 404, `RateLimitedError` for HTTP 429, `ApiRefusedError` when a
+ * request for more supporters is refused, and a normal error for any other failure.
  */
 export async function readItemPageByFetch(
 	url: string,
 	http: HttpClient,
 ): Promise<ItemPageData> {
-	const response = await http.get(url);
-	if (response.status === 404) {
-		throw new Error('Page did not exist');
-	}
-	if (response.status !== 200) {
-		throw new Error(`HTTP ${response.status}: ${url}`);
-	}
+	const html = await getPageHtml(http, url);
 
-	const raw = await parseItemPage(url, response.body, http);
+	const raw = await parseItemPage(url, html, http);
 	return buildItemPageData(url, raw, null);
 }
 
@@ -61,7 +56,7 @@ async function parseItemPage(url: string, html: string, http: HttpClient): Promi
 			accounts = await readSupporters($, url, http);
 		} catch (e) {
 			// a refused request must not give a truncated list that looks complete
-			if (e instanceof RateLimitedError || e?.refused) {
+			if (e instanceof RateLimitedError || e instanceof ApiRefusedError) {
 				throw e;
 			}
 			accountsError = e;
@@ -116,9 +111,7 @@ async function readSupporters($: cheerio.CheerioAPI, url: string, http: HttpClie
 				count: SUPPORTERS_PAGE_SIZE,
 			});
 			if (answer.status !== 200) {
-				const error = new Error(`Supporters API refused with status ${answer.status}: ${apiUrl}`);
-				error['refused'] = true;
-				throw error;
+				throw new ApiRefusedError(`Supporters API refused with status ${answer.status}: ${apiUrl}`);
 			}
 
 			const body = JSON.parse(answer.body);

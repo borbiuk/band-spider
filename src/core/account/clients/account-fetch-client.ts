@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
-import { HttpClient } from '../../../common/http-client';
+import { PageNotFoundError } from '../../../common/errors';
+import { getPageHtml, HttpClient } from '../../../common/http-client';
 import { isNullOrUndefined } from '../../../common/utils';
 import { AccountPageData } from '../models/account-page-data';
 import { API_BASE, buildAccountPageData } from './account-page-common';
@@ -7,24 +8,18 @@ import { API_BASE, buildAccountPageData } from './account-page-common';
 /**
  * Reads an account page with plain HTTP requests. Gives the same data as `readAccountPage`.
  *
- * @throws 'Page did not exist' for HTTP 404 or a page without `#pagedata`, `RateLimitedError` for
- * HTTP 429, a normal error for any other failure.
+ * @throws `PageNotFoundError` for HTTP 404 or a page without `#pagedata`, `RateLimitedError` for
+ * HTTP 429, `ApiRefusedError` when the API refuses a request, a normal error for any other failure.
  */
 export async function readAccountPageByFetch(
 	url: string,
 	http: HttpClient,
 ): Promise<AccountPageData> {
-	const response = await http.get(url);
-	if (response.status === 404) {
-		throw new Error('Page did not exist');
-	}
-	if (response.status !== 200) {
-		throw new Error(`HTTP ${response.status}: ${url}`);
-	}
+	const html = await getPageHtml(http, url);
 
-	const blob = readPageBlob(response.body);
+	const blob = readPageBlob(html);
 	if (isNullOrUndefined(blob)) {
-		throw new Error('Page did not exist');
+		throw new PageNotFoundError();
 	}
 
 	return await buildAccountPageData(url, blob, async (endpoint, body) => {

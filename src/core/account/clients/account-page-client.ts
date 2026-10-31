@@ -1,4 +1,5 @@
 import { Page } from 'puppeteer';
+import { PageNotFoundError } from '../../../common/errors';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isNullOrUndefined } from '../../../common/utils';
 import { AccountPageData } from '../models/account-page-data';
@@ -16,7 +17,7 @@ export async function readAccountPage(
 
 	const blob = await readPageBlob(page);
 	if (isNullOrUndefined(blob)) {
-		throw new Error('Page did not exist');
+		throw new PageNotFoundError();
 	}
 
 	return await buildAccountPageData(url, blob, (endpoint, body) => requestApi(page, endpoint, body));

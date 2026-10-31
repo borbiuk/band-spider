@@ -34,7 +34,7 @@ export async function processItem(
 	try {
 		itemPageStatistic = await saveItemPageData(id, itemPageData, database);
 	} catch (e) {
-		logger.error(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] saving failed: ${e.message}`.padEnd(61), url));
+		logger.error(e, logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] saving failed: ${e.message}`.padEnd(61), url));
 		return false;
 	}
 

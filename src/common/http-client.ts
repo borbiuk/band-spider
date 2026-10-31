@@ -1,3 +1,4 @@
+import { HttpStatusError, PageNotFoundError } from './errors';
 import { RateLimitedError, RateLimitGate } from './rate-limit-gate';
 
 /** The pause between two requests is a random time between these two values. */
@@ -101,4 +102,21 @@ export class HttpClient {
 			this.nextRequestAt = this.now() + this.minDelayMs + this.random() * (this.maxDelayMs - this.minDelayMs);
 		}
 	}
+}
+
+/**
+ * Loads a page and returns its HTML.
+ *
+ * @throws `PageNotFoundError` for HTTP 404, `RateLimitedError` for HTTP 429, `HttpStatusError` for
+ * any other status that is not 200.
+ */
+export async function getPageHtml(http: HttpClient, url: string): Promise<string> {
+	const response = await http.get(url);
+	if (response.status === 404) {
+		throw new PageNotFoundError();
+	}
+	if (response.status !== 200) {
+		throw new HttpStatusError(response.status, url);
+	}
+	return response.body;
 }
