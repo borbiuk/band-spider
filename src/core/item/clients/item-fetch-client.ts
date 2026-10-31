@@ -1,6 +1,6 @@
 import * as cheerio from 'cheerio';
 import { ApiRefusedError } from '../../../common/errors';
-import { getPageHtml, HttpClient } from '../../../common/http-client';
+import { getPageHtml, HttpClient, HttpResponse } from '../../../common/http-client';
 import { RateLimitedError } from '../../../common/rate-limit-gate';
 import { isAlbumUrl, isNullOrUndefined, isTrackUrl } from '../../../common/utils';
 import { ItemPageData } from '../models/item-page-data';
@@ -11,6 +11,9 @@ const SUPPORTERS_PAGE_SIZE = 100;
 
 /** Stops an item with a huge number of supporters from holding a worker forever. */
 const SUPPORTERS_PAGE_LIMIT = 200;
+
+/** Sends one JSON POST request. */
+type PostJson = (url: string, body: unknown) => Promise<HttpResponse>;
 
 interface Supporter {
 	fan_id?: number,
@@ -53,7 +56,7 @@ async function parseItemPage(url: string, html: string, http: HttpClient): Promi
 	let accountsError: Error | undefined;
 	if (!notFound) {
 		try {
-			accounts = await readSupporters($, url, http);
+			accounts = await readSupporters($, url, (apiUrl, body) => http.postJson(apiUrl, body));
 		} catch (e) {
 			// a refused request must not give a truncated list that looks complete
 			if (e instanceof RateLimitedError || e instanceof ApiRefusedError) {
@@ -83,7 +86,7 @@ async function parseItemPage(url: string, html: string, http: HttpClient): Promi
  * Reads the supporters: the first batch is embedded in `#collectors-data`, the rest comes from the
  * thumbs API of the same band host, one batch after another, until it says nothing is left.
  */
-async function readSupporters($: cheerio.CheerioAPI, url: string, http: HttpClient): Promise<string[]> {
+async function readSupporters($: cheerio.CheerioAPI, url: string, postJson: PostJson): Promise<string[]> {
 	const blobText = $('#collectors-data').attr('data-blob');
 	if (isNullOrUndefined(blobText)) {
 		// no blob: fall back to the supporters rendered in the page
@@ -104,7 +107,7 @@ async function readSupporters($: cheerio.CheerioAPI, url: string, http: HttpClie
 		let token: string | undefined = supporters.at(-1)?.token;
 
 		for (let i = 0; i < SUPPORTERS_PAGE_LIMIT && more && !isNullOrUndefined(token); i++) {
-			const answer = await http.postJson(apiUrl, {
+			const answer = await postJson(apiUrl, {
 				tralbum_type: tralbum.item_type === 'album' ? 'a' : 't',
 				tralbum_id: tralbum.id,
 				token,

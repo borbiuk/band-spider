@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { HttpStatusError, PageNotFoundError } from './errors';
 import { RateLimitedError, RateLimitGate } from './rate-limit-gate';
 
@@ -60,7 +61,7 @@ export class HttpClient {
 		this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
 		this.onRateLimited = options.onRateLimited ?? ((_url, retryAfter) => { this.gate.trip(retryAfter); });
 		this.fetchFn = options.fetchFn ?? fetch;
-		this.sleep = options.sleep ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
+		this.sleep = options.sleep ?? (ms => sleep(ms));
 		this.random = options.random ?? Math.random;
 		this.now = options.now ?? Date.now;
 	}
@@ -98,10 +99,27 @@ export class HttpClient {
 			}
 
 			return { status: response.status, body: await response.text() };
+		} catch (e) {
+			throw withNetworkCode(e, url);
 		} finally {
 			this.nextRequestAt = this.now() + this.minDelayMs + this.random() * (this.maxDelayMs - this.minDelayMs);
 		}
 	}
+}
+
+/**
+ * `fetch` and `text()` report a network failure as `TypeError: fetch failed` (or `terminated`) and
+ * keep the real reason in `cause`. Such an error is replaced with one that names the reason's code
+ * (or its message when it has no code) and the URL, so the log line says what went wrong. Other
+ * errors (timeout, 429) stay as they are.
+ */
+function withNetworkCode(error: unknown, url: string): unknown {
+	if (!(error instanceof TypeError) || error.cause === undefined) {
+		return error;
+	}
+
+	const cause = error.cause as { code?: string, message?: string };
+	return new Error(`Request failed (${cause.code ?? cause.message ?? 'unknown'}): ${url}`, { cause: error });
 }
 
 /**

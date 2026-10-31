@@ -84,3 +84,44 @@ describe('page builders throw the error classes', () => {
 		);
 	});
 });
+
+describe('network errors of HttpClient', () => {
+	const failingClient = (fetchFn: typeof fetch): HttpClient =>
+		new HttpClient(new RateLimitGate({ sleep: async () => { } }), { fetchFn, minDelayMs: 0, maxDelayMs: 0 });
+
+	const socketError = (): TypeError =>
+		new TypeError('terminated', { cause: Object.assign(new Error('other side closed'), { code: 'UND_ERR_SOCKET' }) });
+
+	it('names the code of a failed request', async () => {
+		const fetchError = new TypeError('fetch failed', { cause: Object.assign(new Error('getaddrinfo'), { code: 'ENOTFOUND' }) });
+
+		await assert.rejects(failingClient(async () => { throw fetchError; }).get(url), (e: Error) => {
+			assert.equal(e.message, `Request failed (ENOTFOUND): ${url}`);
+			assert.equal(e.cause, fetchError);
+			return true;
+		});
+	});
+
+	it('names the code of a body that breaks while it is read', async () => {
+		const body = new ReadableStream({ pull: controller => controller.error(socketError()) });
+
+		await assert.rejects(
+			failingClient(async () => new Response(body, { status: 200 })).get(url),
+			{ message: `Request failed (UND_ERR_SOCKET): ${url}` },
+		);
+	});
+
+	it('uses the message of the cause when it has no code', async () => {
+		const fetchError = new TypeError('fetch failed', { cause: new Error('bad port') });
+
+		await assert.rejects(failingClient(async () => { throw fetchError; }).get(url), { message: `Request failed (bad port): ${url}` });
+	});
+
+	it('keeps other errors as they are', async () => {
+		const plain = new TypeError('a bug, no cause');
+		await assert.rejects(failingClient(async () => { throw plain; }).get(url), (e: unknown) => e === plain);
+
+		const timeout = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+		await assert.rejects(failingClient(async () => { throw timeout; }).get(url), (e: unknown) => e === timeout);
+	});
+});
