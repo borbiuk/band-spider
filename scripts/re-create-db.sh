@@ -35,6 +35,17 @@ log_time() {
 ###########
 echo "[PREPARE]"
 
+# Move all pages from the WAL file into the DB file. If the WAL file kept pages, it would stay next to
+# the new DB after the renames below and SQLite would apply those old pages to the new DB.
+# A busy checkpoint or a WAL file that is not empty afterwards means the app still uses the DB.
+log_time "$start_time" "Start WAL checkpoint..."
+if ! checkpoint=$(sqlite3 "$old_db_path" "PRAGMA wal_checkpoint(TRUNCATE);"); then
+	handle_error "Failed to checkpoint the WAL file"
+fi
+if [ "${checkpoint%%|*}" != "0" ] || [ -s "$old_db_path-wal" ]; then
+	handle_error "The DB is still in use (checkpoint result: $checkpoint). Stop the app and run the script again"
+fi
+log_time "$start_time" "WAL checkpoint done"
 
 
 ##############

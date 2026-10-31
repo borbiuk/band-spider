@@ -9,45 +9,60 @@ labels, and accounts that purchased them.
 
 ## 🛠️ Installation
 
-Clone the repository and install dependencies:
+Node.js `^22.13.0 || >=24.11.0` is needed; `.nvmrc` pins Node 26. Clone the repository and install the exact
+versions from the lockfile:
 
 ```shell
   git clone https://github.com/borbiuk/band-spider.git \
   && cd band-spider \
-  && npm i
+  && npm ci
 ```
+
+`better-sqlite3` 13 is used on purpose, although TypeORM 1.1 lists `^12` as its peer. The `overrides` entry in
+`package.json` makes TypeORM use the same version, so no `--legacy-peer-deps` is needed.
 
 ## 🚀 Run
 
-### 📁 Run the app using the **file** as the initial data source
+The app reads the URLs to process from the database. A new DB file is created with the schema on the first start.
 
-**NOTE:** *DB will be created automatically*
-
-Fill the file `accounts.txt` with links to accounts of bandcamp and run:
+To process saved accounts:
 
 ```shell
-node run file:accounts
+npm run db:accounts
 ```
 
-**Or** fill the file `items.txt` with links to albums/tracks of bandcamp and run:
+To process saved tracks:
 
 ```shell
-node run file:items
+npm run db:items
 ```
 
-### 💾 Run the app using the DB as the data source
-
-To start process saved accounts:
+To link tags to super tags:
 
 ```shell
-node run db:accounts
+npm run superTag
 ```
 
-To start process saved albums/tracks:
+Every script builds the app first (`npm run build`) and then runs `node ./dist/index.js` with its flags.
+
+### ⚙️ Settings
+
+| Environment variable | Meaning |
+|---|---|
+| `BAND_DB_PATH` | Path of the SQLite file. Default: `band_db.sqlite` in the working directory. |
+| `DB_SYNCHRONIZE=true` | Update the schema from the entities on start. Without it, the schema is created only for a new file. |
+
+The app logs to the console and to `logfile.log` in the working directory (one JSON object per line). To read the
+file in a readable form:
 
 ```shell
-node run db:items
+npx pino-pretty < logfile.log
 ```
+
+### ⏹️ Stopping
+
+`Ctrl-C` (or `SIGTERM`) lets the current URL finish, closes the browsers and the DB, and exits with code 130 (143 for
+`SIGTERM`). Press `Ctrl-C` again to stop at once. A fatal error exits with code 1.
 
 ## 🌐 How pages are read
 
@@ -57,14 +72,39 @@ requests and a shared pause after HTTP 429. To read pages with Puppeteer instead
 - `npm run db:items:browser`
 - `npm run db:accounts:browser`
 
+Install the Chrome version that Puppeteer needs once:
+
+```shell
+npm run install-browser
+```
+
+To use a [browserless](https://www.browserless.io/) container instead of a local Chrome, start it with
+`bash scripts/browserless.sh` and run `npm run docker:db:items` or `npm run docker:db:accounts`.
+
 ## 🕵️ Debug Mode
 
-The debug commands need a visible browser, so they always run with `--browser`. By default the browser runs in `headless` mode, to run a browser with GUI use the `debug:` prefix in the command:
+The debug commands open a visible browser, so they always run with `--browser`:
 
-- `node run debug:file:accounts`
-- `node run debug:file:items`
-- `node run debug:db:accounts`
-- `node run debug:db:items`
+- `npm run debug:db:accounts`
+- `npm run debug:db:items`
+
+## 🧪 Tests
+
+```shell
+npm test
+```
+
+The tests use temp SQLite files and a local HTTP server; they do not touch `band_db.sqlite` or the network. CI runs
+them on Node 22, 24 and 26 for every pull request.
+
+## 🗄️ Database maintenance
+
+`scripts/re-create-db.sh` rebuilds `band_db.sqlite` from an SQL dump to make it smaller, and keeps the old file in
+`backup/`. Stop the app first, and run the script from the `scripts` folder:
+
+```shell
+cd scripts && ./re-create-db.sh
+```
 
 ## 📀 How&What data we store
 
