@@ -5,6 +5,7 @@ import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
 import { isAccountUrl, isItemUrl, isNullOrUndefined, logMessage } from '../common/utils';
 import type { BandSpiderOptions } from '../config';
 import { BandDatabase } from '../data/db';
+import type { ItemRepository } from '../data/repositories/item-repository';
 import { UrlType } from '../models/url-type';
 import { processAccount } from './account/account-handler';
 import { BrowserPageSource, BrowserPool } from './browser/browser-page-source';
@@ -12,6 +13,14 @@ import { processItem } from './item/item-handler';
 import { FetchPageReader, PageReader, PageSource } from './page-reader';
 import { ProcessingQueue, QueueEvent } from './processing-queue';
 import { ProxyClient } from './proxy/proxy-client';
+
+/** What `processUrl` needs to process one URL type. */
+interface UrlTypeHandler {
+	/** The rows of the type: they are marked busy while processed, and failed when processing fails. */
+	repository: Pick<ItemRepository, 'updateBusy' | 'updateFailed'>;
+	process: typeof processItem;
+	source: LogSource;
+}
 
 enum UrlResult {
 	Processed,
@@ -209,46 +218,25 @@ export class BandSpider {
 		pageIndex: number,
 		onNewUrls: (urls: string[]) => void,
 	): Promise<UrlResult> {
+		const { repository, process, source } = this.handlerOf(event.type);
 		try {
-			let processed = false;
-			if (event.type === UrlType.Account) {
-				await this.database.account.updateBusy(event.id, true);
-				processed = await processAccount(event, this.database, reader, pageIndex, onNewUrls);
-				if (!processed) {
-					await this.database.account.updateFailed(event.id)
-				}
-				await this.database.account.updateBusy(event.id, false);
-			} else if (event.type === UrlType.Item) {
-				await this.database.item.updateBusy(event.id, true);
-				processed = await processItem(event, this.database, reader, pageIndex, onNewUrls);
-				if (!processed) {
-					await this.database.item.updateFailed(event.id)
-				}
-				await this.database.item.updateBusy(event.id, false);
+			await repository.updateBusy(event.id, true);
+			const processed = await process(event, this.database, reader, pageIndex, onNewUrls);
+			if (!processed) {
+				await repository.updateFailed(event.id)
 			}
+			await repository.updateBusy(event.id, false);
 			return processed ? UrlResult.Processed : UrlResult.Failed;
 		} catch (error) {
 			// HTTP 429 is not a failure of the item: only release it, so it stays a candidate
 			if (error instanceof RateLimitedError) {
-				if (event.type === UrlType.Account) {
-					await this.database.account.updateBusy(event.id, false);
-				} else if (event.type === UrlType.Item) {
-					await this.database.item.updateBusy(event.id, false);
-				}
+				await repository.updateBusy(event.id, false);
 				this.pauseOnRateLimit(error.url, error.retryAfter);
 				return UrlResult.RateLimited;
 			}
 
-			let source: LogSource = LogSource.Unknown;
-			if (event.type === UrlType.Account) {
-				source = LogSource.Account;
-				await this.database.account.updateFailed(event.id)
-				await this.database.account.updateBusy(event.id, false);
-			} else if (event.type === UrlType.Item) {
-				source = LogSource.Item;
-				await this.database.item.updateFailed(event.id)
-				await this.database.item.updateBusy(event.id, false);
-			}
+			await repository.updateFailed(event.id)
+			await repository.updateBusy(event.id, false);
 
 			if (error instanceof PageNotFoundError) {
 				logger.warn(
@@ -263,6 +251,16 @@ export class BandSpider {
 			);
 
 			return UrlResult.Failed;
+		}
+	}
+
+	/** The rows, the handler and the log source of one URL type. */
+	private handlerOf(type: UrlType): UrlTypeHandler {
+		switch (type) {
+			case UrlType.Account:
+				return { repository: this.database.account, process: processAccount, source: LogSource.Account };
+			case UrlType.Item:
+				return { repository: this.database.item, process: processItem, source: LogSource.Item };
 		}
 	}
 
