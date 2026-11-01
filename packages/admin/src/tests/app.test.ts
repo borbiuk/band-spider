@@ -8,6 +8,9 @@ import { JsonFileConfigStore } from '../config-store';
 import { Supervisor } from '../supervisor';
 import { CRAWLER_ENTRY, DB_ENTRY, FakeLauncher, readyDbLauncher } from './fakes';
 
+const TOKEN = 'test-token';
+const PORT = 4200;
+
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-admin-api-'));
 const configFile = path.join(tempDir, 'config.json');
 
@@ -23,7 +26,7 @@ before(() => {
 		entries: { dbService: DB_ENTRY, crawler: CRAWLER_ENTRY },
 		stopTimeoutMs: 50,
 	});
-	app = buildApp({ supervisor, configStore });
+	app = buildApp({ supervisor, configStore, security: { token: TOKEN, port: () => PORT } });
 });
 
 after(async () => {
@@ -32,7 +35,12 @@ after(async () => {
 });
 
 const call = (method: 'GET' | 'POST' | 'PUT', url: string, payload?: unknown) =>
-	app.inject({ method, url, payload: payload as object | undefined });
+	app.inject({
+		method,
+		url,
+		payload: payload as object | undefined,
+		headers: { host: `127.0.0.1:${PORT}`, authorization: `Bearer ${TOKEN}` },
+	});
 
 describe('admin API', () => {
 	it('answers /health', async () => {

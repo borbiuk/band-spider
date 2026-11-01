@@ -9,21 +9,25 @@ import { z } from 'zod';
 import { adminConfigSchema } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError } from './errors';
+import { maskConfig, restoreSecrets } from './secrets';
+import { registerSecurity, SecurityOptions } from './security';
 import { Supervisor } from './supervisor';
 
 export interface AppOptions {
 	supervisor: Supervisor;
 	configStore: ConfigStore;
+	security: SecurityOptions;
 }
 
 const nameParams = z.object({ name: z.string().min(1) });
 const logsQuery = z.object({ limit: z.coerce.number().int().min(1).max(5000).optional() });
 
 /** The JSON API of the admin. It only knows the Supervisor and the ConfigStore. */
-export const buildApp = ({ supervisor, configStore }: AppOptions): FastifyInstance => {
+export const buildApp = ({ supervisor, configStore, security }: AppOptions): FastifyInstance => {
 	const app = Fastify({ logger: false }).withTypeProvider<ZodTypeProvider>();
 	app.setValidatorCompiler(validatorCompiler);
 	app.setSerializerCompiler(serializerCompiler);
+	registerSecurity(app, security);
 
 	// Every error has the same body: a message string
 	app.setErrorHandler((error: FastifyError, _request, reply) => {
@@ -34,12 +38,14 @@ export const buildApp = ({ supervisor, configStore }: AppOptions): FastifyInstan
 
 	app.get('/health', async () => ({ status: 'ok' }));
 
-	app.get('/config', async () => configStore.load());
+	// Secrets are never sent in full
+	app.get('/config', async () => maskConfig(await configStore.load()));
 
 	// The new config is used the next time a process starts
 	app.put('/config', { schema: { body: adminConfigSchema } }, async ({ body }) => {
-		await configStore.save(body);
-		return body;
+		const config = restoreSecrets(body, await configStore.load());
+		await configStore.save(config);
+		return maskConfig(config);
 	});
 
 	app.get('/status', async () => supervisor.status());
