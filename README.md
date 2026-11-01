@@ -33,6 +33,7 @@ references (`tsc -b`), and `npm test` builds and runs the tests of every package
 | `@band-spider/storage-sqlite` | TypeORM entities, repositories, `BandDatabase` and `LocalCrawlStore`. |
 | `@band-spider/cli` | The entry point (`dist/index.js`) that the npm scripts run. |
 | `@band-spider/db-service` | A Fastify HTTP service on 127.0.0.1 that owns the DB and serves the `CrawlStore` API. Start it with `npm run db:service`. Settings: `DB_SERVICE_HOST`, `DB_SERVICE_PORT` (default 4100), `DB_SERVICE_TOKEN` (optional bearer token, /health stays open), `DB_SERVICE_LEASE_MS`, `BAND_DB_PATH`. |
+| `@band-spider/crawler` | A crawler process. It reads URLs from the DB service over HTTP, fetches and parses the pages, and sends the results back. It knows nothing about the DB. Start it with `npm run crawler:items` or `npm run crawler:accounts`. Settings: `CRAWLER_DB_URL` (required, for example `http://127.0.0.1:4100`), `CRAWLER_DB_TOKEN`, `CRAWLER_TYPE` (`item` or `account`), `CRAWLER_REVERSE`, `CRAWLER_WORKERS`, `CRAWLER_MIN_DELAY_MS`, `CRAWLER_MAX_DELAY_MS`, `CRAWLER_PROXY`. The proxy is used only for page requests, never for the DB service. When started with fork, it also takes a `{ type: 'config', config }` message and a `{ type: 'stop' }` message, and sends `started`, `progress` and `stopped` messages. |
 
 ## 🚀 Run
 

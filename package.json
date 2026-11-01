@@ -12,11 +12,14 @@
 		"packages/core",
 		"packages/storage-sqlite",
 		"packages/db-service",
+		"packages/crawler",
 		"packages/cli"
 	],
 	"scripts": {
 		"build": "rm -rf packages/*/dist && tsc -b",
 		"db:service": "npm run build && node ./packages/db-service/dist/index.js",
+		"crawler:items": "npm run build && node ./packages/crawler/dist/index.js",
+		"crawler:accounts": "npm run build && node ./packages/crawler/dist/index.js --account",
 		"db:accounts":"npm run build && node ./packages/cli/dist/index.js --account",
 		"db:items": "npm run build && node ./packages/cli/dist/index.js",
 		"db:accounts:reverse": "npm run build && node ./packages/cli/dist/index.js --account --reverse",

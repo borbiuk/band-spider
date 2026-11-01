@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"tsBuildInfoFile": "./dist/.tsbuildinfo"
+	},
+	"references": [
+		{ "path": "../contracts" },
+		{ "path": "../core" },
+		{ "path": "../storage-sqlite" },
+		{ "path": "../db-service" }
+	]
+}
