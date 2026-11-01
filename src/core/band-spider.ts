@@ -1,6 +1,7 @@
 import { errorMessage, PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
+import { NoProxy, ProxySource, StaticProxy } from '../common/proxy-source';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
 import { isNullOrUndefined, logMessage } from '../common/utils';
 import type { BandSpiderOptions } from '../config';
@@ -8,7 +9,7 @@ import { UrlType } from '../models/url-type';
 import { processAccount } from './account/account-handler';
 import type { CrawlStore, CrawlTask } from './crawl-store';
 import { processItem } from './item/item-handler';
-import { FetchPageReader, PageReader, PageSource } from './page-reader';
+import { FetchPageReader, PageSource } from './page-reader';
 
 /** What `processUrl` needs to process one URL type. */
 interface UrlTypeHandler {
@@ -32,9 +33,6 @@ export class BandSpider {
 		start: null as number | null,
 	};
 
-	// one pause for all workers after HTTP 429
-	private readonly rateLimitGate = new RateLimitGate();
-
 	// take the newest unprocessed URLs from the DB first (`--reverse`)
 	private newestFirst = false;
 
@@ -48,6 +46,7 @@ export class BandSpider {
 			concurrency,
 			type,
 			reverse,
+			proxy,
 		}: BandSpiderOptions,
 		/** When aborted, every worker stops after its current URL. */
 		stop: AbortSignal = new AbortController().signal,
@@ -55,7 +54,8 @@ export class BandSpider {
 
 		this.newestFirst = reverse;
 
-		const createSource = this.createFetchSourceFactory();
+		const proxySource: ProxySource = proxy === undefined ? new NoProxy() : new StaticProxy(proxy);
+		const createSource = this.createFetchSourceFactory(proxySource);
 
 		// create jobs
 		logger.debug(`${concurrency} Jobs (HTTP) init starting...`);
@@ -71,21 +71,29 @@ export class BandSpider {
 		logger.debug('Jobs started!');
 
 		// run jobs
-		await Promise.all(promises)
+		try {
+			await Promise.all(promises);
+		} finally {
+			await proxySource.close();
+		}
 	}
 
-	/** Plain HTTP: one client for all workers, so the pacing and the 429 pause are shared. */
-	private createFetchSourceFactory(): (id: number) => Promise<PageSource> {
-		const http = new HttpClient(this.rateLimitGate, {
-			onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(url, retryAfter),
-		});
-		const reader = new FetchPageReader(http);
+	/** Plain HTTP: every worker has its own client and its own 429 pause, as if it ran from its own IP. */
+	private createFetchSourceFactory(proxySource: ProxySource): (id: number) => Promise<PageSource> {
+		return async () => {
+			const rateLimitGate = new RateLimitGate();
+			const http = new HttpClient(rateLimitGate, {
+				proxySource,
+				onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(rateLimitGate, url, retryAfter),
+			});
 
-		return async () => ({
-			reader,
-			afterUrl: async () => { },
-			close: async () => { },
-		});
+			return {
+				reader: new FetchPageReader(http),
+				rateLimitGate,
+				afterUrl: async () => { },
+				close: async () => { },
+			};
+		};
 	}
 
 	private async startPageProcessing(
@@ -116,7 +124,7 @@ export class BandSpider {
 	): Promise<void> {
 		while (!stop.aborted) {
 			// do not take a URL while the pause after HTTP 429 is active
-			await this.rateLimitGate.wait();
+			await source.rateLimitGate.wait();
 			if (stop.aborted) {
 				break;
 			}
@@ -128,12 +136,12 @@ export class BandSpider {
 			}
 
 			// process
-			const result = await this.processUrl(task, source.reader, id);
+			const result = await this.processUrl(task, source, id);
 
 			// update statistic
 			if (result === UrlResult.Processed) {
 				this.statistic.processed++;
-				this.rateLimitGate.reportSuccess();
+				source.rateLimitGate.reportSuccess();
 			} else if (result === UrlResult.RateLimited) {
 				this.statistic.rateLimited++;
 				// not lost: the task is released, so it is claimed again after the pause
@@ -162,12 +170,12 @@ export class BandSpider {
 
 	private async processUrl(
 		task: CrawlTask,
-		reader: PageReader,
+		source: PageSource,
 		pageIndex: number,
 	): Promise<UrlResult> {
-		const { process, source } = this.handlerOf(task.type);
+		const { process, source: logSource } = this.handlerOf(task.type);
 		try {
-			const processed = await process(task, this.store, reader, pageIndex);
+			const processed = await process(task, this.store, source.reader, pageIndex);
 			if (!processed) {
 				await this.store.release(task, 'failed');
 			}
@@ -176,14 +184,14 @@ export class BandSpider {
 			// HTTP 429 is not a failure of the item: only release it, so it stays a candidate
 			if (error instanceof RateLimitedError) {
 				await this.store.release(task, 'rateLimited');
-				this.pauseOnRateLimit(error.url, error.retryAfter);
+				this.pauseOnRateLimit(source.rateLimitGate, error.url, error.retryAfter);
 				return UrlResult.RateLimited;
 			}
 
 			if (error instanceof PageNotFoundError) {
 				await this.store.release(task, 'notFound');
 				logger.warn(
-					logMessage(source, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), task.url)
+					logMessage(logSource, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), task.url)
 				);
 				return UrlResult.Processed;
 			}
@@ -192,7 +200,7 @@ export class BandSpider {
 
 			logger.error(
 				error,
-				logMessage(source, `[${pageIndex}] Processing failed: ${errorMessage(error)}`, task.url)
+				logMessage(logSource, `[${pageIndex}] Processing failed: ${errorMessage(error)}`, task.url)
 			);
 
 			return UrlResult.Failed;
@@ -209,13 +217,13 @@ export class BandSpider {
 		}
 	}
 
-	/** Starts the shared pause and logs one line when a new pause starts. */
-	private pauseOnRateLimit(url: string, retryAfter?: string): void {
-		const pause = this.rateLimitGate.trip(retryAfter);
+	/** Starts the pause of one worker and logs one line when a new pause starts. */
+	private pauseOnRateLimit(gate: RateLimitGate, url: string, retryAfter?: string): void {
+		const pause = gate.trip(retryAfter);
 		if (pause.started) {
 			logger.warn(
 				{ url, status: 429, retryAfter: retryAfter ?? null, pauseSeconds: Math.round(pause.pauseMs / 1000), backoffLevel: pause.level },
-				logMessage(LogSource.Browser, 'HTTP 429, all workers paused')
+				logMessage(LogSource.Browser, 'HTTP 429, worker paused')
 			);
 		}
 	}
