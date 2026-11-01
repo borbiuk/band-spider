@@ -27,4 +27,5 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # npm test builds all workspaces first, then runs the tests of every package
       - run: npm test

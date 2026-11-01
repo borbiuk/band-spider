@@ -1,0 +1,14 @@
+{
+	"name": "@band-spider/cli",
+	"version": "1.0.0",
+	"private": true,
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "commonjs",
+	"dependencies": {
+		"@band-spider/core": "1.0.0",
+		"@band-spider/storage-sqlite": "1.0.0",
+		"fuse.js": "7.5.0",
+		"reflect-metadata": "0.2.2"
+	}
+}
