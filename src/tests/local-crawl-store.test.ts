@@ -234,6 +234,101 @@ describe('LocalCrawlStore save', () => {
 	});
 });
 
+describe('LocalCrawlStore serial writes', () => {
+	const empty = { total: 0, urls: [] as string[], complete: true };
+
+	it('saves many pages at the same time without mixing their transactions', async () => {
+		await clean();
+		const accountUrls = Array.from({ length: 6 }, (_, i) => `https://serial-${i}.bandcamp.com`);
+		for (const url of accountUrls) {
+			await db.account.insert(url);
+		}
+		const tasks = await store.claim(UrlType.Account, 6, false);
+		assert.equal(tasks.length, 6);
+
+		const albumOf = (url: string) => `${url}/album/one`;
+		const data = (url: string): AccountPageData => ({
+			url,
+			collection: { total: 1, urls: [albumOf(url)], complete: true },
+			wishlist: empty,
+			followers: empty,
+			following: empty,
+			errors: [],
+		});
+
+		// one save fails inside its transaction: it must not take the saves around it down
+		const broken = { ...data(tasks[2].url), wishlist: null } as unknown as AccountPageData;
+		const results = await Promise.allSettled(tasks.map((task, i) => store.saveAccount(task, i === 2 ? broken : data(task.url))));
+
+		assert.deepEqual(results.map(r => r.status), ['fulfilled', 'fulfilled', 'rejected', 'fulfilled', 'fulfilled', 'fulfilled']);
+		for (const [i, task] of tasks.entries()) {
+			const albums = await db.query('SELECT COUNT(*) AS n FROM items WHERE url = ?', [albumOf(task.url)]);
+			assert.equal(albums[0].n, i === 2 ? 0 : 1, task.url);
+			// the failed task is still busy: the caller releases it
+			assert.equal((await accountRow(task.url)).isBusy, i === 2 ? 1 : 0);
+		}
+	});
+
+	it('saves items and accounts at the same time and keeps all data', async () => {
+		await clean();
+		const itemUrls = Array.from({ length: 4 }, (_, i) => `https://serial-items.bandcamp.com/track/t${i}`);
+		const accountUrl = 'https://bandcamp.com/serial-account';
+		for (const url of itemUrls) {
+			await db.item.insert(url);
+		}
+		await db.account.insert(accountUrl);
+		const items = await store.claim(UrlType.Item, 4, false);
+		const [account] = await store.claim(UrlType.Account, 1, false);
+		assert.equal(items.length, 4);
+		assert.ok(account);
+
+		const saves: Promise<unknown>[] = items.map(task => store.saveItem(task, {
+			url: task.url,
+			accounts: { data: [`https://bandcamp.com/fan-of-${task.id}`] },
+			tags: { data: [`serial-tag-${task.id}`] },
+			releaseDate: { data: new Date(2024, 2, 1) },
+			album: { data: null },
+			tracks: { data: [] },
+			imageUrl: { data: 'https://f4.bcbits.com/img/serial.jpg' },
+			errors: [],
+		}));
+		saves.push(store.saveAccount(account, {
+			url: accountUrl,
+			collection: { total: 1, urls: ['https://serial-account.bandcamp.com/album/one'], complete: true },
+			wishlist: empty,
+			followers: empty,
+			following: empty,
+			errors: [],
+		}));
+		await Promise.all(saves);
+
+		for (const url of itemUrls) {
+			assert.deepEqual(await itemRow(url), { processed: 1, failedCount: 0, isBusy: 0 });
+		}
+		assert.equal((await db.query('SELECT COUNT(*) AS n FROM accounts WHERE url LIKE ?', ['https://bandcamp.com/fan-of-%']))[0].n, 4);
+		assert.equal((await db.query('SELECT COUNT(*) AS n FROM tags WHERE name LIKE ?', ['serial-tag-%']))[0].n, 4);
+		assert.deepEqual(await accountRow(accountUrl), { processed: 1, failedCount: 0, isBusy: 0 });
+	});
+
+	it('a release during a failing save is not rolled back with it', async () => {
+		await clean();
+		const failingUrl = 'https://serial-roll.bandcamp.com';
+		const otherUrl = 'https://serial-roll.bandcamp.com/track/other';
+		await db.account.insert(failingUrl);
+		await db.item.insert(otherUrl);
+		const [account] = await store.claim(UrlType.Account, 1, false);
+		const [item] = await store.claim(UrlType.Item, 1, false);
+		const broken = { url: failingUrl, collection: empty, wishlist: null, followers: empty, following: empty, errors: [] } as unknown as AccountPageData;
+
+		const save = store.saveAccount(account, broken);
+		const release = store.release(item, 'failed');
+		await assert.rejects(save);
+		await release;
+
+		assert.deepEqual(await itemRow(otherUrl), { processed: 0, failedCount: 1, isBusy: 0 });
+	});
+});
+
 describe('LocalCrawlStore release', () => {
 	it('failed counts a failure and releases the task', async () => {
 		await clean();

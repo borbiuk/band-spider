@@ -81,6 +81,7 @@ const createDataSource = ({ file, synchronize }: DatabaseConfig): DataSource => 
  *
  * TypeORM's better-sqlite3 driver uses one connection for everything. So a transaction is safe only
  * while one worker writes: a write of another worker during the transaction would become part of it.
+ * LocalCrawlStore keeps this true: it runs its claims, saves and releases one at a time.
  */
 export class BandDatabase {
 	public readonly account: AccountRepository;

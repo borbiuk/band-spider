@@ -1,3 +1,4 @@
+import { SerialQueue } from '../common/serial-queue';
 import { BandDatabase } from '../data/db';
 import { UrlType } from '../models/url-type';
 import { saveAccountPageData } from './account/clients/account-db-client';
@@ -16,8 +17,9 @@ export class LocalCrawlStore implements CrawlStore {
 	// url type and row id -> time when the lease ends. It lives in memory only: the DB schema is the same.
 	private readonly leases = new Map<string, number>();
 
-	// claims run one by one, so two callers never read the same candidates
-	private claimQueue: Promise<unknown> = Promise.resolve();
+	// Claims, saves and releases run one by one. Two callers never read the same candidates, and a
+	// write never joins the transaction of another save (the DB has one connection).
+	private readonly writes = new SerialQueue();
 
 	constructor(
 		private readonly database: BandDatabase,
@@ -27,16 +29,15 @@ export class LocalCrawlStore implements CrawlStore {
 	}
 
 	public async resetBusy(): Promise<void> {
-		await this.database.account.resetAllBusy();
-		await this.database.item.resetAllBusy();
-		this.leases.clear();
+		await this.writes.run(async () => {
+			await this.database.account.resetAllBusy();
+			await this.database.item.resetAllBusy();
+			this.leases.clear();
+		});
 	}
 
 	public claim(type: UrlType, count: number, newestFirst: boolean): Promise<CrawlTask[]> {
-		const result = this.claimQueue.then(() => this.claimNow(type, count, newestFirst));
-		// a failed claim must not block the next ones
-		this.claimQueue = result.catch(() => { });
-		return result;
+		return this.writes.run(() => this.claimNow(type, count, newestFirst));
 	}
 
 	public async extendLease(task: CrawlTask): Promise<boolean> {
@@ -50,28 +51,34 @@ export class LocalCrawlStore implements CrawlStore {
 	}
 
 	public async saveItem(task: CrawlTask, data: ItemPageData): Promise<ItemPageStatistic> {
-		const statistic = await saveItemPageData(task.id, data, this.database);
-		await this.database.item.updateBusy(task.id, false);
-		this.leases.delete(this.leaseKey(task));
-		return statistic;
+		return this.writes.run(async () => {
+			const statistic = await saveItemPageData(task.id, data, this.database);
+			await this.database.item.updateBusy(task.id, false);
+			this.leases.delete(this.leaseKey(task));
+			return statistic;
+		});
 	}
 
 	public async saveAccount(task: CrawlTask, data: AccountPageData): Promise<AccountPageStatistic> {
-		const statistic = await saveAccountPageData(task.id, data, this.database);
-		await this.database.account.updateBusy(task.id, false);
-		this.leases.delete(this.leaseKey(task));
-		return statistic;
+		return this.writes.run(async () => {
+			const statistic = await saveAccountPageData(task.id, data, this.database);
+			await this.database.account.updateBusy(task.id, false);
+			this.leases.delete(this.leaseKey(task));
+			return statistic;
+		});
 	}
 
-	public async release(task: CrawlTask, reason: ReleaseReason): Promise<void> {
-		const repository = this.repositoryOf(task.type);
+	public release(task: CrawlTask, reason: ReleaseReason): Promise<void> {
+		return this.writes.run(async () => {
+			const repository = this.repositoryOf(task.type);
 
-		// HTTP 429 is not a failure of the item: only release it, so it stays a candidate
-		if (reason !== 'rateLimited') {
-			await repository.updateFailed(task.id);
-		}
-		await repository.updateBusy(task.id, false);
-		this.leases.delete(this.leaseKey(task));
+			// HTTP 429 is not a failure of the item: only release it, so it stays a candidate
+			if (reason !== 'rateLimited') {
+				await repository.updateFailed(task.id);
+			}
+			await repository.updateBusy(task.id, false);
+			this.leases.delete(this.leaseKey(task));
+		});
 	}
 
 	private async claimNow(type: UrlType, count: number, newestFirst: boolean): Promise<CrawlTask[]> {
