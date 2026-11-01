@@ -1,0 +1,11 @@
+{
+	"name": "@band-spider/contracts",
+	"version": "1.0.0",
+	"private": true,
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "commonjs",
+	"dependencies": {
+		"zod": "4.6.7"
+	}
+}

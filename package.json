@@ -8,6 +8,7 @@
 		"node": "^22.13.0 || >=24.11.0"
 	},
 	"workspaces": [
+		"packages/contracts",
 		"packages/core",
 		"packages/storage-sqlite",
 		"packages/cli"

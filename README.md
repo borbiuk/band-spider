@@ -28,6 +28,7 @@ references (`tsc -b`), and `npm test` builds and runs the tests of every package
 
 | Package | Content |
 |---|---|
+| `@band-spider/contracts` | zod schemas and types for the DB service API (requests, responses, page data, statistics). It depends only on zod. |
 | `@band-spider/core` | Domain types, the `CrawlStore` interface, page readers and parsing, `HttpClient`, the spider loop. It does not use TypeORM or SQLite. |
 | `@band-spider/storage-sqlite` | TypeORM entities, repositories, `BandDatabase` and `LocalCrawlStore`. |
 | `@band-spider/cli` | The entry point (`dist/index.js`) that the npm scripts run. |
