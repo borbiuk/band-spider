@@ -1,0 +1,271 @@
+import { logger, logMessage, LogSource } from '@band-spider/core';
+import { z } from 'zod';
+import { AdminConfig, CrawlerSetting, proxyUrlOf } from './config';
+import { ConfigStore } from './config-store';
+import { AdminError, conflict, notFound } from './errors';
+import { ChildStatus, CrawlerCounts, ManagedChild } from './managed-child';
+import { ProcessLauncher } from './process-launcher';
+
+export interface SupervisorEntries {
+	/** The script of the DB service. */
+	dbService: string;
+	/** The script of a crawler. */
+	crawler: string;
+}
+
+export interface SupervisorOptions {
+	launcher: ProcessLauncher;
+	configStore: ConfigStore;
+	entries: SupervisorEntries;
+	/** How long a start waits for the DB service ready message. */
+	readyTimeoutMs?: number;
+	/** How long a child gets to stop before it is killed. */
+	stopTimeoutMs?: number;
+	/** How many output lines are kept for each child. */
+	logLines?: number;
+}
+
+export interface CrawlerStatus extends ChildStatus {
+	name: string;
+	/** False when the crawler runs but was removed from the config. */
+	configured: boolean;
+}
+
+export interface SupervisorStatus {
+	db: ChildStatus;
+	crawlers: CrawlerStatus[];
+}
+
+const countsSchema = z.object({
+	claimed: z.number(),
+	saved: z.number(),
+	failed: z.number(),
+	rateLimited: z.number(),
+	notFound: z.number(),
+});
+
+/** What a DB service sends over IPC. */
+const dbMessageSchema = z.object({ type: z.literal('ready'), url: z.string() });
+
+/** What a crawler sends over IPC. */
+const crawlerMessageSchema = z.discriminatedUnion('type', [
+	z.object({ type: z.literal('started') }),
+	z.object({ type: z.literal('progress'), counts: countsSchema }),
+	z.object({ type: z.literal('stopped'), counts: countsSchema, error: z.string().optional() }),
+]);
+
+const DEFAULT_READY_TIMEOUT_MS = 30_000;
+const DEFAULT_STOP_TIMEOUT_MS = 10_000;
+const DEFAULT_LOG_LINES = 500;
+
+/**
+ * Starts, stops and watches the DB service and the crawlers.
+ * A crawler starts only after the DB service is ready. It knows nothing about HTTP or about forking.
+ */
+export class Supervisor {
+	private readonly db: ManagedChild;
+	private readonly crawlers = new Map<string, ManagedChild>();
+	private readonly readyTimeoutMs: number;
+	private readonly stopTimeoutMs: number;
+	private readonly logLines: number;
+
+	constructor(private readonly options: SupervisorOptions) {
+		this.readyTimeoutMs = options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
+		this.stopTimeoutMs = options.stopTimeoutMs ?? DEFAULT_STOP_TIMEOUT_MS;
+		this.logLines = options.logLines ?? DEFAULT_LOG_LINES;
+		// the DB service stops on SIGTERM
+		this.db = new ManagedChild(options.launcher, { signal: 'SIGTERM' }, this.stopTimeoutMs, this.logLines);
+	}
+
+	async status(): Promise<SupervisorStatus> {
+		const config = await this.options.configStore.load();
+		const names = config.crawlers.map(crawler => crawler.name);
+		const configured = new Set(names);
+		// a crawler that left the config but still runs stays visible
+		const extra = [...this.crawlers.keys()].filter(name => !configured.has(name) && this.crawlers.get(name)?.isActive);
+		return {
+			db: this.db.status(),
+			crawlers: [...names, ...extra].map(name => ({
+				name,
+				configured: configured.has(name),
+				...(this.crawlers.get(name)?.status() ?? { state: 'stopped' as const }),
+			})),
+		};
+	}
+
+	dbLogs(limit?: number): string[] {
+		return this.db.logs.snapshot(limit);
+	}
+
+	crawlerLogs(name: string, limit?: number): string[] {
+		const child = this.crawlers.get(name);
+		if (!child) {
+			throw notFound(`No crawler ${name} has run yet`);
+		}
+		return child.logs.snapshot(limit);
+	}
+
+	async startDb(): Promise<void> {
+		const { dbService } = await this.options.configStore.load();
+		this.db.begin();
+		this.db.launch({
+			entry: this.options.entries.dbService,
+			env: {
+				DB_SERVICE_HOST: '127.0.0.1',
+				DB_SERVICE_PORT: String(dbService.port),
+				DB_SERVICE_TOKEN: dbService.token,
+				DB_SERVICE_LEASE_MS: dbService.leaseMs === undefined ? undefined : String(dbService.leaseMs),
+				BAND_DB_PATH: dbService.dbFile,
+			},
+		}, (child, message) => {
+			const ready = dbMessageSchema.safeParse(message);
+			if (ready.success) {
+				child.url = ready.data.url;
+				child.markRunning();
+				logger.info(logMessage(LogSource.Main, `DB service is ready: ${ready.data.url}`));
+			}
+		});
+	}
+
+	/** Stops the crawlers first, because they cannot work without the DB service. */
+	async stopDb(): Promise<void> {
+		await Promise.all([...this.crawlers.values()].map(crawler => crawler.stop()));
+		await this.db.stop();
+	}
+
+	/** The crawlers are not stopped. They retry for a while until the new service is up. */
+	async restartDb(): Promise<void> {
+		await this.db.stop();
+		await this.startDb();
+	}
+
+	async startCrawler(name: string): Promise<void> {
+		const config = await this.options.configStore.load();
+		const setting = config.crawlers.find(crawler => crawler.name === name);
+		if (!setting) {
+			throw notFound(`No crawler ${name} in the config`);
+		}
+
+		let child = this.crawlers.get(name);
+		if (!child) {
+			// a crawler stops on an IPC message
+			child = new ManagedChild(this.options.launcher, { message: { type: 'stop' } }, this.stopTimeoutMs, this.logLines);
+			this.crawlers.set(name, child);
+		}
+		// marked before the wait, so a second start is refused
+		child.begin();
+
+		try {
+			await this.ensureDbReady();
+		} catch (error) {
+			const message = `DB service is not ready: ${(error as Error).message}`;
+			child.fail(message);
+			throw error instanceof AdminError ? error : new AdminError(message, 503);
+		}
+		if (child.state !== 'starting') {
+			// it was stopped while it waited
+			return;
+		}
+
+		child.launch({
+			entry: this.options.entries.crawler,
+			// no DB URL in the environment: the config message below gives it
+			env: { CRAWLER_DB_URL: undefined },
+		}, (self, message) => this.onCrawlerMessage(self, message));
+		child.send({
+			type: 'config',
+			config: this.crawlerConfig(setting, this.db.url, config.dbService.token),
+		});
+	}
+
+	async stopCrawler(name: string): Promise<void> {
+		const child = this.crawlers.get(name);
+		if (!child) {
+			throw notFound(`No crawler ${name} has run yet`);
+		}
+		await child.stop();
+	}
+
+	async restartCrawler(name: string): Promise<void> {
+		const child = this.crawlers.get(name);
+		await child?.stop();
+		await this.startCrawler(name);
+	}
+
+	/** Starts the DB service, then every crawler of the config. */
+	async startAll(): Promise<void> {
+		const config: AdminConfig = await this.options.configStore.load();
+		if (!this.db.isActive) {
+			await this.startDb();
+		}
+		const results = await Promise.allSettled(
+			config.crawlers
+				.filter(crawler => !this.crawlers.get(crawler.name)?.isActive)
+				.map(crawler => this.startCrawler(crawler.name)),
+		);
+		const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
+		if (failed) {
+			throw failed.reason;
+		}
+	}
+
+	/** Stops every crawler, then the DB service. */
+	async stopAll(): Promise<void> {
+		await this.stopDb();
+	}
+
+	/** Called when the admin stops: no child is left behind. */
+	async shutdown(): Promise<void> {
+		await this.stopAll();
+	}
+
+	private async ensureDbReady(): Promise<void> {
+		if (this.db.state === 'stopping') {
+			throw conflict('DB service is stopping');
+		}
+		if (!this.db.isActive) {
+			await this.startDb();
+		}
+		let timer: NodeJS.Timeout | undefined;
+		const timeout = new Promise<never>((_resolve, reject) => {
+			timer = setTimeout(() => reject(new Error('timed out')), this.readyTimeoutMs);
+		});
+		try {
+			await Promise.race([this.db.whenRunning(), timeout]);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	private onCrawlerMessage(child: ManagedChild, raw: unknown): void {
+		const message = crawlerMessageSchema.safeParse(raw);
+		if (!message.success) {
+			return;
+		}
+		switch (message.data.type) {
+			case 'started':
+				child.markRunning();
+				break;
+			case 'progress':
+				child.counts = message.data.counts as CrawlerCounts;
+				break;
+			case 'stopped':
+				child.counts = message.data.counts as CrawlerCounts;
+				child.markFinished(message.data.error);
+				break;
+		}
+	}
+
+	private crawlerConfig(setting: CrawlerSetting, dbUrl: string | undefined, token: string | undefined): Record<string, unknown> {
+		return {
+			dbUrl,
+			token,
+			type: setting.type,
+			reverse: setting.reverse,
+			workers: setting.workers,
+			minDelayMs: setting.minDelayMs,
+			maxDelayMs: setting.maxDelayMs,
+			proxy: proxyUrlOf(setting.proxy),
+		};
+	}
+}

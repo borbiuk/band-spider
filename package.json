@@ -13,6 +13,7 @@
 		"packages/storage-sqlite",
 		"packages/db-service",
 		"packages/crawler",
+		"packages/admin",
 		"packages/cli"
 	],
 	"scripts": {
@@ -20,6 +21,7 @@
 		"db:service": "npm run build && node ./packages/db-service/dist/index.js",
 		"crawler:items": "npm run build && node ./packages/crawler/dist/index.js",
 		"crawler:accounts": "npm run build && node ./packages/crawler/dist/index.js --account",
+		"admin": "npm run build && node ./packages/admin/dist/index.js",
 		"db:accounts":"npm run build && node ./packages/cli/dist/index.js --account",
 		"db:items": "npm run build && node ./packages/cli/dist/index.js",
 		"db:accounts:reverse": "npm run build && node ./packages/cli/dist/index.js --account --reverse",

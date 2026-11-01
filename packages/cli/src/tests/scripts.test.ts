@@ -26,6 +26,7 @@ describe('npm scripts', () => {
 			'db:service',
 			'crawler:items',
 			'crawler:accounts',
+			'admin',
 			'test',
 		].sort());
 	});
