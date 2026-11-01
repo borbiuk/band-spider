@@ -6,6 +6,7 @@
 		{ "path": "packages/storage-sqlite" },
 		{ "path": "packages/db-service" },
 		{ "path": "packages/crawler" },
+		{ "path": "packages/admin" },
 		{ "path": "packages/cli" }
 	]
 }
