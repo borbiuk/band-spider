@@ -9,7 +9,7 @@ import { UrlType } from './models/url-type';
 import { processAccount } from './account/account-handler';
 import type { CrawlStore, CrawlTask } from './crawl-store';
 import { processItem } from './item/item-handler';
-import { FetchPageReader, PageSource } from './page-reader';
+import { FetchPageReader, PageReader, PageSource } from './page-reader';
 
 /** What `processUrl` needs to process one URL type. */
 interface UrlTypeHandler {
@@ -38,6 +38,8 @@ export class BandSpider {
 
 	constructor(
 		private readonly store: CrawlStore,
+		/** Builds the reader of a worker from its HTTP client. A test passes a fake one. */
+		private readonly createReader: (http: HttpClient) => PageReader = http => new FetchPageReader(http),
 	) {
 	}
 
@@ -47,6 +49,8 @@ export class BandSpider {
 			type,
 			reverse,
 			proxy,
+			minDelayMs,
+			maxDelayMs,
 		}: BandSpiderOptions,
 		/** When aborted, every worker stops after its current URL. */
 		stop: AbortSignal = new AbortController().signal,
@@ -55,7 +59,7 @@ export class BandSpider {
 		this.newestFirst = reverse;
 
 		const proxySource: ProxySource = proxy === undefined ? new NoProxy() : new StaticProxy(proxy);
-		const createSource = this.createFetchSourceFactory(proxySource);
+		const createSource = this.createFetchSourceFactory(proxySource, { minDelayMs, maxDelayMs });
 
 		// create jobs
 		logger.debug(`${concurrency} Jobs (HTTP) init starting...`);
@@ -79,16 +83,20 @@ export class BandSpider {
 	}
 
 	/** Plain HTTP: every worker has its own client and its own 429 pause, as if it ran from its own IP. */
-	private createFetchSourceFactory(proxySource: ProxySource): (id: number) => Promise<PageSource> {
+	private createFetchSourceFactory(
+		proxySource: ProxySource,
+		delays: { minDelayMs?: number, maxDelayMs?: number },
+	): (id: number) => Promise<PageSource> {
 		return async () => {
 			const rateLimitGate = new RateLimitGate();
 			const http = new HttpClient(rateLimitGate, {
 				proxySource,
+				...delays,
 				onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(rateLimitGate, url, retryAfter),
 			});
 
 			return {
-				reader: new FetchPageReader(http),
+				reader: this.createReader(http),
 				rateLimitGate,
 				afterUrl: async () => { },
 				close: async () => { },

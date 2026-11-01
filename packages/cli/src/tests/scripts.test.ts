@@ -24,6 +24,8 @@ describe('npm scripts', () => {
 			...Object.keys(APP_RUNS),
 			'build',
 			'db:service',
+			'crawler:items',
+			'crawler:accounts',
 			'test',
 		].sort());
 	});

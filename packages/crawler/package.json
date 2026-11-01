@@ -1,0 +1,18 @@
+{
+	"name": "@band-spider/crawler",
+	"version": "1.0.0",
+	"private": true,
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "commonjs",
+	"dependencies": {
+		"@band-spider/contracts": "1.0.0",
+		"@band-spider/core": "1.0.0",
+		"zod": "4.6.7"
+	},
+	"devDependencies": {
+		"@band-spider/db-service": "1.0.0",
+		"@band-spider/storage-sqlite": "1.0.0",
+		"reflect-metadata": "0.2.2"
+	}
+}
