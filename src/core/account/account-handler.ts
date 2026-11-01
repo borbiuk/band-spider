@@ -2,24 +2,21 @@ import { errorMessage } from '../../common/errors';
 import { followerColor, itemColor, logger, LogSource } from '../../common/logger';
 import { RateLimitedError } from '../../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../../common/utils';
-import { BandDatabase } from '../../data/db';
+import type { CrawlStore, CrawlTask } from '../crawl-store';
 import { PageReader } from '../page-reader';
-import type { QueueEvent } from '../processing-queue';
-import { saveAccountPageData } from './clients/account-db-client';
 import { AccountPageData } from './models/account-page-data';
 import { AccountPageStatistic } from './models/account-page-statistic';
 import { AccountTabStatistic } from './models/account-tab-statistic';
 
 export async function processAccount(
-	{ id, url }: QueueEvent,
-	database: BandDatabase,
+	task: CrawlTask,
+	store: CrawlStore,
 	reader: PageReader,
 	pageIndex: number,
 	onNewUrls: (urls: string[]) => void = () => { },
 ): Promise<boolean> {
-
 	// tabs that were read to their end before are read only up to their newest records
-	const marks = await database.account.getScanMarks(id);
+	const { url, marks = {} } = task;
 
 	// read data from the page
 	let accountPageData: AccountPageData
@@ -36,7 +33,7 @@ export async function processAccount(
 	// save data
 	let accountPageStatistic: AccountPageStatistic;
 	try {
-		accountPageStatistic = await saveAccountPageData(id, accountPageData, database);
+		accountPageStatistic = await store.saveAccount(task, accountPageData);
 	} catch (e) {
 		logger.error(e, logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Data saving failed: ${errorMessage(e)}`, url));
 		return false;

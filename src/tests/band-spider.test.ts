@@ -7,6 +7,7 @@ import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import { parseOptions } from '../config';
 import { BandSpider } from '../core/band-spider';
+import { LocalCrawlStore } from '../core/local-crawl-store';
 import { BandDatabase } from '../data/db';
 
 const tempDir: string = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-run-'));
@@ -33,7 +34,7 @@ describe('BandSpider.run', () => {
 		const realFetch = globalThis.fetch;
 		globalThis.fetch = fetchMock as typeof fetch;
 		try {
-			await new BandSpider(db).run(parseOptions([]), stop.signal);
+			await new BandSpider(new LocalCrawlStore(db)).run(parseOptions([]), stop.signal);
 		} finally {
 			globalThis.fetch = realFetch;
 		}
@@ -54,7 +55,7 @@ describe('BandSpider.run', () => {
 			return answer(String(input));
 		}) as typeof fetch;
 		try {
-			await new BandSpider(db).run(parseOptions(args), stop.signal);
+			await new BandSpider(new LocalCrawlStore(db)).run(parseOptions(args), stop.signal);
 		} finally {
 			globalThis.fetch = realFetch;
 		}

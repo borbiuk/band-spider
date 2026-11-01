@@ -8,9 +8,10 @@ import { after, before, describe, it } from 'node:test';
 import { HttpClient } from '../common/http-client';
 import { RateLimitGate } from '../common/rate-limit-gate';
 import { processAccount } from '../core/account/account-handler';
+import type { CrawlTask } from '../core/crawl-store';
+import { LocalCrawlStore } from '../core/local-crawl-store';
 import { FetchPageReader } from '../core/page-reader';
 import { BandDatabase } from '../data/db';
-import { UrlType } from '../models/url-type';
 
 const tempDir: string = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-marks-'));
 let db: BandDatabase;
@@ -69,12 +70,18 @@ const linkedItems = async (accountId: number): Promise<string[]> =>
 describe('reading an account again', () => {
 	it('reads only up to the newest records of the last complete read', async () => {
 		const { entity: account } = await db.account.insert(fanUrl);
-		const event = { id: account.id, url: fanUrl, type: UrlType.Account };
+		const store = new LocalCrawlStore(db);
+		// the claim reads the marks, so every read starts from the saved ones
+		const claim = async (): Promise<CrawlTask> => {
+			const result = await store.claim(fanUrl);
+			assert.equal(result.kind, 'claimed');
+			return result.kind === 'claimed' ? result.task : null;
+		};
 		const old = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(album);
 
 		// first read: no marks, the whole collection
 		const first = fakeBandcamp(old);
-		assert.equal(await processAccount(event, db, first.reader, 0), true);
+		assert.equal(await processAccount(await claim(), store, first.reader, 0), true);
 		assert.equal(first.apiCalls.length, 3);
 		assert.deepEqual(await linkedItems(account.id), [...old].sort());
 		assert.equal((await db.account.getScanMarks(account.id)).collection, album('a'));
@@ -85,7 +92,7 @@ describe('reading an account again', () => {
 		const current = [album('new-2'), album('new-1'), ...old];
 
 		const second = fakeBandcamp(current);
-		assert.equal(await processAccount(event, db, second.reader, 0), true);
+		assert.equal(await processAccount(await claim(), store, second.reader, 0), true);
 
 		assert.deepEqual(second.apiCalls, ['p0'], 'stops after the first API page, which holds the mark');
 		assert.deepEqual(await linkedItems(account.id), [...current].sort(), 'both new items are linked');

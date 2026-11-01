@@ -1,13 +1,6 @@
 import { logger, LogSource } from '../common/logger';
-import { isAccountUrl, isEmptyString, isItemUrl, isNullOrUndefined, logMessage, onlyUnique, originalUrl } from '../common/utils';
-import { BandDatabase } from '../data/db';
-import { UrlType } from '../models/url-type';
-
-export interface QueueEvent {
-	id: number,
-	url: string,
-	type: UrlType,
-}
+import { isAccountUrl, isEmptyString, isItemUrl, logMessage, onlyUnique, originalUrl } from '../common/utils';
+import type { CrawlStore, CrawlTask } from './crawl-store';
 
 export class ProcessingQueue {
 	// same content as `urls`, for O(1) membership checks
@@ -15,7 +8,7 @@ export class ProcessingQueue {
 
 	constructor(
 		private readonly urls: string[] = [],
-		private readonly database: BandDatabase,
+		private readonly store: CrawlStore,
 		private readonly capacity: number = 500
 	) {
 		this.urls = urls.filter(onlyUnique);
@@ -59,43 +52,26 @@ export class ProcessingQueue {
 		return true;
 	}
 
-	public async dequeue(): Promise<QueueEvent> {
+	public async dequeue(): Promise<CrawlTask> {
 		const url: string = this.shiftRandom(this.urls);
 		if (isEmptyString(url)) {
 			return null;
 		}
 		this.known.delete(url);
 
-		if (isItemUrl(url)) {
-			const { entity } = await this.database.item.insert(url);
-			if (entity.isBusy) {
+		const result = await this.store.claim(url);
+		switch (result.kind) {
+			case 'claimed':
+				return result.task;
+			case 'busy':
 				this.putBack(url);
 				return null;
-			}
-
-			return { id: entity.id, url, type: UrlType.Item };
-		}
-
-		if (isAccountUrl(url)) {
-			const { entity } = await this.database.account.insert(url);
-			if (isNullOrUndefined(entity)) {
+			case 'invalid':
+				logger.error(logMessage(LogSource.Unknown, 'Invalid URL', url));
 				return null;
-			}
-
-			if (entity.isBusy) {
-				this.putBack(url);
+			default:
 				return null;
-			}
-
-			return { id: entity.id, url, type: UrlType.Account };
 		}
-
-		logger.error(logMessage(LogSource.Unknown, 'Invalid URL', url));
-
-		await this.database.account.removeByUrl(url);
-		await this.database.item.removeByUrl(url);
-
-		return null;
 	}
 
 	/** Returns a URL that could not be processed right now, so it is not lost. */
