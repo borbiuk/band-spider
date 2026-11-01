@@ -4,6 +4,7 @@
 		{ "path": "packages/contracts" },
 		{ "path": "packages/core" },
 		{ "path": "packages/storage-sqlite" },
+		{ "path": "packages/db-service" },
 		{ "path": "packages/cli" }
 	]
 }

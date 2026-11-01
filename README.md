@@ -32,6 +32,7 @@ references (`tsc -b`), and `npm test` builds and runs the tests of every package
 | `@band-spider/core` | Domain types, the `CrawlStore` interface, page readers and parsing, `HttpClient`, the spider loop. It does not use TypeORM or SQLite. |
 | `@band-spider/storage-sqlite` | TypeORM entities, repositories, `BandDatabase` and `LocalCrawlStore`. |
 | `@band-spider/cli` | The entry point (`dist/index.js`) that the npm scripts run. |
+| `@band-spider/db-service` | A Fastify HTTP service on 127.0.0.1 that owns the DB and serves the `CrawlStore` API. Start it with `npm run db:service`. Settings: `DB_SERVICE_HOST`, `DB_SERVICE_PORT` (default 4100), `DB_SERVICE_TOKEN` (optional bearer token, /health stays open), `DB_SERVICE_LEASE_MS`, `BAND_DB_PATH`. |
 
 ## 🚀 Run
 

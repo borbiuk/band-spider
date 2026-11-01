@@ -23,6 +23,7 @@ describe('npm scripts', () => {
 		assert.deepEqual(Object.keys(scripts).sort(), [
 			...Object.keys(APP_RUNS),
 			'build',
+			'db:service',
 			'test',
 		].sort());
 	});
