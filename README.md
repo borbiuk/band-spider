@@ -9,7 +9,7 @@ labels, and accounts that purchased them.
 
 ## 🛠️ Installation
 
-Node.js `^22.13.0 || >=24.11.0` is needed; `.nvmrc` pins Node 26. Clone the repository and install the exact
+Node.js 26 or newer is needed; `.nvmrc` pins Node 26. Clone the repository and install the exact
 versions from the lockfile:
 
 ```shell
@@ -212,7 +212,7 @@ npm test
 ```
 
 The tests use temp SQLite files and a local HTTP server; they do not touch `band_db.sqlite` or the network. CI runs
-them on Node 22, 24 and 26 for every pull request.
+them on Node 26 for every pull request.
 
 ## 🗄️ Database maintenance
 
