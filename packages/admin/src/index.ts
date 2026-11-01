@@ -8,6 +8,8 @@ export * from './errors';
 export * from './managed-child';
 export * from './process-launcher';
 export * from './ring-buffer';
+export * from './secrets';
+export * from './security';
 export * from './service';
 export * from './supervisor';
 
@@ -16,7 +18,7 @@ const main = async (): Promise<void> => {
 	logToFile();
 
 	const admin = await startAdmin(readAdminConfig());
-	logger.info(logMessage(LogSource.Main, `Admin API: ${admin.url}`));
+	logger.info(logMessage(LogSource.Main, `Admin API: ${admin.url}, open ${admin.sessionUrl}`));
 
 	// The first signal stops the children and then the server, a second one exits at once
 	const stop = (name: string): void => {

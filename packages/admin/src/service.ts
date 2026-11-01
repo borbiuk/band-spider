@@ -1,6 +1,8 @@
+import { AddressInfo } from 'node:net';
 import { FastifyInstance } from 'fastify';
 import { buildApp } from './app';
 import { ConfigStore, JsonFileConfigStore } from './config-store';
+import { generateToken, sessionUrl } from './security';
 import { ForkLauncher, ProcessLauncher } from './process-launcher';
 import { Supervisor, SupervisorEntries } from './supervisor';
 
@@ -8,16 +10,21 @@ export const DEFAULT_ADMIN_HOST = '127.0.0.1';
 export const DEFAULT_ADMIN_PORT = 4200;
 
 export interface AdminServiceConfig {
-	/** The admin listens on this address only. It has no login, so keep it local. */
+	/** The admin listens on this address only. Other sites are blocked by the Host and Origin checks and by the session token. */
 	host: string;
 	port: number;
 	configStore: ConfigStore;
 	launcher: ProcessLauncher;
 	entries: SupervisorEntries;
+	/** The session token. A random one is made at start when it is not given. */
+	token?: string;
 }
 
 export interface AdminService {
 	url: string;
+	/** The URL to open in the browser, it has the session token. */
+	sessionUrl: string;
+	token: string;
 	supervisor: Supervisor;
 	app: FastifyInstance;
 	/** Stops the children, then the server. It can be called twice. */
@@ -49,12 +56,18 @@ export const startAdmin = async (config: AdminServiceConfig): Promise<AdminServi
 		configStore: config.configStore,
 		entries: config.entries,
 	});
-	const app = buildApp({ supervisor, configStore: config.configStore });
+	const token = config.token ?? generateToken();
+	let port = config.port;
+	const app = buildApp({ supervisor, configStore: config.configStore, security: { token, port: () => port } });
 	const url = await app.listen({ host: config.host, port: config.port });
+	// With port 0 the real port is known only now
+	port = (app.server.address() as AddressInfo).port;
 
 	let stopping: Promise<void> | undefined;
 	return {
 		url,
+		sessionUrl: sessionUrl(url, token),
+		token,
 		supervisor,
 		app,
 		stop: () => stopping ??= supervisor.shutdown().finally(() => app.close()),
