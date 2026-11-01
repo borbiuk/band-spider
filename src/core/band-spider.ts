@@ -4,18 +4,15 @@ import { errorColor, logger, LogSource, speedColor, successColor } from '../comm
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
 import { isAccountUrl, isItemUrl, isNullOrUndefined, logMessage } from '../common/utils';
 import type { BandSpiderOptions } from '../config';
-import { BandDatabase } from '../data/db';
-import type { ItemRepository } from '../data/repositories/item-repository';
 import { UrlType } from '../models/url-type';
 import { processAccount } from './account/account-handler';
+import type { CrawlStore, CrawlTask } from './crawl-store';
 import { processItem } from './item/item-handler';
 import { FetchPageReader, PageReader, PageSource } from './page-reader';
-import { ProcessingQueue, QueueEvent } from './processing-queue';
+import { ProcessingQueue } from './processing-queue';
 
 /** What `processUrl` needs to process one URL type. */
 interface UrlTypeHandler {
-	/** The rows of the type: they are marked busy while processed, and failed when processing fails. */
-	repository: Pick<ItemRepository, 'updateBusy' | 'updateFailed'>;
 	process: typeof processItem;
 	source: LogSource;
 }
@@ -43,7 +40,7 @@ export class BandSpider {
 	private newestFirst = false;
 
 	constructor(
-		private readonly database: BandDatabase,
+		private readonly store: CrawlStore,
 	) {
 	}
 
@@ -60,15 +57,14 @@ export class BandSpider {
 		this.newestFirst = reverse;
 
 		logger.debug('DB preparing ...');
-		await this.database.account.resetAllBusy();
-		await this.database.item.resetAllBusy();
+		await this.store.resetBusy();
 		logger.debug('DB ready!');
 
 		// init queue
 		logger.debug('Queue init...');
 		const queue: ProcessingQueue = new ProcessingQueue(
-			await this.getInitialUrlsToProcess(type),
-			this.database
+			await this.store.pendingUrls(type, this.newestFirst),
+			this.store
 		);
 		logger.debug('Queue ready!');
 
@@ -150,14 +146,14 @@ export class BandSpider {
 			}
 
 			// dequeue 
-			const event: QueueEvent = await queue.dequeue();
-			if (isNullOrUndefined(event)) {
+			const task: CrawlTask = await queue.dequeue();
+			if (isNullOrUndefined(task)) {
 				continue;
 			}
 
 			// process
 			const result = await this.processUrl(
-				event,
+				task,
 				source.reader,
 				id,
 				// feed new URLs straight into the queue, the DB scan stays as the refill path
@@ -173,7 +169,7 @@ export class BandSpider {
 			} else if (result === UrlResult.RateLimited) {
 				this.statistic.rateLimited++;
 				// not lost: if the queue is full, the next refill from the DB picks it up
-				queue.enqueue(event.url);
+				queue.enqueue(task.url);
 			} else {
 				this.statistic.failed++;
 			}
@@ -198,54 +194,52 @@ export class BandSpider {
 	}
 
 	private async processUrl(
-		event: QueueEvent,
+		task: CrawlTask,
 		reader: PageReader,
 		pageIndex: number,
 		onNewUrls: (urls: string[]) => void,
 	): Promise<UrlResult> {
-		const { repository, process, source } = this.handlerOf(event.type);
+		const { process, source } = this.handlerOf(task.type);
 		try {
-			await repository.updateBusy(event.id, true);
-			const processed = await process(event, this.database, reader, pageIndex, onNewUrls);
+			const processed = await process(task, this.store, reader, pageIndex, onNewUrls);
 			if (!processed) {
-				await repository.updateFailed(event.id)
+				await this.store.release(task, 'failed');
 			}
-			await repository.updateBusy(event.id, false);
 			return processed ? UrlResult.Processed : UrlResult.Failed;
 		} catch (error) {
 			// HTTP 429 is not a failure of the item: only release it, so it stays a candidate
 			if (error instanceof RateLimitedError) {
-				await repository.updateBusy(event.id, false);
+				await this.store.release(task, 'rateLimited');
 				this.pauseOnRateLimit(error.url, error.retryAfter);
 				return UrlResult.RateLimited;
 			}
 
-			await repository.updateFailed(event.id)
-			await repository.updateBusy(event.id, false);
-
 			if (error instanceof PageNotFoundError) {
+				await this.store.release(task, 'notFound');
 				logger.warn(
-					logMessage(source, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), event.url)
+					logMessage(source, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), task.url)
 				);
 				return UrlResult.Processed;
 			}
 
+			await this.store.release(task, 'failed');
+
 			logger.error(
 				error,
-				logMessage(source, `[${pageIndex}] Processing failed: ${errorMessage(error)}`, event.url)
+				logMessage(source, `[${pageIndex}] Processing failed: ${errorMessage(error)}`, task.url)
 			);
 
 			return UrlResult.Failed;
 		}
 	}
 
-	/** The rows, the handler and the log source of one URL type. */
+	/** The handler and the log source of one URL type. */
 	private handlerOf(type: UrlType): UrlTypeHandler {
 		switch (type) {
 			case UrlType.Account:
-				return { repository: this.database.account, process: processAccount, source: LogSource.Account };
+				return { process: processAccount, source: LogSource.Account };
 			case UrlType.Item:
-				return { repository: this.database.item, process: processItem, source: LogSource.Item };
+				return { process: processItem, source: LogSource.Item };
 		}
 	}
 
@@ -275,27 +269,11 @@ export class BandSpider {
 		}
 	}
 
-	private async getInitialUrlsToProcess(
-		type: UrlType,
-	): Promise<string[]> {
-		switch (type) {
-			case UrlType.Account:
-				return (await this.database.account.getNotProcessed(this.newestFirst)).map(({ url }) => url);
-			// return ([(await this.database.account.getById(1)).url])
-			// return (await this.database.account.getAccountRelated(1)).map(({ url }) => url).reverse()
-			case UrlType.Item:
-				return (await this.database.item.getNotProcessed(this.newestFirst)).map(({ url }) => url);
-			// return (await this.database.item.getUserItems(1)).map(({ url }) => url)
-			default:
-				throw new Error('Scrapping Type is invalid!');
-		}
-	}
-
 	private async enqueueFromDb(
 		queue: ProcessingQueue,
 		type: UrlType
 	): Promise<void> {
-		let urls: string[] = await this.getInitialUrlsToProcess(type);
+		let urls: string[] = await this.store.pendingUrls(type, this.newestFirst);
 		if (urls.length !== 0) {
 			await queue.enqueueBatch(urls);
 		}

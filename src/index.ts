@@ -4,6 +4,7 @@ import { stopOnSignals } from './common/shutdown';
 import { logMessage } from './common/utils';
 import { BandSpiderOptions, parseOptions, readDatabaseConfig } from './config';
 import { BandSpider } from './core/band-spider';
+import { LocalCrawlStore } from './core/local-crawl-store';
 import { SuperTagUpdate } from './core/super-tag-update';
 import { BandDatabase } from './data/db';
 
@@ -40,7 +41,7 @@ const main = async (): Promise<void> => {
 			return await new SuperTagUpdate(database).run(options);
 		} else {
 			// Ctrl-C stops the workers after the current URL, so the DB is closed
-			return await new BandSpider(database).run(options, stopOnSignals());
+			return await new BandSpider(new LocalCrawlStore(database)).run(options, stopOnSignals());
 		}
 	} finally {
 		await database.close();

@@ -1,23 +1,31 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, it, mock } from 'node:test';
 import { ProcessingQueue } from '../core/processing-queue';
-import type { BandDatabase } from '../data/db';
+import type { ClaimResult, CrawlStore } from '../core/crawl-store';
 import { UrlType } from '../models/url-type';
 
 type Row = { id: number, isBusy: boolean };
 
-/** Only what the queue uses. `rows` decides what `insert` returns for a URL. */
+/** Only what the queue uses. `rows` decides what `claim` finds for a URL. */
 const createDatabase = (rows: Record<string, Row | null> = {}) => {
 	const calls: string[] = [];
-	const insert = (table: string) => async (url: string) => {
-		calls.push(`${table}.insert ${url}`);
-		return { entity: url in rows ? rows[url] : { id: 1, isBusy: false }, isInserted: false };
+	const claim = async (url: string): Promise<ClaimResult> => {
+		calls.push(`claim ${url}`);
+		const isItem = url.includes('/album/') || url.includes('/track/');
+		const isAccount = url === 'https://bandcamp.com/fan';
+		if (!isItem && !isAccount) {
+			return { kind: 'invalid' };
+		}
+		const row = url in rows ? rows[url] : { id: 1, isBusy: false };
+		if (row === null) {
+			return { kind: 'none' };
+		}
+		if (row.isBusy) {
+			return { kind: 'busy' };
+		}
+		return { kind: 'claimed', task: { id: row.id, url, type: isItem ? UrlType.Item : UrlType.Account } };
 	};
-	const removeByUrl = (table: string) => async (url: string) => { calls.push(`${table}.removeByUrl ${url}`); };
-	const database = {
-		item: { insert: insert('item'), removeByUrl: removeByUrl('item') },
-		account: { insert: insert('account'), removeByUrl: removeByUrl('account') },
-	} as unknown as BandDatabase;
+	const database = { claim } as unknown as CrawlStore;
 	return { database, calls };
 };
 
@@ -79,7 +87,7 @@ describe('ProcessingQueue', () => {
 		const queue = new ProcessingQueue([album(1), fan], database);
 
 		assert.deepEqual(await queue.dequeue(), { id: 11, url: album(1), type: UrlType.Item });
-		assert.deepEqual(calls, [`item.insert ${album(1)}`]);
+		assert.deepEqual(calls, [`claim ${album(1)}`]);
 		assert.equal(queue.size, 1);
 		assert.equal(queue.enqueue(album(1)), true, 'a taken URL can be queued again');
 	});
@@ -101,7 +109,7 @@ describe('ProcessingQueue', () => {
 		assert.equal(queue.enqueue(album(1)), false, 'still known');
 	});
 
-	it('drops an account URL when insert gives no row', async () => {
+	it('drops a URL when the store has no row', async () => {
 		const { database } = createDatabase({ [fan]: null });
 		const queue = new ProcessingQueue([fan], database);
 
@@ -109,13 +117,13 @@ describe('ProcessingQueue', () => {
 		assert.equal(queue.size, 0);
 	});
 
-	it('removes a URL of unknown type from both tables', async () => {
+	it('forgets a URL of unknown type', async () => {
 		const bad = 'https://band.bandcamp.com/';
 		const { database, calls } = createDatabase();
 		const queue = new ProcessingQueue([bad], database);
 
 		assert.equal(await queue.dequeue(), null);
-		assert.deepEqual(calls, [`account.removeByUrl ${bad}`, `item.removeByUrl ${bad}`]);
+		assert.deepEqual(calls, [`claim ${bad}`]);
 		assert.equal(queue.size, 0);
 	});
 
