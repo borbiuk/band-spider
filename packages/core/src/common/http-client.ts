@@ -2,8 +2,9 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { HttpStatusError, PageNotFoundError } from './errors';
 import { NoProxy, ProxySource } from './proxy-source';
 import { RateLimitedError, RateLimitGate } from './rate-limit-gate';
+import { SerialQueue } from './serial-queue';
 
-/** The pause between two requests is a random time between these two values. */
+/** The pause from the end of one request to the start of the next one is a random time between these two values. */
 export const MIN_REQUEST_DELAY_MS = 400;
 export const MAX_REQUEST_DELAY_MS = 450;
 
@@ -40,9 +41,12 @@ export interface HttpClientOptions {
 }
 
 /**
- * Plain HTTP requests for the page readers. Every request waits while the pause after
- * HTTP 429 is active, keeps a random minimum distance from the start of the previous request (the slot is reserved before the request, so it holds for any number of callers), and turns a 429
- * answer into `RateLimitedError`. Other statuses are returned as they are.
+ * Plain HTTP requests for the page readers. One client belongs to one IP (one proxy), and all
+ * workers of that IP share it. Requests never overlap: callers wait in order, and a random pause
+ * is kept from the end of the previous request (body read, failed or rate limited) to the start
+ * of the next one, so it holds for any number of callers. Every request also waits while the
+ * pause after HTTP 429 is active. A 429 answer becomes `RateLimitedError`. Other statuses are
+ * returned as they are.
  */
 export class HttpClient {
 	private readonly minDelayMs: number;
@@ -54,7 +58,9 @@ export class HttpClient {
 	private readonly random: () => number;
 	private readonly now: () => number;
 
-	/** Earliest start of the next request. */
+	/** One request at a time, in the order of the calls. */
+	private readonly queue = new SerialQueue();
+	/** Earliest start of the next request: the end of the previous one plus the pause. */
 	private nextRequestAt = 0;
 	private requests = 0;
 	private rateLimited = 0;
@@ -100,21 +106,34 @@ export class HttpClient {
 		});
 	}
 
-	private async request(url: string, init: RequestInit): Promise<HttpResponse> {
-		// wait for the pause after a 429, then reserve the next request slot before sending
+	private request(url: string, init: RequestInit): Promise<HttpResponse> {
+		return this.queue.run(async () => {
+			await this.waitForTurn();
+			try {
+				return await this.send(url, init);
+			} finally {
+				// the pause counts from the end of this request, also when it failed
+				this.nextRequestAt = this.now() + this.minDelayMs + this.random() * (this.maxDelayMs - this.minDelayMs);
+			}
+		});
+	}
+
+	/** Waits out the pause after a 429 and the pause after the previous request. */
+	private async waitForTurn(): Promise<void> {
 		while (true) {
 			await this.gate.wait();
-			const now = this.now();
-			const start = Math.max(now, this.nextRequestAt);
-			this.nextRequestAt = start + this.minDelayMs + this.random() * (this.maxDelayMs - this.minDelayMs);
-			if (start > now) {
-				await this.sleep(start - now);
+			const left = this.nextRequestAt - this.now();
+			if (left > 0) {
+				await this.sleep(left);
 			}
+			// a 429 can start while waiting, no request is sent during it
 			if (!this.gate.isPaused) {
-				break;
+				return;
 			}
 		}
+	}
 
+	private async send(url: string, init: RequestInit): Promise<HttpResponse> {
 		this.requests++;
 		try {
 			const response = await this.fetchFn(url, { ...init, signal: AbortSignal.timeout(this.timeoutMs) });

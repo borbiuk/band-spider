@@ -34,6 +34,8 @@ export const crawlerSettingSchema = z.object({
 	workers: z.number().int().min(1).max(MAX_WORKERS).default(1),
 	minDelayMs: z.number().int().min(0).optional(),
 	maxDelayMs: z.number().int().min(0).optional(),
+	/** How long a crawler waits before it asks for URLs again when there are none. The crawler default is used when not set. */
+	idleMs: z.number().int().min(0).optional(),
 	proxy: proxySettingSchema.default({ kind: 'none' }),
 }).refine(
 	crawler => crawler.minDelayMs === undefined || crawler.maxDelayMs === undefined || crawler.minDelayMs <= crawler.maxDelayMs,

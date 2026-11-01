@@ -177,7 +177,7 @@ describe('statistics on the page', () => {
 			counts: { claimed: 5, saved: 4, failed: 1, rateLimited: 0, notFound: 0 },
 			stats: {
 				requestsPerMin: 120.5, urlsPerMin: 60, http429PerHour: 3,
-				totals: { requests: 12345, processed: 800, failed: 12, http429: 4 }, pauseMs: 65_000,
+				totals: { requests: 12345, processed: 800, failed: 12, http429: 4 }, pauseMs: 65_000, idle: false,
 			},
 		}],
 	};
@@ -190,6 +190,14 @@ describe('statistics on the page', () => {
 		assert.match(html, /120\.5 requests\/min, 60 URLs\/min, 3 HTTP 429\/hour/);
 		assert.match(html, /12,345 requests, 800 saved, 12 failed, 4 HTTP 429/);
 		assert.match(html, /paused after HTTP 429, 1m 05s left/);
+	});
+
+	it('shows when a crawler waits for URLs', () => {
+		const [crawler] = baseStatus.crawlers;
+		const waiting = { ...baseStatus, crawlers: [{ ...crawler, stats: { ...crawler.stats, idle: true } }] };
+
+		assert.match(renderStatus(waiting, config), /waiting for URLs/);
+		assert.doesNotMatch(renderStatus(baseStatus, config), /waiting for URLs/);
 	});
 
 	it('says so when there is no report or no queue number yet', () => {

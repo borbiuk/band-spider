@@ -42,8 +42,9 @@ There are three kinds of processes:
 - **DB service**: the only process that opens the database. It hands out URLs with a lease, saves results one at a
   time and keeps statistics.
 - **crawler**: fetches and parses Bandcamp pages and sends the results to the DB service. It knows nothing about the
-  database. Each crawler has its own pacing and its own pause after HTTP 429, and runs either through one proxy or
-  from the local IP.
+  database. Each crawler has its own pacing and its own pause after HTTP 429 (shared by all its workers, because they share one
+  IP), and runs either through one proxy or from the local IP. A crawler does not exit when the queue is empty: it
+  waits (`CRAWLER_IDLE_MS`, default 30 s) and asks again.
 - **admin**: a web page on 127.0.0.1 that starts, stops, configures and monitors the DB service and all crawlers.
 
 Code depends on small interfaces (`CrawlStore`, `ProxySource`, `ProcessLauncher`, `ConfigStore`), and every process
@@ -111,7 +112,7 @@ Routes: `GET/PUT /config`, `GET /status`, `POST /start-all`, `POST /stop-all`, `
 uses the `/fragments/*` routes.
 
 Statistics: each crawler sends metrics over IPC every minute (requests, URLs saved and failed, HTTP 429 answers,
-current pause). The page shows requests/min and URLs/min over the last 5 minutes, 429 per hour and the totals. The
+current pause, and whether it waits for URLs). The page shows requests/min and URLs/min over the last 5 minutes, 429 per hour and the totals. The
 admin reads `GET /stats` of the DB service every 5 seconds and shows the queue left and the service counters.
 
 ## 🧩 Run the processes by hand
@@ -129,7 +130,7 @@ DB service env: `DB_SERVICE_HOST`, `DB_SERVICE_PORT` (default 4100), `DB_SERVICE
 
 Crawler env: `CRAWLER_DB_URL` (required, for example `http://127.0.0.1:4100`), `CRAWLER_DB_TOKEN`, `CRAWLER_TYPE`
 (`item` or `account`), `CRAWLER_REVERSE`, `CRAWLER_WORKERS` (1 to 64), `CRAWLER_MIN_DELAY_MS`,
-`CRAWLER_MAX_DELAY_MS`, `CRAWLER_PROXY`. Flags: `--account` and `--reverse`.
+`CRAWLER_MAX_DELAY_MS`, `CRAWLER_IDLE_MS` (wait in ms when no URL is left, `0` = exit; default 30000), `CRAWLER_PROXY`. Flags: `--account` and `--reverse`.
 
 ## 🐞 CLI debug mode
 
@@ -200,8 +201,9 @@ npx pino-pretty < logfile.log
 
 ## 🌐 How pages are read
 
-Pages are read with plain HTTP requests, with a random pause of 400-450 ms between requests and a pause after
-HTTP 429 (per worker). No browser is needed.
+Pages are read with plain HTTP requests. All workers of one run share one HTTP client (one IP): requests never
+overlap, and a random pause of 400-450 ms is kept from the end of one request to the start of the next. A pause after
+HTTP 429 stops all requests of that client. No browser is needed.
 
 ## 🧪 Tests
 

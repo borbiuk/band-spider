@@ -6,6 +6,8 @@ export interface MetricsReport {
 	failed: number;
 	/** The longest pause after a 429 that is still active, in ms. */
 	pauseMs: number;
+	/** True while the crawler waits for new URLs. */
+	idle?: boolean;
 }
 
 /** The numbers the admin shows for one crawler. */
@@ -16,6 +18,7 @@ export interface CrawlerStats {
 	http429PerHour: number;
 	totals: { requests: number; processed: number; failed: number; http429: number };
 	pauseMs: number;
+	idle: boolean;
 	/** Time of the last report, in ms since 1970. Undefined before the first report. */
 	reportedAt?: number;
 }
@@ -74,6 +77,7 @@ export class CrawlerMetricsTracker {
 			http429PerHour: last.http429 - hourBase.http429,
 			totals: { requests: last.requests, processed: last.processed, failed: last.failed, http429: last.http429 },
 			pauseMs: last.pauseMs,
+			idle: last.idle === true,
 			reportedAt: last.at,
 		};
 	}

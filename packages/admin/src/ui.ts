@@ -47,6 +47,7 @@ const formSchema = z.object({
 	workers: z.string().default('1'),
 	minDelayMs: z.string().default(''),
 	maxDelayMs: z.string().default(''),
+	idleMs: z.string().default(''),
 	proxyKind: z.string().default('none'),
 	proxyUrl: z.string().default(''),
 	wsHost: z.string().default(''),
@@ -79,6 +80,7 @@ const settingFromForm = (form: FormValues): unknown => {
 		workers: Number(form.workers),
 		minDelayMs: optionalNumber(form.minDelayMs),
 		maxDelayMs: optionalNumber(form.maxDelayMs),
+		idleMs: optionalNumber(form.idleMs),
 		proxy,
 	};
 };

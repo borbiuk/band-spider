@@ -21,6 +21,8 @@ import { BandDatabase } from '@band-spider/storage-sqlite';
 import {
 	CrawlerConfig,
 	CrawlerEvent,
+	DEFAULT_IDLE_MS,
+	toSpiderOptions,
 	CrawlTransport,
 	DbServiceError,
 	HttpCrawlTransport,
@@ -55,6 +57,7 @@ const config = (service: RunningDbService, extra: Partial<CrawlerConfig> = {}): 
 	workers: 1,
 	minDelayMs: 0,
 	maxDelayMs: 0,
+	idleMs: 0,
 	...extra,
 });
 
@@ -184,6 +187,39 @@ describe('crawler against a real DB service', () => {
 			assert.equal(busy[0].n, 0);
 			const left = await seed.query('SELECT COUNT(*) AS n FROM items WHERE lastProcessingDate IS NULL');
 			assert.equal(left[0].n, 2);
+		} finally {
+			await close();
+		}
+	});
+
+	it('keeps waiting on an empty queue, picks up new URLs and stops on the signal', async () => {
+		const { service, seed, close } = await openService();
+		try {
+			const stop = new AbortController();
+			const reader = new FakeReader(url => itemData(url));
+			const events: CrawlerEvent[] = [];
+			const running = runCrawler(config(service, { idleMs: 20 }), {
+				createReader: () => reader,
+				signal: stop.signal,
+				onEvent: event => events.push(event),
+				metricsIntervalMs: 10,
+			});
+
+			// the queue is empty: the crawler must still run and report that it waits
+			await new Promise(resolve => setTimeout(resolve, 150));
+			assert.ok(events.some(event => event.type === 'metrics' && event.metrics.idle));
+			assert.equal(events.some(event => event.type === 'stopped'), false);
+
+			await seed.item.insert('https://crawl.bandcamp.com/track/late-1');
+			const deadline = Date.now() + 5_000;
+			while (reader.itemUrls.length < 1 && Date.now() < deadline) {
+				await new Promise(resolve => setTimeout(resolve, 10));
+			}
+			assert.deepEqual(reader.itemUrls, ['https://crawl.bandcamp.com/track/late-1']);
+
+			stop.abort();
+			const counts = await running;
+			assert.equal(counts.saved, 1);
 		} finally {
 			await close();
 		}
@@ -407,6 +443,14 @@ describe('crawler config', () => {
 		assert.equal(result.proxy, 'http://user:pass@127.0.0.1:8080');
 	});
 
+	it('reads the idle wait from the environment and an exit-when-empty value of 0', () => {
+		assert.equal(readEnvConfig({ CRAWLER_IDLE_MS: '5000' }).idleMs, 5000);
+		assert.equal(readEnvConfig({}).idleMs, undefined);
+		assert.equal(toSpiderOptions(parseCrawlerConfig({ dbUrl: 'http://127.0.0.1:1', type: 'item' })).idleWaitMs, DEFAULT_IDLE_MS);
+		assert.equal(toSpiderOptions(parseCrawlerConfig({ dbUrl: 'http://127.0.0.1:1', type: 'item', idleMs: 1000 })).idleWaitMs, 1000);
+		assert.equal(toSpiderOptions(parseCrawlerConfig({ dbUrl: 'http://127.0.0.1:1', type: 'item', idleMs: 0 })).idleWaitMs, undefined);
+	});
+
 	it('refuses bad values without printing the proxy password', () => {
 		assert.throws(() => parseCrawlerConfig({ type: 'item' }), /dbUrl/);
 		assert.throws(() => parseCrawlerConfig({ dbUrl: 'http://127.0.0.1:1', type: 'x' }), /type/);
@@ -439,7 +483,7 @@ describe('crawler process', () => {
 		// no items in the DB, so the crawler ends at once and never reaches Bandcamp
 		const { service, close } = await openService();
 		try {
-			const { messages, code } = await runChild({ CRAWLER_DB_URL: service.url, CRAWLER_TYPE: 'item' });
+			const { messages, code } = await runChild({ CRAWLER_DB_URL: service.url, CRAWLER_TYPE: 'item', CRAWLER_IDLE_MS: '0' });
 			assert.equal(code, 0);
 			assert.deepEqual(messages.map(m => m.type), ['started', 'metrics', 'stopped']);
 			assert.deepEqual(messages[2].counts, noCounts);
@@ -452,7 +496,7 @@ describe('crawler process', () => {
 		const { service, close } = await openService();
 		try {
 			const { messages, code } = await runChild({ CRAWLER_DB_URL: '' }, child => {
-				child.send({ type: 'config', config: { dbUrl: service.url, type: 'item', workers: 2 } });
+				child.send({ type: 'config', config: { dbUrl: service.url, type: 'item', workers: 2, idleMs: 0 } });
 			});
 			assert.equal(code, 0);
 			assert.deepEqual(messages.map(m => m.type), ['started', 'metrics', 'stopped']);
