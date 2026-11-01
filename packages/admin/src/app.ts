@@ -11,6 +11,7 @@ import { ConfigStore } from './config-store';
 import { AdminError } from './errors';
 import { maskConfig, restoreSecrets } from './secrets';
 import { registerSecurity, SecurityOptions } from './security';
+import { registerUi } from './ui';
 import { Supervisor } from './supervisor';
 
 export interface AppOptions {
@@ -24,7 +25,7 @@ const logsQuery = z.object({ limit: z.coerce.number().int().min(1).max(5000).opt
 
 /** The JSON API of the admin. It only knows the Supervisor and the ConfigStore. */
 export const buildApp = ({ supervisor, configStore, security }: AppOptions): FastifyInstance => {
-	const app = Fastify({ logger: false }).withTypeProvider<ZodTypeProvider>();
+	const app = Fastify({ logger: false, forceCloseConnections: true }).withTypeProvider<ZodTypeProvider>();
 	app.setValidatorCompiler(validatorCompiler);
 	app.setSerializerCompiler(serializerCompiler);
 	registerSecurity(app, security);
@@ -35,6 +36,8 @@ export const buildApp = ({ supervisor, configStore, security }: AppOptions): Fas
 		const message = status >= 500 ? errorMessage(error) : error.message;
 		return reply.code(status).send({ message });
 	});
+
+	registerUi(app, { supervisor, configStore });
 
 	app.get('/health', async () => ({ status: 'ok' }));
 

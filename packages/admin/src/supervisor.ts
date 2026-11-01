@@ -36,6 +36,13 @@ export interface SupervisorStatus {
 	crawlers: CrawlerStatus[];
 }
 
+/** What a listener of the supervisor gets. A log source is "db" or "crawler:<name>". */
+export type SupervisorEvent =
+	| { kind: 'status' }
+	| { kind: 'log'; source: string; text: string };
+
+export type SupervisorListener = (event: SupervisorEvent) => void;
+
 const countsSchema = z.object({
 	claimed: z.number(),
 	saved: z.number(),
@@ -68,6 +75,7 @@ export class Supervisor {
 	private readonly readyTimeoutMs: number;
 	private readonly stopTimeoutMs: number;
 	private readonly logLines: number;
+	private readonly listeners = new Set<SupervisorListener>();
 
 	constructor(private readonly options: SupervisorOptions) {
 		this.readyTimeoutMs = options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
@@ -75,6 +83,13 @@ export class Supervisor {
 		this.logLines = options.logLines ?? DEFAULT_LOG_LINES;
 		// the DB service stops on SIGTERM
 		this.db = new ManagedChild(options.launcher, { signal: 'SIGTERM' }, this.stopTimeoutMs, this.logLines);
+		this.watch(this.db, 'db');
+	}
+
+	/** Calls the listener when a state, the counts or the output of any child change. Returns a function that stops it. */
+	subscribe(listener: SupervisorListener): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
 	}
 
 	async status(): Promise<SupervisorStatus> {
@@ -151,6 +166,7 @@ export class Supervisor {
 			// a crawler stops on an IPC message
 			child = new ManagedChild(this.options.launcher, { message: { type: 'stop' } }, this.stopTimeoutMs, this.logLines);
 			this.crawlers.set(name, child);
+			this.watch(child, `crawler:${name}`);
 		}
 		// marked before the wait, so a second start is refused
 		child.begin();
@@ -237,6 +253,15 @@ export class Supervisor {
 		}
 	}
 
+	private watch(child: ManagedChild, source: string): void {
+		child.onChange = () => this.emit({ kind: 'status' });
+		child.onOutput = text => this.emit({ kind: 'log', source, text });
+	}
+
+	private emit(event: SupervisorEvent): void {
+		this.listeners.forEach(listener => listener(event));
+	}
+
 	private onCrawlerMessage(child: ManagedChild, raw: unknown): void {
 		const message = crawlerMessageSchema.safeParse(raw);
 		if (!message.success) {
@@ -248,6 +273,7 @@ export class Supervisor {
 				break;
 			case 'progress':
 				child.counts = message.data.counts as CrawlerCounts;
+				child.notify();
 				break;
 			case 'stopped':
 				child.counts = message.data.counts as CrawlerCounts;
