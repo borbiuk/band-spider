@@ -73,32 +73,13 @@ npx pino-pretty < logfile.log
 
 ### ⏹️ Stopping
 
-`Ctrl-C` (or `SIGTERM`) lets the current URL finish, closes the browsers and the DB, and exits with code 130 (143 for
+`Ctrl-C` (or `SIGTERM`) lets the current URL finish, closes the DB, and exits with code 130 (143 for
 `SIGTERM`). Press `Ctrl-C` again to stop at once. A fatal error exits with code 1.
 
 ## 🌐 How pages are read
 
-By default pages are read with plain HTTP requests (no Chrome is started), with a random pause of 0.5-1.5 s between
-requests and a shared pause after HTTP 429. To read pages with Puppeteer instead, add the `--browser` flag:
-
-- `npm run db:items:browser`
-- `npm run db:accounts:browser`
-
-Install the Chrome version that Puppeteer needs once:
-
-```shell
-npm run install-browser
-```
-
-To use a [browserless](https://www.browserless.io/) container instead of a local Chrome, start it with
-`bash scripts/browserless.sh` and run `npm run docker:db:items` or `npm run docker:db:accounts`.
-
-## 🕵️ Debug Mode
-
-The debug commands open a visible browser, so they always run with `--browser`:
-
-- `npm run debug:db:accounts`
-- `npm run debug:db:items`
+Pages are read with plain HTTP requests, with a random pause of 0.5-1.5 s between requests and a shared pause after
+HTTP 429. No browser is needed.
 
 ## 🧪 Tests
 
