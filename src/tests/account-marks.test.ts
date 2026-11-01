@@ -12,6 +12,7 @@ import type { CrawlTask } from '../core/crawl-store';
 import { LocalCrawlStore } from '../core/local-crawl-store';
 import { FetchPageReader } from '../core/page-reader';
 import { BandDatabase } from '../data/db';
+import { UrlType } from '../models/url-type';
 
 const tempDir: string = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-marks-'));
 let db: BandDatabase;
@@ -73,9 +74,11 @@ describe('reading an account again', () => {
 		const store = new LocalCrawlStore(db);
 		// the claim reads the marks, so every read starts from the saved ones
 		const claim = async (): Promise<CrawlTask> => {
-			const result = await store.claim(fanUrl);
-			assert.equal(result.kind, 'claimed');
-			return result.kind === 'claimed' ? result.task : null;
+			// the account is a candidate again
+			await db.query('UPDATE accounts SET lastProcessingDate = NULL');
+			const [task] = await store.claim(UrlType.Account, 1, false);
+			assert.equal(task.url, fanUrl);
+			return task;
 		};
 		const old = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(album);
 

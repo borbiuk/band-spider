@@ -13,7 +13,6 @@ export async function processAccount(
 	store: CrawlStore,
 	reader: PageReader,
 	pageIndex: number,
-	onNewUrls: (urls: string[]) => void = () => { },
 ): Promise<boolean> {
 	// tabs that were read to their end before are read only up to their newest records
 	const { url, marks = {} } = task;
@@ -44,12 +43,6 @@ export async function processAccount(
 	if (stopped.length !== 0) {
 		logger.debug(logMessage(LogSource.Account, `[${String(pageIndex).padEnd(2)}] Read up to the saved records: ${stopped.join(', ')}`, url));
 	}
-	onNewUrls([
-		...accountPageStatistic.collection.newUrls,
-		...accountPageStatistic.wishlist.newUrls,
-		...accountPageStatistic.followers.newUrls,
-		...accountPageStatistic.following.newUrls,
-	]);
 
 	const result = accountPageData.errors.length === 0;
 	if (!result) {

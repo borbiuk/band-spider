@@ -14,26 +14,20 @@ export interface CrawlTask {
 	marks?: AccountScanMarks;
 }
 
-/** What `claim` found for a URL. */
-export type ClaimResult =
-	| { kind: 'claimed', task: CrawlTask }
-	/** Somebody works on the URL now. */
-	| { kind: 'busy' }
-	/** The store has no row for the URL. */
-	| { kind: 'none' }
-	/** The URL is not an account or an item URL: the store forgets it. */
-	| { kind: 'invalid' };
-
 /** Why a task is given back without a saved result. */
 export type ReleaseReason = 'rateLimited' | 'failed' | 'notFound';
 
 /** Where the crawler takes URLs from and where it puts what it read. It knows nothing about the DB. */
 export interface CrawlStore {
-	/** Marks all URLs as not busy, for the start of a run. */
+	/** Marks all URLs as not busy. Only the owner of the store calls it, at the start of a run. */
 	resetBusy(): Promise<void>;
-	/** URLs that were not processed yet. */
-	pendingUrls(type: UrlType, newestFirst: boolean): Promise<string[]>;
-	claim(url: string): Promise<ClaimResult>;
+	/**
+	 * Takes up to `count` URLs that were not processed yet. Two callers never get the same URL.
+	 * The URLs stay taken until they are saved or released, or until the lease runs out.
+	 */
+	claim(type: UrlType, count: number, newestFirst: boolean): Promise<CrawlTask[]>;
+	/** Makes the lease of a task longer, for a task that takes long. False when the task has no lease any more. */
+	extendLease(task: CrawlTask): Promise<boolean>;
 	/** Saves the page and releases the task. */
 	saveItem(task: CrawlTask, data: ItemPageData): Promise<ItemPageStatistic>;
 	/** Saves the page and releases the task. */

@@ -41,7 +41,12 @@ const main = async (): Promise<void> => {
 			return await new SuperTagUpdate(database).run(options);
 		} else {
 			// Ctrl-C stops the workers after the current URL, so the DB is closed
-			return await new BandSpider(new LocalCrawlStore(database)).run(options, stopOnSignals());
+			const store = new LocalCrawlStore(database);
+			// this process owns the store, so it resets the busy flags
+			logger.debug('DB preparing ...');
+			await store.resetBusy();
+			logger.debug('DB ready!');
+			return await new BandSpider(store).run(options, stopOnSignals());
 		}
 	} finally {
 		await database.close();

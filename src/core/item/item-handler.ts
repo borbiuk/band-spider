@@ -13,7 +13,6 @@ export async function processItem(
 	store: CrawlStore,
 	reader: PageReader,
 	pageIndex: number,
-	onNewUrls: (urls: string[]) => void = () => { },
 ): Promise<boolean> {
 	const { url } = task;
 
@@ -39,7 +38,6 @@ export async function processItem(
 	}
 
 	logItemPageStatistic(url, pageIndex, itemPageStatistic);
-	onNewUrls(itemPageStatistic.newUrls);
 
 	const result = itemPageData.errors.length === 0;
 	if (!result) {
