@@ -12,6 +12,8 @@ export * from './secrets';
 export * from './security';
 export * from './service';
 export * from './supervisor';
+export * from './ui';
+export * from './ui-render';
 
 const main = async (): Promise<void> => {
 	// Log to the console and to the log file

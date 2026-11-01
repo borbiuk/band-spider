@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<!-- the page has a strict CSP, so htmx must not add its own style tag -->
+	<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
+	<title>Band Spider admin</title>
+	<link rel="stylesheet" href="/assets/app.css">
+	<script src="/assets/htmx.min.js"></script>
+	<script src="/assets/app.js" defer></script>
+</head>
+<body>
+	<header>
+		<h1>Band Spider admin</h1>
+		<span id="connection" class="meta">connecting...</span>
+	</header>
+	<main>
+		<section id="status" hx-get="/fragments/status" hx-trigger="load" hx-swap="innerHTML">
+			<p class="meta">Loading...</p>
+		</section>
+		<section id="form-area"></section>
+		<section id="logs"></section>
+	</main>
+</body>
+</html>

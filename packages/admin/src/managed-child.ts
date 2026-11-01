@@ -30,10 +30,14 @@ export type StopRequest = { message: unknown } | { signal: 'SIGTERM' };
  */
 export class ManagedChild {
 	readonly logs: LogRingBuffer;
-	state: ChildState = 'stopped';
+	/** Called when the state changes or the supervisor calls notify. */
+	onChange?: () => void;
+	/** Called with each chunk of output. */
+	onOutput?: (text: string) => void;
 	error?: string;
 	url?: string;
 	counts?: CrawlerCounts;
+	private currentState: ChildState = 'stopped';
 	private handle?: ChildHandle;
 	private exited = false;
 	/** The child said it has finished its work. */
@@ -48,6 +52,22 @@ export class ManagedChild {
 		logLines: number,
 	) {
 		this.logs = new LogRingBuffer(logLines);
+	}
+
+	get state(): ChildState {
+		return this.currentState;
+	}
+
+	set state(value: ChildState) {
+		if (value !== this.currentState) {
+			this.currentState = value;
+			this.onChange?.();
+		}
+	}
+
+	/** Tells the listener that something else changed, for example the counts. */
+	notify(): void {
+		this.onChange?.();
 	}
 
 	get isActive(): boolean {
@@ -80,15 +100,19 @@ export class ManagedChild {
 
 	/** Gives up a start that did not launch. */
 	fail(message: string): void {
-		this.state = 'failed';
 		this.error = message;
+		this.state = 'failed';
+		this.notify();
 		this.settleRunning(new Error(message));
 	}
 
 	launch(spec: LaunchSpec, onMessage: (child: ManagedChild, message: unknown) => void): void {
 		const handle = this.launcher.launch(spec);
 		this.handle = handle;
-		handle.onOutput((_stream, text) => this.logs.append(text));
+		handle.onOutput((_stream, text) => {
+			this.logs.append(text);
+			this.onOutput?.(text);
+		});
 		handle.onMessage(message => onMessage(this, message));
 		handle.onExit(info => this.onExit(handle, info));
 	}
@@ -110,6 +134,7 @@ export class ManagedChild {
 		if (error) {
 			this.error = error;
 		}
+		this.notify();
 	}
 
 	/** Resolves when the child is running, rejects when it ends first. */
@@ -163,6 +188,7 @@ export class ManagedChild {
 			this.state = 'failed';
 			this.error = info.signal ? `Killed by ${info.signal}` : `Exited with code ${info.code}`;
 		}
+		this.notify();
 		this.settleRunning(new Error(this.error ?? 'Exited before it was ready'));
 		const waiters = this.exitWaiters;
 		this.exitWaiters = [];
