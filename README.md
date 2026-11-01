@@ -21,6 +21,34 @@ versions from the lockfile:
 `better-sqlite3` 13 is used on purpose, although TypeORM 1.1 lists `^12` as its peer. The `overrides` entry in
 `package.json` makes TypeORM use the same version, so no `--legacy-peer-deps` is needed.
 
+## 🏗️ Architecture
+
+There are three kinds of processes:
+
+```
+        +--------------------------------+
+        |   admin (127.0.0.1:4200)       |  web page: start, stop, configure, monitor
+        +---------------+----------------+
+                        | fork + IPC (start, stop, config, metrics)
+         +--------------+---------------+
+         v                              v
++-------------------+  HTTP/JSON  +----------------------+
+| DB service        |<------------| crawler (N procs)    |---> Bandcamp
+| the only process  | claim, save | own pacing, own      |     direct or through
+| that opens SQLite | release     | pause after 429      |     a proxy
++-------------------+             +----------------------+
+```
+
+- **DB service**: the only process that opens the database. It hands out URLs with a lease, saves results one at a
+  time and keeps statistics.
+- **crawler**: fetches and parses Bandcamp pages and sends the results to the DB service. It knows nothing about the
+  database. Each crawler has its own pacing and its own pause after HTTP 429, and runs either through one proxy or
+  from the local IP.
+- **admin**: a web page on 127.0.0.1 that starts, stops, configures and monitors the DB service and all crawlers.
+
+Code depends on small interfaces (`CrawlStore`, `ProxySource`, `ProcessLauncher`, `ConfigStore`), and every process
+has one composition root that wires them by hand.
+
 ## 📦 Packages
 
 The code is split into npm workspaces in `packages/`. `npm run build` builds all of them with TypeScript project
@@ -28,15 +56,87 @@ references (`tsc -b`), and `npm test` builds and runs the tests of every package
 
 | Package | Content |
 |---|---|
-| `@band-spider/contracts` | zod schemas and types for the DB service API (requests, responses, page data, statistics). It depends only on zod. |
-| `@band-spider/core` | Domain types, the `CrawlStore` interface, page readers and parsing, `HttpClient`, the spider loop. It does not use TypeORM or SQLite. |
+| `@band-spider/contracts` | zod schemas and types for the DB service API. It depends only on zod. |
+| `@band-spider/core` | Domain types, the `CrawlStore` interface, page readers and parsing, `HttpClient`, `ProxySource`, the spider loop. It does not use TypeORM or SQLite. |
 | `@band-spider/storage-sqlite` | TypeORM entities, repositories, `BandDatabase` and `LocalCrawlStore`. |
-| `@band-spider/cli` | The entry point (`dist/index.js`) that the npm scripts run. |
-| `@band-spider/db-service` | A Fastify HTTP service on 127.0.0.1 that owns the DB and serves the `CrawlStore` API. Start it with `npm run db:service`. Settings: `DB_SERVICE_HOST`, `DB_SERVICE_PORT` (default 4100), `DB_SERVICE_TOKEN` (optional bearer token, /health stays open), `DB_SERVICE_LEASE_MS`, `BAND_DB_PATH`. |
-| `@band-spider/crawler` | A crawler process. It reads URLs from the DB service over HTTP, fetches and parses the pages, and sends the results back. It knows nothing about the DB. Start it with `npm run crawler:items` or `npm run crawler:accounts`. Settings: `CRAWLER_DB_URL` (required, for example `http://127.0.0.1:4100`), `CRAWLER_DB_TOKEN`, `CRAWLER_TYPE` (`item` or `account`), `CRAWLER_REVERSE`, `CRAWLER_WORKERS`, `CRAWLER_MIN_DELAY_MS`, `CRAWLER_MAX_DELAY_MS`, `CRAWLER_PROXY`. The proxy is used only for page requests, never for the DB service. When started with fork, it also takes a `{ type: 'config', config }` message and a `{ type: 'stop' }` message, and sends `started`, `progress` and `stopped` messages. |
-| `@band-spider/admin` | The admin backend: a JSON API on 127.0.0.1 that starts, stops, restarts and watches the DB service and the crawlers (child processes started with fork). Crawlers start only after the DB service is ready, and stopping the admin stops all children. Start it with `npm run admin`. Settings are saved in `~/.band-spider/admin-config.json` (`ADMIN_CONFIG_PATH` overrides it). Env: `ADMIN_HOST` (default 127.0.0.1), `ADMIN_PORT` (default 4200). Security: the admin checks the Host header (127.0.0.1, localhost or [::1] with its own port) and the Origin header of state-changing requests, and every route except `/health` needs a random session token made at each start. The startup log prints the URL `http://127.0.0.1:4200/session?token=...`, which sets the token cookie. Scripts can send `Authorization: Bearer <token>` or `X-Admin-Token`. `GET /config` and `PUT /config` show secrets (DB service token, proxy passwords) as `********`, and a saved secret is kept when the masked value is sent back. The admin also serves a web page at `/` (static HTML and htmx from the npm package, no CDN, no build step): DB service status and controls, a crawler list with add, edit and remove (type, newest first, workers, delays, proxy none, url or Webshare), start, stop and restart for each process and for all, and live state and logs over server-sent events (`GET /events`). Open the URL from the startup log once, it sets the cookie. The page uses the `/fragments/*` routes. Statistics: each crawler sends metrics (requests, URLs saved and failed, HTTP 429 answers, current pause, all counted from its start) over IPC every minute, and the page shows requests/min and URLs/min over the last 5 minutes, HTTP 429 per hour, the totals and the pause. The admin reads `GET /stats` of the DB service every 5 seconds and shows the queue left (items and accounts that wait to be claimed) and the counters of the service; `GET /status` has the same numbers. Routes: `GET/PUT /config`, `GET /status`, `POST /start-all`, `POST /stop-all`, `POST /db/start`, `/db/stop`, `/db/restart`, `GET /db/logs`, `POST /crawlers/:name/start`, `/stop`, `/restart`, `GET /crawlers/:name/logs`. Webshare: put `"webshare": {"apiKey": "..."}` in the admin config (PUT /config), then give a crawler the proxy `{"kind":"webshare-list","index":0}` or `{"kind":"webshare-list","id":"..."}`. At each start the admin loads the list from the Webshare API (`GET https://proxy.webshare.io/api/v2/proxy/list/`, `Authorization: Token <key>`), takes that proxy and sends its URL to the crawler. The key is masked in `GET /config`. |
+| `@band-spider/cli` | The debug entry point (`dist/index.js`) with the DB in the same process. |
+| `@band-spider/db-service` | The Fastify DB service. |
+| `@band-spider/crawler` | The crawler process and `RemoteCrawlStore`. |
+| `@band-spider/admin` | The admin API, the web page and the process supervisor. |
 
-## 🚀 Run
+## 🧭 Run with the admin
+
+This is the normal way to run the app. One command starts the admin:
+
+```shell
+npm run admin
+```
+
+The startup log prints a URL like `http://127.0.0.1:4200/session?token=...`. Open it once in a browser: it sets the
+session cookie and shows the admin page. From the page you can:
+
+- start, stop and restart the DB service, each crawler, or everything at once;
+- add, edit and remove crawlers (items or accounts, newest first, workers, delays, proxy);
+- watch the state, the logs, the speed, HTTP 429 answers and the queue that is left.
+
+Crawlers start only after the DB service is ready. Stopping the admin stops all children.
+
+### Crawlers and proxies
+
+Add one crawler per IP. Each crawler has one of these proxy settings:
+
+- **none**: the crawler uses the local IP;
+- **url**: a proxy URL such as `http://user:pass@host:port`;
+- **Webshare**: put `"webshare": {"apiKey": "..."}` in the admin config (`PUT /config`), then give the crawler the
+  proxy `{"kind":"webshare-list","index":0}` or `{"kind":"webshare-list","id":"..."}`. At each crawler start the admin
+  loads the proxy list from the Webshare API, takes that proxy and sends its URL to the crawler.
+
+The proxy is used only for page requests, never for the DB service. A crawler keeps one fixed proxy, and the pool is
+not rotated after a 429.
+
+### Admin settings and API
+
+Settings are saved in `~/.band-spider/admin-config.json` (`ADMIN_CONFIG_PATH` overrides it). Env: `ADMIN_HOST`
+(default 127.0.0.1), `ADMIN_PORT` (default 4200).
+
+Security: the admin checks the Host header (127.0.0.1, localhost or [::1] with its own port) and the Origin header
+of state-changing requests, and every route except `/health` needs a random session token made at each start.
+Scripts can send `Authorization: Bearer <token>` or `X-Admin-Token`. `GET /config` and `PUT /config` show secrets
+(DB service token, proxy passwords, the Webshare key) as `********`, and a saved secret is kept when the masked value
+is sent back.
+
+Routes: `GET/PUT /config`, `GET /status`, `POST /start-all`, `POST /stop-all`, `POST /db/start`, `/db/stop`,
+`/db/restart`, `GET /db/logs`, `POST /crawlers/:name/start`, `/stop`, `/restart`, `GET /crawlers/:name/logs`, and
+`GET /events` (server-sent events). The page is static HTML and htmx from the npm package (no CDN, no build step) and
+uses the `/fragments/*` routes.
+
+Statistics: each crawler sends metrics over IPC every minute (requests, URLs saved and failed, HTTP 429 answers,
+current pause). The page shows requests/min and URLs/min over the last 5 minutes, 429 per hour and the totals. The
+admin reads `GET /stats` of the DB service every 5 seconds and shows the queue left and the service counters.
+
+## 🧩 Run the processes by hand
+
+Each process also runs alone, for example in separate terminals:
+
+```shell
+npm run db:service        # DB service on 127.0.0.1:4100
+npm run crawler:items     # a crawler for items
+npm run crawler:accounts  # a crawler for accounts
+```
+
+DB service env: `DB_SERVICE_HOST`, `DB_SERVICE_PORT` (default 4100), `DB_SERVICE_TOKEN` (optional bearer token,
+`/health` stays open), `DB_SERVICE_LEASE_MS`, `BAND_DB_PATH`, `DB_SYNCHRONIZE`.
+
+Crawler env: `CRAWLER_DB_URL` (required, for example `http://127.0.0.1:4100`), `CRAWLER_DB_TOKEN`, `CRAWLER_TYPE`
+(`item` or `account`), `CRAWLER_REVERSE`, `CRAWLER_WORKERS` (1 to 64), `CRAWLER_MIN_DELAY_MS`,
+`CRAWLER_MAX_DELAY_MS`, `CRAWLER_PROXY`. Flags: `--account` and `--reverse`.
+
+## 🐞 CLI debug mode
+
+The CLI runs the spider with the database in the same process. It is kept as a debug mode and for quick local runs.
+It does not use the DB service, the crawlers or the admin.
+
+## 🚀 Run (CLI mode)
 
 The app reads the URLs to process from the database. A new DB file is created with the schema on the first start.
 
@@ -76,7 +176,7 @@ To link tags to super tags:
 npm run superTag
 ```
 
-Every script builds the app first (`npm run build`) and then runs `node ./packages/cli/dist/index.js` with its flags.
+Every script builds the app first (`npm run build`) and then runs the entry point of its package with its flags.
 Run the scripts from the repository root, so the DB file and `logfile.log` stay there.
 
 ### ⚙️ Settings
@@ -100,8 +200,8 @@ npx pino-pretty < logfile.log
 
 ## 🌐 How pages are read
 
-Pages are read with plain HTTP requests, with a random pause of 400-450 ms between requests and a shared pause after
-HTTP 429. No browser is needed.
+Pages are read with plain HTTP requests, with a random pause of 400-450 ms between requests and a pause after
+HTTP 429 (per worker). No browser is needed.
 
 ## 🧪 Tests
 
