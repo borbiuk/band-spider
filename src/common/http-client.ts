@@ -1,5 +1,6 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { HttpStatusError, PageNotFoundError } from './errors';
+import { NoProxy, ProxySource } from './proxy-source';
 import { RateLimitedError, RateLimitGate } from './rate-limit-gate';
 
 /** The pause between two requests is a random time between these two values. */
@@ -24,8 +25,11 @@ export interface HttpClientOptions {
 	minDelayMs?: number;
 	maxDelayMs?: number;
 	timeoutMs?: number;
-	/** Called when the server answers HTTP 429, before the error is thrown. Must start the shared pause; the default does only that. */
+	/** Called when the server answers HTTP 429, before the error is thrown. Must start the pause of this client's gate; the default does only that. */
 	onRateLimited?: (url: string, retryAfter?: string) => void;
+	/** Where requests leave from. The default is the local IP. */
+	proxySource?: ProxySource;
+	/** Replaces the fetch function of the proxy source. */
 	fetchFn?: typeof fetch;
 	/** Resolves after the given time in ms. */
 	sleep?: (ms: number) => Promise<void>;
@@ -36,8 +40,8 @@ export interface HttpClientOptions {
 }
 
 /**
- * Plain HTTP requests for the page readers. Every request waits while the shared pause after
- * HTTP 429 is active, keeps a random minimum distance from the previous request, and turns a 429
+ * Plain HTTP requests for the page readers. Every request waits while the pause after
+ * HTTP 429 is active, keeps a random minimum distance from the start of the previous request (the slot is reserved before the request, so it holds for any number of callers), and turns a 429
  * answer into `RateLimitedError`. Other statuses are returned as they are.
  */
 export class HttpClient {
@@ -50,6 +54,7 @@ export class HttpClient {
 	private readonly random: () => number;
 	private readonly now: () => number;
 
+	/** Earliest start of the next request. */
 	private nextRequestAt = 0;
 
 	constructor(
@@ -60,7 +65,7 @@ export class HttpClient {
 		this.maxDelayMs = options.maxDelayMs ?? MAX_REQUEST_DELAY_MS;
 		this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
 		this.onRateLimited = options.onRateLimited ?? ((_url, retryAfter) => { this.gate.trip(retryAfter); });
-		this.fetchFn = options.fetchFn ?? fetch;
+		this.fetchFn = options.fetchFn ?? (options.proxySource ?? new NoProxy()).fetchFn;
 		this.sleep = options.sleep ?? (ms => sleep(ms));
 		this.random = options.random ?? Math.random;
 		this.now = options.now ?? Date.now;
@@ -79,14 +84,19 @@ export class HttpClient {
 	}
 
 	private async request(url: string, init: RequestInit): Promise<HttpResponse> {
-		// wait for the pause after a 429 and for the minimum distance to the previous request
-		do {
+		// wait for the pause after a 429, then reserve the next request slot before sending
+		while (true) {
 			await this.gate.wait();
-			const left = this.nextRequestAt - this.now();
-			if (left > 0) {
-				await this.sleep(left);
+			const now = this.now();
+			const start = Math.max(now, this.nextRequestAt);
+			this.nextRequestAt = start + this.minDelayMs + this.random() * (this.maxDelayMs - this.minDelayMs);
+			if (start > now) {
+				await this.sleep(start - now);
 			}
-		} while (this.gate.isPaused);
+			if (!this.gate.isPaused) {
+				break;
+			}
+		}
 
 		try {
 			const response = await this.fetchFn(url, { ...init, signal: AbortSignal.timeout(this.timeoutMs) });
@@ -101,8 +111,6 @@ export class HttpClient {
 			return { status: response.status, body: await response.text() };
 		} catch (e) {
 			throw withNetworkCode(e, url);
-		} finally {
-			this.nextRequestAt = this.now() + this.minDelayMs + this.random() * (this.maxDelayMs - this.minDelayMs);
 		}
 	}
 }

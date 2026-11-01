@@ -61,7 +61,7 @@ export function parseRetryAfter(value: string | undefined | null, now: number): 
 	return isNaN(date) ? null : Math.max(0, date - now);
 }
 
-/** One pause shared by all workers: after a 429 every worker waits before it takes the next URL. */
+/** The pause of one worker (each worker has its own IP): after a 429 it waits before it takes the next URL. */
 export class RateLimitGate {
 	private readonly basePauseMs: number;
 	private readonly maxPauseMs: number;

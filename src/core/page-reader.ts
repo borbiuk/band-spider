@@ -1,4 +1,5 @@
 import { HttpClient } from '../common/http-client';
+import { RateLimitGate } from '../common/rate-limit-gate';
 import { AccountScanMarks } from '../models/account-scan-marks';
 import { AccountPageData } from './account/models/account-page-data';
 import { readAccountPageByFetch } from './account/clients/account-http-reader';
@@ -29,6 +30,8 @@ export class FetchPageReader implements PageReader {
 /** What a worker reads pages with, and what it does around it. */
 export interface PageSource {
 	reader: PageReader;
+	/** The 429 pause of this worker. */
+	rateLimitGate: RateLimitGate;
 	/** Called after every processed URL. */
 	afterUrl: () => Promise<void>;
 	close: () => Promise<void>;

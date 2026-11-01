@@ -49,6 +49,12 @@ When an account is read again, every tab that was read to its end before is read
 records from that read: Bandcamp lists the newest records first, so the older ones are saved already. The app keeps
 these marks in the `account-scans` table; a tab without a mark (or whose marked record is gone) is read in full.
 
+To send the requests through a proxy (a manual test option), pass its URL. Without the flag the local IP is used:
+
+```shell
+npm run build && node ./dist/index.js --proxy http://user:pass@host:port
+```
+
 To link tags to super tags:
 
 ```shell

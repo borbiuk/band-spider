@@ -32,6 +32,16 @@ describe('parseOptions', () => {
 		assert.deepEqual(parseOptions(['--reverse']), options({ reverse: true }));
 	});
 
+	it('reads the proxy URL after --proxy', () => {
+		assert.deepEqual(parseOptions(['--proxy', 'http://127.0.0.1:8080']), options({ proxy: 'http://127.0.0.1:8080' }));
+		assert.deepEqual(parseOptions(['--account', '--proxy', 'http://h:1', '--reverse']), options({ type: UrlType.Account, reverse: true, proxy: 'http://h:1' }));
+	});
+
+	it('ignores --proxy without a value', () => {
+		assert.deepEqual(parseOptions(['--proxy']), options());
+		assert.deepEqual(parseOptions(['--proxy', '--reverse']), options({ reverse: true }));
+	});
+
 	it('matches whole arguments only', () => {
 		assert.deepEqual(parseOptions(['--account=true', '--Account', 'account', '--supertag']), options());
 	});

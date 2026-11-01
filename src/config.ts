@@ -8,6 +8,8 @@ export interface BandSpiderOptions {
 	superTag: boolean,
 	/** Take the newest unprocessed URLs first (highest id), instead of the oldest. */
 	reverse: boolean,
+	/** Send the requests through this proxy URL (`--proxy <url>`). Without it the local IP is used. */
+	proxy?: string,
 }
 
 // Count of parallel URL workers.
@@ -23,7 +25,14 @@ export const parseOptions = (args: string[]): BandSpiderOptions => ({
 	type: args.includes('--account') ? UrlType.Account : UrlType.Item,
 	superTag: args.includes('--superTag'),
 	reverse: args.includes('--reverse'),
+	...proxyOption(args),
 });
+
+/** The value after `--proxy`, or nothing when the flag or its value is missing. */
+const proxyOption = (args: string[]): { proxy?: string } => {
+	const value = args[args.indexOf('--proxy') + 1];
+	return args.includes('--proxy') && value !== undefined && !value.startsWith('--') ? { proxy: value } : {};
+};
 
 /** The DB file used when `BAND_DB_PATH` is not set. */
 export const DEFAULT_DB_FILE = 'band_db.sqlite';
