@@ -10,19 +10,41 @@
 	<script src="/assets/htmx.min.js"></script>
 	<script src="/assets/app.js" defer></script>
 </head>
-<body>
+<body hx-ext="morph">
 	<header>
-		<h1>Band Spider admin</h1>
-		<span id="connection" class="meta">connecting...</span>
+		<h1>Band Spider <span>admin</span></h1>
+		<nav role="tablist" aria-label="Pages">
+			<button type="button" role="tab" data-tab="overview" aria-selected="true">Crawlers</button>
+			<button type="button" role="tab" data-tab="proxies" aria-selected="false">Proxies</button>
+		</nav>
+		<span id="connection" class="conn" data-state="connecting" role="status">
+			<i class="dot"></i><span id="connection-text">connecting...</span>
+		</span>
 	</header>
 	<main>
-		<section id="status" hx-get="/fragments/status" hx-trigger="load" hx-swap="innerHTML">
-			<p class="meta">Loading...</p>
-		</section>
-		<section id="form-area"></section>
-		<section id="proxy-import" hx-get="/fragments/proxy-import" hx-trigger="load" hx-swap="innerHTML"></section>
-		<section id="proxy-list" hx-get="/fragments/proxy-list" hx-trigger="load" hx-swap="innerHTML"></section>
-		<section id="logs"></section>
+		<div data-view="overview">
+			<section id="status" class="status-box" hx-get="/fragments/status" hx-trigger="load" hx-swap="morph">
+				<p class="meta">Loading...</p>
+			</section>
+		</div>
+		<div data-view="proxies" hidden>
+			<section id="proxy-import" hx-get="/fragments/proxy-import" hx-trigger="load" hx-swap="innerHTML"></section>
+			<section id="proxy-list" hx-get="/fragments/proxy-list" hx-trigger="load" hx-swap="morph"></section>
+		</div>
 	</main>
+	<!-- the form, the logs and the messages float over the page, so they do not move it -->
+	<section id="form-area"></section>
+	<section id="logs"></section>
+	<section id="insights"></section>
+	<div id="toasts" aria-live="polite"></div>
+	<dialog id="confirm-dialog">
+		<form method="dialog">
+			<p id="confirm-text"></p>
+			<div class="buttons">
+				<button type="submit" value="cancel" class="btn-ghost">Cancel</button>
+				<button type="submit" value="ok" class="btn-danger">Confirm</button>
+			</div>
+		</form>
+	</dialog>
 </body>
 </html>

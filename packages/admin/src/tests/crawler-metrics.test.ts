@@ -97,4 +97,22 @@ describe('CrawlerMetricsTracker', () => {
 		tracker.record(report({ requests: 6 }));
 		assert.equal(tracker.summary()?.requestsPerMin, 6);
 	});
+
+	it('gives per-minute series for the charts', () => {
+		const { clock, tracker } = setup();
+		assert.equal(tracker.series(), undefined);
+
+		clock.now += MIN;
+		tracker.record(report({ requests: 60, processed: 20, failed: 10, http429: 1 }));
+		clock.now += MIN;
+		tracker.record(report({ requests: 180, processed: 50, failed: 10, http429: 1 }));
+
+		const series = tracker.series();
+		assert.equal(series?.requests.length, 30);
+		// the last two minutes are the only ones with work
+		assert.deepEqual(series?.requests.slice(-3), [0, 60, 120]);
+		assert.deepEqual(series?.urls.slice(-3), [0, 30, 30]);
+		assert.deepEqual(series?.http429.slice(-3), [0, 1, 0]);
+		assert.equal(series?.requests.slice(0, 27).every(value => value === 0), true);
+	});
 });

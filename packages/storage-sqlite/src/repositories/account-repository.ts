@@ -1,4 +1,4 @@
-import { EntityManager, IsNull, LessThan, Or } from 'typeorm';
+import { EntityManager, IsNull, LessThan, MoreThanOrEqual, Or } from 'typeorm';
 import { AccountScanMarks, chunk, isNullOrUndefined } from '@band-spider/core';
 import { InsertResult } from '../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
@@ -8,6 +8,9 @@ import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 import { insertRelation, insertUnique } from './insert-helpers';
 
 const DB_BATCH_SIZE = 500;
+
+/** An account processed before this date is processed again. */
+const REPROCESS_BEFORE = new Date('2024-09-10');
 
 export class AccountRepository {
 	constructor(
@@ -22,7 +25,7 @@ export class AccountRepository {
 	public async getNotProcessed(newestFirst: boolean = false): Promise<AccountEntity[]> {
 		return await this.manager.getRepository(AccountEntity).find({
 			// where: { lastProcessingDate: IsNull(), isBusy: false },
-			where: { lastProcessingDate: Or(LessThan(new Date('2024-09-10')), IsNull()), isBusy: false },
+			where: { lastProcessingDate: Or(LessThan(REPROCESS_BEFORE), IsNull()), isBusy: false },
 			order: newestFirst ? { id: 'DESC' } : undefined,
 			take: 400
 		});
@@ -31,8 +34,27 @@ export class AccountRepository {
 	/** How many accounts are left to process. The filter is the one of `getNotProcessed`. */
 	public async countNotProcessed(): Promise<number> {
 		return await this.manager.getRepository(AccountEntity).count({
-			where: { lastProcessingDate: Or(LessThan(new Date('2024-09-10')), IsNull()), isBusy: false },
+			where: { lastProcessingDate: Or(LessThan(REPROCESS_BEFORE), IsNull()), isBusy: false },
 		});
+	}
+
+	public async countAll(): Promise<number> {
+		return await this.manager.getRepository(AccountEntity).count();
+	}
+
+	/** How many accounts are processed. It is the opposite of the filter of `countNotProcessed`, without the busy flag. */
+	public async countProcessed(): Promise<number> {
+		return await this.manager.getRepository(AccountEntity).count({ where: { lastProcessingDate: MoreThanOrEqual(REPROCESS_BEFORE) } });
+	}
+
+	/** How many links between an item and an account there are, and how many of them are a wishlist. */
+	public async countItemRelations(): Promise<{ all: number, wishlist: number }> {
+		const repository = this.manager.getRepository(ItemToAccountEntity);
+		return { all: await repository.count(), wishlist: await repository.count({ where: { wishlist: true } }) };
+	}
+
+	public async countFollowers(): Promise<number> {
+		return await this.manager.getRepository(FollowerEntity).count();
 	}
 
 	public async getAccountRelated(accountId: number): Promise<AccountEntity[]> {

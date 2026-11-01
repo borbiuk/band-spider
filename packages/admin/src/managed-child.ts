@@ -1,4 +1,4 @@
-import { CrawlerMetricsTracker, CrawlerStats } from './crawler-metrics';
+import { CrawlerMetricsTracker, CrawlerStats, MetricSeries } from './crawler-metrics';
 import { conflict } from './errors';
 import { ChildHandle, ExitInfo, LaunchSpec, ProcessLauncher } from './process-launcher';
 import { LogRingBuffer } from './ring-buffer';
@@ -21,6 +21,8 @@ export interface ChildStatus {
 	counts?: CrawlerCounts;
 	/** Speeds and totals of a crawler. Missing before its first report. */
 	stats?: CrawlerStats;
+	/** Per-minute history of a crawler, for the charts. */
+	series?: MetricSeries;
 	error?: string;
 }
 
@@ -86,6 +88,7 @@ export class ManagedChild {
 			url: this.url,
 			counts: this.counts,
 			stats: this.metrics?.summary(),
+			series: this.metrics?.series(),
 			error: this.error,
 		};
 	}

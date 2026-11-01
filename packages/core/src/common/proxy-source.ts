@@ -23,7 +23,8 @@ export class StaticProxy implements ProxySource {
 	private readonly agent: ProxyAgent;
 
 	constructor(proxyUrl: string) {
-		this.agent = new ProxyAgent(proxyUrl);
+		// always a CONNECT tunnel, also for http:// URLs (undici 8 sends those to the proxy in plain form)
+		this.agent = new ProxyAgent({ uri: proxyUrl, proxyTunnel: true });
 		// undici has its own Response type, which is the same at run time
 		this.fetchFn = ((input: unknown, init?: RequestInit) => undiciFetch(input as never, { ...init, dispatcher: this.agent } as never)) as unknown as typeof fetch;
 	}

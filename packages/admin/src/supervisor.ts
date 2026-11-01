@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { AdminConfig, CrawlerSetting, poolKeyOf, proxyUrlOf, proxyUrlOfEntry } from './config';
 import { ConfigStore } from './config-store';
 import { CrawlerMetricsTracker } from './crawler-metrics';
-import { DbStats, DbStatsSource, HttpDbStatsSource } from './db-stats';
+import { DbStats, DbStatsSource, DbTotals, HttpDbStatsSource } from './db-stats';
 import { AdminError, conflict, notFound } from './errors';
+import { FlowSample, flowSample } from './insights';
 import { ChildStatus, CrawlerCounts, ManagedChild } from './managed-child';
 import { ProcessLauncher } from './process-launcher';
 import { pickProxy, ProxyListSource, WebshareProxySource } from './webshare';
@@ -41,6 +42,19 @@ export interface DbStatus extends ChildStatus {
 	dbStats?: DbStats;
 	/** Why the counters could not be read. */
 	dbStatsError?: string;
+	/** The queue size (items) at each counter read, oldest first. */
+	queueHistory?: number[];
+}
+
+/** What the Insights view needs: the status, the history of the flow and the size of the DB. */
+export interface InsightsSnapshot {
+	db: DbStatus;
+	crawlers: CrawlerStatus[];
+	history: FlowSample[];
+	totals?: DbTotals;
+	totalsError?: string;
+	/** True while the DB service counts its rows. The first count of a big DB takes a while. */
+	totalsLoading: boolean;
 }
 
 export interface CrawlerStatus extends ChildStatus {
@@ -93,6 +107,12 @@ const DEFAULT_READY_TIMEOUT_MS = 30_000;
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
 const DEFAULT_LOG_LINES = 500;
 const DEFAULT_DB_STATS_INTERVAL_MS = 5000;
+const QUEUE_HISTORY_LENGTH = 180;
+const FLOW_HISTORY_LENGTH = 180;
+/** The DB size is read again after this time, and only while somebody looks at the Insights view. */
+const TOTALS_REFRESH_MS = 5 * 60_000;
+/** A failed read of the DB size is tried again after this time. */
+const TOTALS_RETRY_MS = 60_000;
 
 /**
  * Starts, stops and watches the DB service and the crawlers.
@@ -110,6 +130,11 @@ export class Supervisor {
 	private dbToken?: string;
 	private dbStats?: DbStats;
 	private dbStatsError?: string;
+	private queueHistory: number[] = [];
+	private flowHistory: FlowSample[] = [];
+	private totals?: { value: DbTotals; at: number };
+	private totalsError?: { message: string; at: number };
+	private totalsReading = false;
 	private dbStatsTimer?: NodeJS.Timeout;
 	private dbStatsReading = false;
 
@@ -142,12 +167,26 @@ export class Supervisor {
 		// a crawler that left the config but still runs stays visible
 		const extra = [...this.crawlers.keys()].filter(name => !configured.has(name) && this.crawlers.get(name)?.isActive);
 		return {
-			db: { ...this.db.status(), dbStats: this.dbStats, dbStatsError: this.dbStatsError },
+			db: { ...this.db.status(), dbStats: this.dbStats, dbStatsError: this.dbStatsError, queueHistory: this.queueHistory },
 			crawlers: [...names, ...extra].map(name => ({
 				name,
 				configured: configured.has(name),
 				...(this.crawlers.get(name)?.status() ?? { state: 'stopped' as const }),
 			})),
+		};
+	}
+
+	/** The data of the Insights view. It starts a read of the DB size when the last one is old, and a status event comes when the read ends. */
+	async insights(): Promise<InsightsSnapshot> {
+		const status = await this.status();
+		this.requestTotals();
+		return {
+			db: status.db,
+			crawlers: status.crawlers,
+			history: [...this.flowHistory],
+			totals: this.totals?.value,
+			totalsError: this.totalsError?.message,
+			totalsLoading: this.totalsReading,
 		};
 	}
 
@@ -340,7 +379,57 @@ export class Supervisor {
 			this.stopDbStatsReading();
 			this.dbStats = undefined;
 			this.dbStatsError = undefined;
+			this.queueHistory = [];
+			// the counters of a new DB service start from zero
+			this.flowHistory = [];
+			this.totals = undefined;
+			this.totalsError = undefined;
 		}
+	}
+
+	private get nowMs(): number {
+		return (this.options.now ?? Date.now)();
+	}
+
+	/** Reads the DB size in the background when it is missing or old. Counting a big DB takes seconds, so nobody waits for it. */
+	private requestTotals(): void {
+		const url = this.db.url;
+		if (!url || this.db.state !== 'running' || this.totalsReading || !this.dbStatsSource.readTotals) {
+			return;
+		}
+		const now = this.nowMs;
+		if (this.totals && now - this.totals.at < TOTALS_REFRESH_MS) {
+			return;
+		}
+		if (this.totalsError && now - this.totalsError.at < TOTALS_RETRY_MS) {
+			return;
+		}
+		this.totalsReading = true;
+		void this.dbStatsSource.readTotals(url, this.dbToken).then(
+			value => {
+				if (this.db.state === 'running') {
+					this.totals = { value, at: this.nowMs };
+					this.totalsError = undefined;
+				}
+			},
+			(error: Error) => {
+				if (this.db.state === 'running') {
+					this.totalsError = { message: error.message, at: this.nowMs };
+				}
+			},
+		).finally(() => {
+			this.totalsReading = false;
+			this.emit({ kind: 'status' });
+		});
+	}
+
+	private recordFlow(sample: FlowSample): void {
+		const last = this.flowHistory[this.flowHistory.length - 1];
+		// counters that went down mean the DB service restarted, so the old history does not fit
+		if (last && sample.pages < last.pages) {
+			this.flowHistory = [];
+		}
+		this.flowHistory = [...this.flowHistory, sample].slice(-FLOW_HISTORY_LENGTH);
 	}
 
 	private stopDbStatsReading(): void {
@@ -360,6 +449,13 @@ export class Supervisor {
 			if (this.db.state === 'running') {
 				this.dbStats = stats;
 				this.dbStatsError = undefined;
+				const sample = flowSample(this.nowMs, stats);
+				if (sample) {
+					this.recordFlow(sample);
+				}
+				if (stats.queueLeft) {
+					this.queueHistory = [...this.queueHistory, stats.queueLeft.items].slice(-QUEUE_HISTORY_LENGTH);
+				}
 			}
 		} catch (error) {
 			if (this.db.state === 'running') {

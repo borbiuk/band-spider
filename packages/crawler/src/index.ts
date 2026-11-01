@@ -55,6 +55,15 @@ const main = async (): Promise<void> => {
 			onConfig?.(message.data.config);
 		}
 	});
+	// started by the admin: stop when the admin is gone, so no crawler runs without it
+	if (process.send) {
+		process.once('disconnect', () => {
+			if (!stop.aborted) {
+				logger.warn(logMessage(LogSource.Main, 'The admin is gone: stopping after the current URL'));
+				parentStop.abort();
+			}
+		});
+	}
 
 	// env first, an IPC message wins over it
 	const fromEnv = readEnvConfig(process.env, process.argv.slice(2));

@@ -1,3 +1,4 @@
+import { MAX_REQUEST_DELAY_MS, MIN_REQUEST_DELAY_MS } from '@band-spider/core';
 import { z } from 'zod';
 
 /** Same limit as the crawler config. */
@@ -52,6 +53,22 @@ export const crawlerSettingSchema = z.object({
 );
 export type CrawlerSetting = z.infer<typeof crawlerSettingSchema>;
 
+/** The schema defaults of a crawler. A saved config keeps only what differs from them. */
+export const DEFAULT_WORKERS = 1;
+export const DEFAULT_REVERSE = false;
+
+/** The crawler without the values that equal the defaults. Missing values mean the defaults when the config is read again. */
+export const compactCrawler = (crawler: CrawlerSetting): Partial<CrawlerSetting> & Pick<CrawlerSetting, 'name' | 'type' | 'proxy'> => {
+	const { reverse, workers, minDelayMs, maxDelayMs, ...rest } = crawler;
+	return {
+		...rest,
+		...(reverse !== DEFAULT_REVERSE && { reverse }),
+		...(workers !== DEFAULT_WORKERS && { workers }),
+		...(minDelayMs !== undefined && minDelayMs !== MIN_REQUEST_DELAY_MS && { minDelayMs }),
+		...(maxDelayMs !== undefined && maxDelayMs !== MAX_REQUEST_DELAY_MS && { maxDelayMs }),
+	};
+};
+
 export const dbServiceSettingSchema = z.object({
 	/** 0 means a random free port. The crawlers get the real URL from the ready message. */
 	port: z.number().int().min(0).max(65535).default(4100),
@@ -82,6 +99,10 @@ export const adminConfigSchema = z.object({
 	{ message: 'proxy pool entries must be unique by host:port', path: ['proxyPool'] },
 );
 export type AdminConfig = z.infer<typeof adminConfigSchema>;
+
+/** The config as it is written to disk: every crawler is compact. */
+export const compactConfig = (config: AdminConfig): Omit<AdminConfig, 'crawlers'> & { crawlers: ReturnType<typeof compactCrawler>[] } =>
+	({ ...config, crawlers: config.crawlers.map(compactCrawler) });
 
 export const defaultAdminConfig = (): AdminConfig => adminConfigSchema.parse({});
 

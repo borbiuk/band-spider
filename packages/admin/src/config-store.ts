@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { AdminConfig, adminConfigSchema, defaultAdminConfig } from './config';
+import { AdminConfig, adminConfigSchema, compactConfig, defaultAdminConfig } from './config';
 
 /** Where the admin settings live. A variation point: a file today, maybe something else later. */
 export interface ConfigStore {
@@ -40,7 +40,7 @@ export class JsonFileConfigStore implements ConfigStore {
 		await fs.promises.mkdir(path.dirname(this.file), { recursive: true });
 		// write to a temp file and rename, so a crash never leaves half a file
 		const temp = `${this.file}.${process.pid}.tmp`;
-		await fs.promises.writeFile(temp, JSON.stringify(config, null, '\t'), { mode: 0o600 });
+		await fs.promises.writeFile(temp, JSON.stringify(compactConfig(config), null, '\t'), { mode: 0o600 });
 		await fs.promises.rename(temp, this.file);
 	}
 }

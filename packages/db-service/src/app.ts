@@ -13,6 +13,8 @@ import {
 	saveItemRequestSchema,
 	saveItemResponseSchema,
 	statsResponseSchema,
+	totalsResponseSchema,
+	type TotalsResponse,
 } from '@band-spider/contracts';
 import { CrawlStore, errorMessage, ReleaseReason, UrlType } from '@band-spider/core';
 import Fastify, { FastifyError, FastifyInstance } from 'fastify';
@@ -29,6 +31,8 @@ export interface AppOptions {
 	stats?: ServiceStats;
 	/** Counts the URLs that wait to be claimed. Without it /stats has no queue numbers. */
 	queueLeft?: () => Promise<{ items: number, accounts: number }>;
+	/** Counts the rows of the DB. Without it there is no /totals route. The store caches the numbers. */
+	totals?: () => Promise<TotalsResponse>;
 	/** When set, every request except /health needs this bearer token. */
 	token?: string;
 }
@@ -40,7 +44,7 @@ const hasValidToken = (header: string | undefined, token: string): boolean => {
 };
 
 /** The HTTP side of the DB service. It only knows the CrawlStore interface. */
-export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, token }: AppOptions): FastifyInstance => {
+export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, totals, token }: AppOptions): FastifyInstance => {
 	const app = Fastify({ logger: false }).withTypeProvider<ZodTypeProvider>();
 	app.setValidatorCompiler(validatorCompiler);
 	app.setSerializerCompiler(serializerCompiler);
@@ -64,6 +68,10 @@ export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, token }
 
 	app.get('/stats', { schema: { response: { 200: statsResponseSchema, ...errors } } }, async () => ({ ...stats.snapshot(), ...(queueLeft ? { queueLeft: await queueLeft() } : {}) }));
 
+	if (totals) {
+		app.get('/totals', { schema: { response: { 200: totalsResponseSchema, ...errors } } }, async () => await totals());
+	}
+
 	app.post('/claim', {
 		schema: { body: claimRequestSchema, response: { 200: claimResponseSchema, ...errors } },
 	}, async ({ body }) => {
@@ -80,7 +88,7 @@ export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, token }
 		schema: { body: saveItemRequestSchema, response: { 200: saveItemResponseSchema, ...errors } },
 	}, async ({ body }) => {
 		const statistic = await store.saveItem(toCrawlTask(body.task), toItemPageData(body.data));
-		stats.onItemSaved(statistic.newUrls.length);
+		stats.onItemSaved(statistic.newUrls.length, statistic);
 		return { statistic };
 	});
 
@@ -90,7 +98,7 @@ export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, token }
 		const statistic = await store.saveAccount(toCrawlTask(body.task), toAccountPageData(body.data));
 		const newUrls = [statistic.collection, statistic.wishlist, statistic.followers, statistic.following]
 			.reduce((sum, tab) => sum + tab.newUrls.length, 0);
-		stats.onAccountSaved(newUrls);
+		stats.onAccountSaved(newUrls, statistic);
 		return { statistic };
 	});
 

@@ -280,12 +280,12 @@ describe('proxy fragments', () => {
 		await addPoolCrawler('c1', '10.0.0.1:80');
 		const refused = await del('/fragments/proxy-list/10.0.0.1%3A80');
 		assert.equal(refused.statusCode, 200);
-		assert.match(refused.body, /class="error banner"/);
+		assert.match(refused.body, /toast-error/);
 		assert.match(refused.body, /used by c1/);
 		assert.equal(saved().proxyPool.length, 2);
 
 		const done = await del('/fragments/proxy-list/10.0.0.2%3A80');
-		assert.doesNotMatch(done.body, /class="error banner"/);
+		assert.doesNotMatch(done.body, /toast-error/);
 		assert.deepEqual(saved().proxyPool.map((entry: { host: string }) => entry.host), ['10.0.0.1']);
 	});
 });

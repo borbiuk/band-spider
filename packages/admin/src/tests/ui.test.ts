@@ -64,6 +64,9 @@ describe('admin page', () => {
 		assert.match(page.headers['content-security-policy'] as string, /script-src 'self'/);
 		assert.match(page.body, /\/assets\/htmx\.min\.js/);
 		assert.doesNotMatch(page.body, /https?:\/\//);
+		// the status block is changed in place, so the page does not jump
+		assert.match(page.body, /hx-ext="morph"/);
+		assert.match(page.body, /id="status"[^>]*hx-swap="morph"/);
 
 		const htmx = await get('/assets/htmx.min.js');
 		assert.equal(htmx.statusCode, 200);
@@ -94,7 +97,7 @@ describe('admin page', () => {
 		assert.equal(response.statusCode, 200);
 		assert.match(response.body, /hx-swap-oob/);
 		assert.match(response.body, /items/);
-		assert.deepEqual(savedConfig().crawlers, [{ name: 'items', type: 'item', reverse: false, workers: 3, proxy: { kind: 'none' } }]);
+		assert.deepEqual(savedConfig().crawlers, [{ name: 'items', type: 'item', workers: 3, proxy: { kind: 'none' } }]);
 	});
 
 	it('shows a bad form again with the message and saves nothing', async () => {
@@ -156,9 +159,23 @@ describe('admin page', () => {
 		const response = await post('/fragments/crawlers/items/start');
 		assert.equal(response.statusCode, 200);
 		assert.match(response.body, /Already/);
+		// the error is a message outside of the status block, so a live update cannot remove it
+		assert.match(response.body, /id="toasts" hx-swap-oob="beforeend"><div class="toast toast-error"/);
 		const unknown = await post('/fragments/crawlers/nope/start');
 		assert.match(unknown.body, /No crawler nope/);
 		assert.equal((await post('/fragments/crawlers/items/explode')).statusCode, 404);
+	});
+
+	it('has a View button and an Insights view that works while the DB service is stopped', async () => {
+		const status = (await get('/fragments/status')).body;
+		assert.match(status, /hx-get="\/fragments\/insights"[^>]*>View</);
+
+		const view = await get('/fragments/insights');
+		assert.equal(view.statusCode, 200);
+		assert.match(view.body, /Database insights/);
+		assert.match(view.body, /DB service is not running/);
+		assert.equal((await get('/fragments/insights-close')).body, '');
+		assert.equal((await get('/')).body.includes('id="insights"'), true);
 	});
 
 	it('shows logs as escaped text without colors', async () => {
