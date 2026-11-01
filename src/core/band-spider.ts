@@ -2,14 +2,13 @@ import { errorMessage, PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from '../common/logger';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
-import { isAccountUrl, isItemUrl, isNullOrUndefined, logMessage } from '../common/utils';
+import { isNullOrUndefined, logMessage } from '../common/utils';
 import type { BandSpiderOptions } from '../config';
 import { UrlType } from '../models/url-type';
 import { processAccount } from './account/account-handler';
 import type { CrawlStore, CrawlTask } from './crawl-store';
 import { processItem } from './item/item-handler';
 import { FetchPageReader, PageReader, PageSource } from './page-reader';
-import { ProcessingQueue } from './processing-queue';
 
 /** What `processUrl` needs to process one URL type. */
 interface UrlTypeHandler {
@@ -56,18 +55,6 @@ export class BandSpider {
 
 		this.newestFirst = reverse;
 
-		logger.debug('DB preparing ...');
-		await this.store.resetBusy();
-		logger.debug('DB ready!');
-
-		// init queue
-		logger.debug('Queue init...');
-		const queue: ProcessingQueue = new ProcessingQueue(
-			await this.store.pendingUrls(type, this.newestFirst),
-			this.store
-		);
-		logger.debug('Queue ready!');
-
 		const createSource = this.createFetchSourceFactory();
 
 		// create jobs
@@ -76,7 +63,6 @@ export class BandSpider {
 			.map(async (_, id: number) => {
 				return this.startPageProcessing(
 					await createSource(id),
-					queue,
 					type,
 					id,
 					stop,
@@ -104,7 +90,6 @@ export class BandSpider {
 
 	private async startPageProcessing(
 		source: PageSource,
-		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
 		stop: AbortSignal,
@@ -114,7 +99,7 @@ export class BandSpider {
 		}
 
 		try {
-			await this.processQueue(source, queue, type, id, stop);
+			await this.processQueue(source, type, id, stop);
 		} finally {
 			await source.close();
 		}
@@ -125,42 +110,25 @@ export class BandSpider {
 
 	private async processQueue(
 		source: PageSource,
-		queue: ProcessingQueue,
 		type: UrlType,
 		id: number,
 		stop: AbortSignal,
 	): Promise<void> {
 		while (!stop.aborted) {
-			// do not take a URL, nor refill the queue, while the pause after HTTP 429 is active
+			// do not take a URL while the pause after HTTP 429 is active
 			await this.rateLimitGate.wait();
 			if (stop.aborted) {
 				break;
 			}
 
-			// fill queue
-			if (queue.size === 0) {
-				await this.enqueueFromDb(queue, type);
-				if (queue.size === 0) {
-					break;
-				}
-			}
-
-			// dequeue 
-			const task: CrawlTask = await queue.dequeue();
+			// claim: new URLs of a page are in the store, so they come back here
+			const [task] = await this.store.claim(type, 1, this.newestFirst);
 			if (isNullOrUndefined(task)) {
-				continue;
+				break;
 			}
 
 			// process
-			const result = await this.processUrl(
-				task,
-				source.reader,
-				id,
-				// feed new URLs straight into the queue, the DB scan stays as the refill path
-				(urls) => urls
-					.filter(x => this.isUrlOfType(type, x))
-					.forEach(x => queue.enqueue(x)),
-			);
+			const result = await this.processUrl(task, source.reader, id);
 
 			// update statistic
 			if (result === UrlResult.Processed) {
@@ -168,8 +136,7 @@ export class BandSpider {
 				this.rateLimitGate.reportSuccess();
 			} else if (result === UrlResult.RateLimited) {
 				this.statistic.rateLimited++;
-				// not lost: if the queue is full, the next refill from the DB picks it up
-				queue.enqueue(task.url);
+				// not lost: the task is released, so it is claimed again after the pause
 			} else {
 				this.statistic.failed++;
 			}
@@ -197,11 +164,10 @@ export class BandSpider {
 		task: CrawlTask,
 		reader: PageReader,
 		pageIndex: number,
-		onNewUrls: (urls: string[]) => void,
 	): Promise<UrlResult> {
 		const { process, source } = this.handlerOf(task.type);
 		try {
-			const processed = await process(task, this.store, reader, pageIndex, onNewUrls);
+			const processed = await process(task, this.store, reader, pageIndex);
 			if (!processed) {
 				await this.store.release(task, 'failed');
 			}
@@ -253,30 +219,4 @@ export class BandSpider {
 			);
 		}
 	}
-
-	/**
-	 * Tells if a URL is of the kind this run processes, the same as the `getNotProcessed` filters do:
-	 * accounts for the account run, only track URLs for the item run.
-	 */
-	private isUrlOfType(type: UrlType, url: string): boolean {
-		switch (type) {
-			case UrlType.Account:
-				return isAccountUrl(url);
-			case UrlType.Item:
-				return isItemUrl(url) && url.toLowerCase().includes('/track/');
-			default:
-				return false;
-		}
-	}
-
-	private async enqueueFromDb(
-		queue: ProcessingQueue,
-		type: UrlType
-	): Promise<void> {
-		let urls: string[] = await this.store.pendingUrls(type, this.newestFirst);
-		if (urls.length !== 0) {
-			await queue.enqueueBatch(urls);
-		}
-	}
-
 }
