@@ -27,6 +27,8 @@ import { ServiceStats } from './stats';
 export interface AppOptions {
 	store: CrawlStore;
 	stats?: ServiceStats;
+	/** Counts the URLs that wait to be claimed. Without it /stats has no queue numbers. */
+	queueLeft?: () => Promise<{ items: number, accounts: number }>;
 	/** When set, every request except /health needs this bearer token. */
 	token?: string;
 }
@@ -38,7 +40,7 @@ const hasValidToken = (header: string | undefined, token: string): boolean => {
 };
 
 /** The HTTP side of the DB service. It only knows the CrawlStore interface. */
-export const buildApp = ({ store, stats = new ServiceStats(), token }: AppOptions): FastifyInstance => {
+export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, token }: AppOptions): FastifyInstance => {
 	const app = Fastify({ logger: false }).withTypeProvider<ZodTypeProvider>();
 	app.setValidatorCompiler(validatorCompiler);
 	app.setSerializerCompiler(serializerCompiler);
@@ -60,7 +62,7 @@ export const buildApp = ({ store, stats = new ServiceStats(), token }: AppOption
 
 	app.get('/health', { schema: { response: { 200: healthResponseSchema } } }, async () => ({ status: 'ok' as const }));
 
-	app.get('/stats', { schema: { response: { 200: statsResponseSchema, ...errors } } }, async () => stats.snapshot());
+	app.get('/stats', { schema: { response: { 200: statsResponseSchema, ...errors } } }, async () => ({ ...stats.snapshot(), ...(queueLeft ? { queueLeft: await queueLeft() } : {}) }));
 
 	app.post('/claim', {
 		schema: { body: claimRequestSchema, response: { 200: claimResponseSchema, ...errors } },

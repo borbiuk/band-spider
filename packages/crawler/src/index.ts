@@ -12,6 +12,7 @@ export * from './config';
 export * from './counting-crawl-store';
 export * from './crawl-transport';
 export * from './crawler';
+export * from './metrics';
 export * from './mapping';
 export * from './remote-crawl-store';
 

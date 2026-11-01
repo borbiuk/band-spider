@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { AdminConfig, adminConfigSchema } from '../config';
 import { ConfigStore } from '../config-store';
-import { Supervisor } from '../supervisor';
+import { Supervisor, SupervisorOptions } from '../supervisor';
 import { CRAWLER_ENTRY, DB_ENTRY, FakeLauncher, readyDbLauncher } from './fakes';
 
 class MemoryConfigStore implements ConfigStore {
@@ -20,7 +20,7 @@ class MemoryConfigStore implements ConfigStore {
 
 const COUNTS = { claimed: 2, saved: 1, failed: 0, rateLimited: 0, notFound: 0 };
 
-const setup = (launcher: FakeLauncher = readyDbLauncher(), options: { readyTimeoutMs?: number; stopTimeoutMs?: number } = {}) => {
+const setup = (launcher: FakeLauncher = readyDbLauncher(), options: Partial<SupervisorOptions> = {}) => {
 	const configStore = new MemoryConfigStore(adminConfigSchema.parse({
 		dbService: { port: 4100, token: 'secret', leaseMs: 5000, dbFile: '/data/x.sqlite' },
 		crawlers: [
@@ -32,6 +32,7 @@ const setup = (launcher: FakeLauncher = readyDbLauncher(), options: { readyTimeo
 		launcher,
 		configStore,
 		entries: { dbService: DB_ENTRY, crawler: CRAWLER_ENTRY },
+		dbStatsIntervalMs: 0,
 		...options,
 	});
 	return { launcher, configStore, supervisor };

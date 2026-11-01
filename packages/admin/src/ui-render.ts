@@ -1,6 +1,7 @@
 import { AdminConfig, CrawlerSetting } from './config';
+import { CrawlerStats } from './crawler-metrics';
 import { ChildStatus, CrawlerCounts } from './managed-child';
-import { SupervisorStatus } from './supervisor';
+import { DbStatus, SupervisorStatus } from './supervisor';
 
 /** Escapes text for HTML, so a log line or a name cannot add markup. */
 export const esc = (value: unknown): string =>
@@ -19,6 +20,25 @@ const stateBadge = (state: string): string => `<span class="state state-${esc(st
 
 const countsText = (counts?: CrawlerCounts): string =>
 	counts ? `${counts.claimed} claimed, ${counts.saved} saved, ${counts.failed} failed, ${counts.rateLimited} rate limited` : '-';
+
+const number = (value: number): string => value.toLocaleString('en-US');
+
+/** A pause in ms as a short text, for example "1m 05s". */
+export const durationText = (ms: number): string => {
+	const seconds = Math.ceil(ms / 1000);
+	return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s` : `${seconds}s`;
+};
+
+/** The speeds and totals of a crawler. */
+export const statsText = (stats?: CrawlerStats): string => {
+	if (!stats) {
+		return '<span class="meta">no report yet</span>';
+	}
+	return `${stats.requestsPerMin} requests/min, ${stats.urlsPerMin} URLs/min, ${stats.http429PerHour} HTTP 429/hour`
+		+ `<br><span class="meta">total: ${number(stats.totals.requests)} requests, ${number(stats.totals.processed)} saved, `
+		+ `${number(stats.totals.failed)} failed, ${number(stats.totals.http429)} HTTP 429</span>`
+		+ (stats.pauseMs > 0 ? `<br><span class="warn">paused after HTTP 429, ${esc(durationText(stats.pauseMs))} left</span>` : '');
+};
 
 /** A short text for the proxy column. It never has a user name or a password. */
 export const proxyText = (setting: CrawlerSetting): string => {
@@ -47,11 +67,28 @@ const action = (path: string, label: string, disabled = false, confirm?: string)
 
 const isActive = (state: string): boolean => state === 'starting' || state === 'running' || state === 'stopping';
 
-const dbPanel = (db: ChildStatus): string => `
+const dbStatsLines = (db: DbStatus): string => {
+	if (db.dbStatsError) {
+		return `<p class="error">Statistics: ${esc(db.dbStatsError)}</p>`;
+	}
+	const stats = db.dbStats;
+	if (!stats) {
+		return '';
+	}
+	const queue = stats.queueLeft
+		? `queue left: ${number(stats.queueLeft.items)} items, ${number(stats.queueLeft.accounts)} accounts`
+		: 'queue left: unknown';
+	return `<p>${queue}</p>
+	<p class="meta">since start: ${number(stats.claimed)} claimed, ${number(stats.itemsSaved)} items saved, `
+		+ `${number(stats.accountsSaved)} accounts saved, ${number(stats.released)} released, ${number(stats.newUrls)} new URLs</p>`;
+};
+
+const dbPanel = (db: DbStatus): string => `
 <div class="panel">
 	<h2>DB service ${stateBadge(db.state)}</h2>
 	<p class="meta">${db.url ? `URL ${esc(db.url)}` : 'not running'}${db.pid ? `, pid ${db.pid}` : ''}</p>
 	${db.error ? `<p class="error">${esc(db.error)}</p>` : ''}
+	${dbStatsLines(db)}
 	<div class="buttons">
 		${action('/fragments/db/start', 'Start', isActive(db.state))}
 		${action('/fragments/db/stop', 'Stop', !isActive(db.state), 'Stop the DB service and all crawlers?')}
@@ -69,7 +106,7 @@ const crawlerRow = (name: string, configured: boolean, status: ChildStatus, sett
 	<td>${esc(name)}${configured ? '' : ' <span class="meta">(removed from config)</span>'}</td>
 	<td>${setting ? `${esc(setting.type)}${setting.reverse ? ', reverse' : ''}, ${setting.workers} workers<br><span class="meta">${esc(proxyText(setting))}</span>` : '-'}</td>
 	<td>${stateBadge(status.state)}${status.error ? `<br><span class="error">${esc(status.error)}</span>` : ''}</td>
-	<td class="meta">${esc(countsText(status.counts))}</td>
+	<td>${statsText(status.stats)}<br><span class="meta">${esc(countsText(status.counts))}</span></td>
 	<td class="buttons">
 		${action(`${base}/start`, 'Start', active || !configured)}
 		${action(`${base}/stop`, 'Stop', !active)}
@@ -97,7 +134,7 @@ ${dbPanel(status.db)}
 	</div>
 	${rows.length === 0 ? '<p class="meta">No crawlers yet.</p>' : `
 	<table>
-		<thead><tr><th>Name</th><th>Settings</th><th>State</th><th>Counts</th><th></th></tr></thead>
+		<thead><tr><th>Name</th><th>Settings</th><th>State</th><th>Speed and totals</th><th></th></tr></thead>
 		<tbody>${rows.join('')}</tbody>
 	</table>`}
 </div>`;

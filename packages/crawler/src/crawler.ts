@@ -4,6 +4,7 @@ import {
 	errorMessage,
 	HttpClient,
 	logger,
+	FetchPageReader,
 	logMessage,
 	LogSource,
 	MAX_REQUEST_DELAY_MS,
@@ -14,12 +15,15 @@ import {
 import { CrawlerConfig } from './config';
 import { CountingCrawlStore, CrawlerCounts } from './counting-crawl-store';
 import { CrawlTransport, HttpCrawlTransport } from './crawl-transport';
+import { collectMetrics, CrawlerMetrics } from './metrics';
 import { RemoteCrawlStore } from './remote-crawl-store';
 
 /** What a crawler tells its parent. */
 export type CrawlerEvent =
 	| { type: 'started' }
 	| { type: 'progress', counts: CrawlerCounts }
+	/** Sent every minute and once before `stopped`. The numbers count from the start. */
+	| { type: 'metrics', metrics: CrawlerMetrics }
 	/** `error` is set when the crawler stopped because of a failure. */
 	| { type: 'stopped', counts: CrawlerCounts, error?: string };
 
@@ -33,7 +37,11 @@ export interface CrawlerDeps {
 	createReader?: (http: HttpClient) => PageReader;
 	/** The least time between two progress events. */
 	progressIntervalMs?: number;
+	/** The time between two metrics events. */
+	metricsIntervalMs?: number;
 }
+
+const DEFAULT_METRICS_INTERVAL_MS = 60_000;
 
 /** How the BandSpider options come from the crawler config. */
 export const toSpiderOptions = (config: CrawlerConfig): BandSpiderOptions => {
@@ -57,7 +65,7 @@ export const toSpiderOptions = (config: CrawlerConfig): BandSpiderOptions => {
  * service never uses it.
  */
 export const runCrawler = async (config: CrawlerConfig, deps: CrawlerDeps = {}): Promise<CrawlerCounts> => {
-	const { signal, onEvent = () => { }, progressIntervalMs = 1000 } = deps;
+	const { signal, onEvent = () => { }, progressIntervalMs = 1000, metricsIntervalMs = DEFAULT_METRICS_INTERVAL_MS } = deps;
 
 	let lastProgress = 0;
 	const remote = new RemoteCrawlStore(deps.transport ?? new HttpCrawlTransport(config.dbUrl, { token: config.token }));
@@ -69,17 +77,31 @@ export const runCrawler = async (config: CrawlerConfig, deps: CrawlerDeps = {}):
 		}
 	});
 
+	// the HTTP client of each worker counts its requests and 429 answers
+	const clients: HttpClient[] = [];
+	const createReader = (http: HttpClient): PageReader => {
+		clients.push(http);
+		return (deps.createReader ?? (client => new FetchPageReader(client)))(http);
+	};
+	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics(clients, store.counts) });
+	const metricsTimer = setInterval(sendMetrics, metricsIntervalMs);
+	// the timer must not keep the process alive
+	metricsTimer.unref();
+
 	logger.info(logMessage(LogSource.Main, `Crawler started: ${config.type}, ${config.workers} worker(s), ${config.proxy === undefined ? 'local IP' : 'proxy'}`));
 	onEvent({ type: 'started' });
 
 	try {
-		await new BandSpider(store, deps.createReader).run(toSpiderOptions(config), signal);
+		await new BandSpider(store, createReader).run(toSpiderOptions(config), signal);
+		sendMetrics();
 		onEvent({ type: 'stopped', counts: { ...store.counts } });
 		return store.counts;
 	} catch (error) {
+		sendMetrics();
 		onEvent({ type: 'stopped', counts: { ...store.counts }, error: errorMessage(error) });
 		throw error;
 	} finally {
+		clearInterval(metricsTimer);
 		remote.close();
 	}
 };

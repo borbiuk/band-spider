@@ -441,8 +441,8 @@ describe('crawler process', () => {
 		try {
 			const { messages, code } = await runChild({ CRAWLER_DB_URL: service.url, CRAWLER_TYPE: 'item' });
 			assert.equal(code, 0);
-			assert.deepEqual(messages.map(m => m.type), ['started', 'stopped']);
-			assert.deepEqual(messages[1].counts, noCounts);
+			assert.deepEqual(messages.map(m => m.type), ['started', 'metrics', 'stopped']);
+			assert.deepEqual(messages[2].counts, noCounts);
 		} finally {
 			await close();
 		}
@@ -455,7 +455,7 @@ describe('crawler process', () => {
 				child.send({ type: 'config', config: { dbUrl: service.url, type: 'item', workers: 2 } });
 			});
 			assert.equal(code, 0);
-			assert.deepEqual(messages.map(m => m.type), ['started', 'stopped']);
+			assert.deepEqual(messages.map(m => m.type), ['started', 'metrics', 'stopped']);
 		} finally {
 			await close();
 		}

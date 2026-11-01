@@ -2,6 +2,8 @@ import { logger, logMessage, LogSource } from '@band-spider/core';
 import { z } from 'zod';
 import { AdminConfig, CrawlerSetting, proxyUrlOf, proxyUrlOfEntry } from './config';
 import { ConfigStore } from './config-store';
+import { CrawlerMetricsTracker } from './crawler-metrics';
+import { DbStats, DbStatsSource, HttpDbStatsSource } from './db-stats';
 import { AdminError, conflict, notFound } from './errors';
 import { ChildStatus, CrawlerCounts, ManagedChild } from './managed-child';
 import { ProcessLauncher } from './process-launcher';
@@ -26,6 +28,19 @@ export interface SupervisorOptions {
 	stopTimeoutMs?: number;
 	/** How many output lines are kept for each child. */
 	logLines?: number;
+	/** Reads the counters of the DB service. The default is HTTP. */
+	dbStatsSource?: DbStatsSource;
+	/** How often the DB service counters are read while it runs. 0 turns it off. */
+	dbStatsIntervalMs?: number;
+	/** Current time in ms, for the speeds of the crawlers. */
+	now?: () => number;
+}
+
+export interface DbStatus extends ChildStatus {
+	/** The counters of the running DB service. */
+	dbStats?: DbStats;
+	/** Why the counters could not be read. */
+	dbStatsError?: string;
 }
 
 export interface CrawlerStatus extends ChildStatus {
@@ -35,7 +50,7 @@ export interface CrawlerStatus extends ChildStatus {
 }
 
 export interface SupervisorStatus {
-	db: ChildStatus;
+	db: DbStatus;
 	crawlers: CrawlerStatus[];
 }
 
@@ -54,6 +69,14 @@ const countsSchema = z.object({
 	notFound: z.number(),
 });
 
+const metricsSchema = z.object({
+	requests: z.number(),
+	http429: z.number(),
+	processed: z.number(),
+	failed: z.number(),
+	pauseMs: z.number(),
+});
+
 /** What a DB service sends over IPC. */
 const dbMessageSchema = z.object({ type: z.literal('ready'), url: z.string() });
 
@@ -61,12 +84,14 @@ const dbMessageSchema = z.object({ type: z.literal('ready'), url: z.string() });
 const crawlerMessageSchema = z.discriminatedUnion('type', [
 	z.object({ type: z.literal('started') }),
 	z.object({ type: z.literal('progress'), counts: countsSchema }),
+	z.object({ type: z.literal('metrics'), metrics: metricsSchema }),
 	z.object({ type: z.literal('stopped'), counts: countsSchema, error: z.string().optional() }),
 ]);
 
 const DEFAULT_READY_TIMEOUT_MS = 30_000;
 const DEFAULT_STOP_TIMEOUT_MS = 10_000;
 const DEFAULT_LOG_LINES = 500;
+const DEFAULT_DB_STATS_INTERVAL_MS = 5000;
 
 /**
  * Starts, stops and watches the DB service and the crawlers.
@@ -79,6 +104,13 @@ export class Supervisor {
 	private readonly stopTimeoutMs: number;
 	private readonly logLines: number;
 	private readonly listeners = new Set<SupervisorListener>();
+	private readonly dbStatsSource: DbStatsSource;
+	private readonly dbStatsIntervalMs: number;
+	private dbToken?: string;
+	private dbStats?: DbStats;
+	private dbStatsError?: string;
+	private dbStatsTimer?: NodeJS.Timeout;
+	private dbStatsReading = false;
 
 	constructor(private readonly options: SupervisorOptions) {
 		this.readyTimeoutMs = options.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
@@ -87,6 +119,13 @@ export class Supervisor {
 		// the DB service stops on SIGTERM
 		this.db = new ManagedChild(options.launcher, { signal: 'SIGTERM' }, this.stopTimeoutMs, this.logLines);
 		this.watch(this.db, 'db');
+		this.dbStatsSource = options.dbStatsSource ?? new HttpDbStatsSource();
+		this.dbStatsIntervalMs = options.dbStatsIntervalMs ?? DEFAULT_DB_STATS_INTERVAL_MS;
+		const notify = this.db.onChange;
+		this.db.onChange = () => {
+			notify?.();
+			this.syncDbStatsReading();
+		};
 	}
 
 	/** Calls the listener when a state, the counts or the output of any child change. Returns a function that stops it. */
@@ -102,7 +141,7 @@ export class Supervisor {
 		// a crawler that left the config but still runs stays visible
 		const extra = [...this.crawlers.keys()].filter(name => !configured.has(name) && this.crawlers.get(name)?.isActive);
 		return {
-			db: this.db.status(),
+			db: { ...this.db.status(), dbStats: this.dbStats, dbStatsError: this.dbStatsError },
 			crawlers: [...names, ...extra].map(name => ({
 				name,
 				configured: configured.has(name),
@@ -125,6 +164,7 @@ export class Supervisor {
 
 	async startDb(): Promise<void> {
 		const { dbService } = await this.options.configStore.load();
+		this.dbToken = dbService.token;
 		this.db.begin();
 		this.db.launch({
 			entry: this.options.entries.dbService,
@@ -168,6 +208,7 @@ export class Supervisor {
 		if (!child) {
 			// a crawler stops on an IPC message
 			child = new ManagedChild(this.options.launcher, { message: { type: 'stop' } }, this.stopTimeoutMs, this.logLines);
+			child.metrics = new CrawlerMetricsTracker(this.options.now);
 			this.crawlers.set(name, child);
 			this.watch(child, `crawler:${name}`);
 		}
@@ -238,6 +279,7 @@ export class Supervisor {
 	/** Called when the admin stops: no child is left behind. */
 	async shutdown(): Promise<void> {
 		await this.stopAll();
+		this.stopDbStatsReading();
 	}
 
 	private async ensureDbReady(): Promise<void> {
@@ -272,6 +314,50 @@ export class Supervisor {
 		return proxyUrlOfEntry(pickProxy(entries, proxy));
 	}
 
+	/** Reads the DB service counters while the service runs. */
+	private syncDbStatsReading(): void {
+		if (this.db.state === 'running') {
+			if (!this.dbStatsTimer && this.dbStatsIntervalMs > 0) {
+				this.dbStatsTimer = setInterval(() => void this.readDbStats(), this.dbStatsIntervalMs);
+				// the timer must not keep the admin alive
+				this.dbStatsTimer.unref();
+				void this.readDbStats();
+			}
+		} else {
+			this.stopDbStatsReading();
+			this.dbStats = undefined;
+			this.dbStatsError = undefined;
+		}
+	}
+
+	private stopDbStatsReading(): void {
+		clearInterval(this.dbStatsTimer);
+		this.dbStatsTimer = undefined;
+	}
+
+	private async readDbStats(): Promise<void> {
+		const url = this.db.url;
+		if (!url || this.dbStatsReading) {
+			return;
+		}
+		this.dbStatsReading = true;
+		try {
+			const stats = await this.dbStatsSource.read(url, this.dbToken);
+			// the service may have stopped while the request was running
+			if (this.db.state === 'running') {
+				this.dbStats = stats;
+				this.dbStatsError = undefined;
+			}
+		} catch (error) {
+			if (this.db.state === 'running') {
+				this.dbStatsError = (error as Error).message;
+			}
+		} finally {
+			this.dbStatsReading = false;
+		}
+		this.emit({ kind: 'status' });
+	}
+
 	private watch(child: ManagedChild, source: string): void {
 		child.onChange = () => this.emit({ kind: 'status' });
 		child.onOutput = text => this.emit({ kind: 'log', source, text });
@@ -292,6 +378,10 @@ export class Supervisor {
 				break;
 			case 'progress':
 				child.counts = message.data.counts as CrawlerCounts;
+				child.notify();
+				break;
+			case 'metrics':
+				child.metrics?.record(message.data.metrics);
 				child.notify();
 				break;
 			case 'stopped':

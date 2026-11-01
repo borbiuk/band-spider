@@ -86,6 +86,11 @@ export class RateLimitGate {
 		return this.now() < this.pausedUntil;
 	}
 
+	/** How long the active pause still lasts in ms, 0 when there is none. */
+	public get pauseLeftMs(): number {
+		return Math.max(0, this.pausedUntil - this.now());
+	}
+
 	/**
 	 * Registers a 429. While a pause is active it is only made longer, never shorter, and the
 	 * backoff level does not grow, so a burst of 429s counts as one.
