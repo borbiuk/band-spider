@@ -11,11 +11,19 @@ export const webshareEntrySchema = z.object({
 	password: z.string().min(1),
 });
 
+export type WebshareEntry = z.infer<typeof webshareEntrySchema>;
+
 /** How a crawler reaches Bandcamp: from the local IP, through a proxy URL, or through a Webshare entry. */
 export const proxySettingSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('none') }),
 	z.object({ kind: z.literal('url'), url: z.url() }),
 	z.object({ kind: z.literal('webshare'), entry: webshareEntrySchema }),
+	// one proxy of the Webshare list, found with the API key of the admin config
+	z.object({
+		kind: z.literal('webshare-list'),
+		index: z.number().int().min(0).optional(),
+		id: z.string().min(1).optional(),
+	}).refine(ref => (ref.index === undefined) !== (ref.id === undefined), { message: 'give an index or an id, not both' }),
 ]);
 export type ProxySetting = z.infer<typeof proxySettingSchema>;
 
@@ -43,7 +51,14 @@ export const dbServiceSettingSchema = z.object({
 });
 export type DbServiceSetting = z.infer<typeof dbServiceSettingSchema>;
 
+/** The account that gives the proxy lists. */
+export const webshareAccountSchema = z.object({
+	apiKey: z.string().min(1),
+});
+export type WebshareAccount = z.infer<typeof webshareAccountSchema>;
+
 export const adminConfigSchema = z.object({
+	webshare: webshareAccountSchema.optional(),
 	dbService: dbServiceSettingSchema.default({ port: 4100 }),
 	crawlers: z.array(crawlerSettingSchema).default([]),
 }).refine(
@@ -54,16 +69,20 @@ export type AdminConfig = z.infer<typeof adminConfigSchema>;
 
 export const defaultAdminConfig = (): AdminConfig => adminConfigSchema.parse({});
 
-/** The proxy URL a crawler gets, or undefined for the local IP. */
+/** The proxy URL of one proxy with a user name and a password. */
+export const proxyUrlOfEntry = ({ host, port, username, password }: WebshareEntry): string =>
+	`http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
+
+/** The proxy URL a crawler gets, or undefined for the local IP. A webshare-list setting must be resolved first. */
 export const proxyUrlOf = (proxy: ProxySetting): string | undefined => {
 	switch (proxy.kind) {
+		case 'webshare-list':
+			throw new Error('A Webshare list proxy must be resolved with the list first');
 		case 'none':
 			return undefined;
 		case 'url':
 			return proxy.url;
-		case 'webshare': {
-			const { host, port, username, password } = proxy.entry;
-			return `http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
-		}
+		case 'webshare':
+			return proxyUrlOfEntry(proxy.entry);
 	}
 };

@@ -53,6 +53,8 @@ const formSchema = z.object({
 	wsPort: z.string().default(''),
 	wsUser: z.string().default(''),
 	wsPassword: z.string().default(''),
+	listIndex: z.string().default(''),
+	listId: z.string().default(''),
 });
 
 const optionalNumber = (value: string): number | undefined => value.trim() === '' ? undefined : Number(value);
@@ -67,6 +69,8 @@ const settingFromForm = (form: FormValues): unknown => {
 			kind: 'webshare',
 			entry: { host: form.wsHost.trim(), port: Number(form.wsPort), username: form.wsUser, password: form.wsPassword },
 		};
+	} else if (form.proxyKind === 'webshare-list') {
+		proxy = { kind: 'webshare-list', index: optionalNumber(form.listIndex), id: form.listId.trim() || undefined };
 	}
 	return {
 		name: form.name.trim(),
