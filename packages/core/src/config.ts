@@ -15,6 +15,9 @@ export interface BandSpiderOptions {
 	idleWaitMs?: number,
 }
 
+/** How long a crawler waits before it asks for URLs again when there are none, unless it has its own value. */
+export const DEFAULT_IDLE_MS = 30_000;
+
 // Count of parallel URL workers.
 export const PARALLEL_WORKERS_COUNT: number = 1;
 

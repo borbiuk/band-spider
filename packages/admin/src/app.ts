@@ -6,6 +6,7 @@ import {
 	ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import { AutoCrawlerService, autoCrawlerKindSchema } from './auto-crawlers';
 import { adminConfigSchema } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError } from './errors';
@@ -26,6 +27,7 @@ const importBody = z.object({
 	text: z.string().min(1),
 	mode: z.enum(['append', 'replace']).default('append'),
 });
+const freeCrawlersBody = z.object({ type: autoCrawlerKindSchema.default('item') });
 const logsQuery = z.object({ limit: z.coerce.number().int().min(1).max(5000).optional() });
 
 /** The JSON API of the admin. It only knows the Supervisor and the ConfigStore. */
@@ -43,7 +45,8 @@ export const buildApp = ({ supervisor, configStore, security }: AppOptions): Fas
 	});
 
 	const proxyPool = new ProxyPoolService(configStore);
-	registerUi(app, { supervisor, configStore, proxyPool });
+	const autoCrawlers = new AutoCrawlerService(configStore);
+	registerUi(app, { supervisor, configStore, proxyPool, autoCrawlers });
 
 	app.get('/health', async () => ({ status: 'ok' }));
 
@@ -62,6 +65,10 @@ export const buildApp = ({ supervisor, configStore, security }: AppOptions): Fas
 
 	app.post('/proxies/import', { schema: { body: importBody } }, async ({ body }) =>
 		proxyPool.importList(body.text, body.mode));
+
+	// One crawler for each pool proxy that no crawler uses. The crawlers are not started.
+	app.post('/proxies/free-crawlers', { schema: { body: freeCrawlersBody } }, async ({ body }) =>
+		autoCrawlers.addForFreeProxies(body.type));
 
 	app.delete('/proxies/:key', { schema: { params: z.object({ key: z.string().min(1) }) } }, async ({ params }) => {
 		await proxyPool.remove(params.key);

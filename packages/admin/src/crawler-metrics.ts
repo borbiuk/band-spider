@@ -23,6 +23,17 @@ export interface CrawlerStats {
 	reportedAt?: number;
 }
 
+/** Per-minute values for the last minutes, oldest first. They feed the charts. */
+export interface MetricSeries {
+	requests: number[];
+	urls: number[];
+	http429: number[];
+}
+
+/** The chart shows this many buckets of one minute. */
+export const SERIES_BUCKETS = 30;
+export const SERIES_BUCKET_MS = 60_000;
+
 /** Speeds are counted over this time. */
 export const SPEED_WINDOW_MS = 5 * 60_000;
 export const HOUR_MS = 60 * 60_000;
@@ -80,6 +91,26 @@ export class CrawlerMetricsTracker {
 			idle: last.idle === true,
 			reportedAt: last.at,
 		};
+	}
+
+	/** Requests, URLs and HTTP 429 answers for each of the last minutes. Undefined before the first report. */
+	series(): MetricSeries | undefined {
+		if (this.samples.length < 2) {
+			return undefined;
+		}
+		const now = this.now();
+		const requests: number[] = [];
+		const urls: number[] = [];
+		const http429: number[] = [];
+		for (let i = 0; i < SERIES_BUCKETS; i++) {
+			const end = now - (SERIES_BUCKETS - 1 - i) * SERIES_BUCKET_MS;
+			const from = this.baseFor(end - SERIES_BUCKET_MS);
+			const to = this.baseFor(end);
+			requests.push(Math.max(to.requests - from.requests, 0));
+			urls.push(Math.max(to.processed + to.failed - from.processed - from.failed, 0));
+			http429.push(Math.max(to.http429 - from.http429, 0));
+		}
+		return { requests, urls, http429 };
 	}
 
 	/** The newest sample that is not newer than the given time, or the oldest one. */

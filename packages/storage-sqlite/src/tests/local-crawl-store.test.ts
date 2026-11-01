@@ -354,3 +354,71 @@ describe('LocalCrawlStore release', () => {
 		assert.deepEqual(await itemRow(url), { processed: 0, failedCount: 0, isBusy: 0 });
 	});
 });
+
+describe('LocalCrawlStore candidates', () => {
+	/** Counts the DB reads of not processed items. */
+	const countReads = () => {
+		const original = db.item.getNotProcessed.bind(db.item);
+		const counter = { reads: 0, restore: () => { db.item.getNotProcessed = original; } };
+		db.item.getNotProcessed = async (newestFirst?: boolean) => {
+			counter.reads++;
+			return original(newestFirst);
+		};
+		return counter;
+	};
+
+	it('reads the DB once for many claims', async () => {
+		await clean();
+		for (let n = 0; n < 5; n++) {
+			await db.item.insert(`https://batch.bandcamp.com/track/${n}`);
+		}
+		const counter = countReads();
+		try {
+			const urls: string[] = [];
+			for (let n = 0; n < 5; n++) {
+				urls.push((await claimed(UrlType.Item)).url);
+			}
+
+			assert.equal(counter.reads, 1);
+			assert.equal(new Set(urls).size, 5);
+		} finally {
+			counter.restore();
+		}
+	});
+
+	it('reads the DB again when the candidates are used up', async () => {
+		await clean();
+		await db.item.insert('https://refill.bandcamp.com/track/first');
+		await claimed(UrlType.Item);
+
+		const late = 'https://refill.bandcamp.com/track/late';
+		await db.item.insert(late);
+
+		assert.equal((await claimed(UrlType.Item)).url, late);
+	});
+
+	it('a rate limited URL comes back after the candidates are used up', async () => {
+		await clean();
+		const url = 'https://refill.bandcamp.com/track/limited-again';
+		await db.item.insert(url);
+		await store.release(await claimed(UrlType.Item), 'rateLimited');
+
+		assert.equal((await claimed(UrlType.Item)).url, url);
+	});
+
+	it('never hands out the same URL in both orders', async () => {
+		await clean();
+		for (let n = 0; n < 4; n++) {
+			await db.item.insert(`https://order.bandcamp.com/track/${n}`);
+		}
+
+		const urls: string[] = [];
+		for (let n = 0; n < 4; n++) {
+			urls.push((await claimed(UrlType.Item, n % 2 === 1)).url);
+		}
+
+		assert.equal(new Set(urls).size, 4);
+		assert.deepEqual(await store.claim(UrlType.Item, 1, false), []);
+		assert.deepEqual(await store.claim(UrlType.Item, 1, true), []);
+	});
+});

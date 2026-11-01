@@ -24,7 +24,7 @@ export const startDbService = async (config: DbServiceConfig): Promise<RunningDb
 		const store = new LocalCrawlStore(database, config.leaseMs);
 		await store.resetBusy();
 
-		const app = buildApp({ store, stats: new ServiceStats(), queueLeft: () => store.queueLeft(), token: config.token });
+		const app = buildApp({ store, stats: new ServiceStats(), queueLeft: () => store.queueLeft(), totals: () => store.totals(), token: config.token });
 		await app.listen({ host: config.host, port: config.port });
 
 		const address = app.server.address();

@@ -9,6 +9,7 @@ import {
 	RateLimitGate,
 } from '../common/rate-limit-gate';
 import { MAX_REQUEST_DELAY_MS, MIN_REQUEST_DELAY_MS, REQUEST_TIMEOUT_MS } from '../common/http-client';
+import { DEFAULT_IDLE_MS } from '../config';
 
 /** A gate on a fake clock. `random` is fixed, `sleep` moves the clock. */
 const createGate = (random = 0) => {
@@ -27,8 +28,9 @@ describe('rate limit constants', () => {
 		assert.equal(BASE_PAUSE_MS, 30_000);
 		assert.equal(MAX_PAUSE_MS, 900_000);
 		assert.equal(JITTER_RATIO, 0.1);
-		assert.equal(MIN_REQUEST_DELAY_MS, 400);
-		assert.equal(MAX_REQUEST_DELAY_MS, 450);
+		assert.equal(MIN_REQUEST_DELAY_MS, 550);
+		assert.equal(MAX_REQUEST_DELAY_MS, 700);
+		assert.equal(DEFAULT_IDLE_MS, 30_000);
 		assert.equal(REQUEST_TIMEOUT_MS, 30_000);
 	});
 });

@@ -4,7 +4,7 @@ import { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 import { AdminConfig, adminConfigSchema } from '../config';
 import { ConfigStore } from '../config-store';
-import { DbStats, DbStatsSource, HttpDbStatsSource } from '../db-stats';
+import { DbStats, DbStatsSource, DbTotals, HttpDbStatsSource } from '../db-stats';
 import { renderStatus } from '../ui-render';
 import { Supervisor, SupervisorEvent } from '../supervisor';
 import { CRAWLER_ENTRY, DB_ENTRY, readyDbLauncher } from './fakes';
@@ -31,6 +31,11 @@ const DB_STATS: DbStats = {
 	queueLeft: { items: 1500, accounts: 42 },
 };
 
+const DB_TOTALS: DbTotals = {
+	countedAt: new Date('2024-01-01T00:05:00.000Z'), items: 10, itemsProcessed: 4, accounts: 5, accountsProcessed: 1,
+	itemAccountRelations: 20, wishlistRelations: 5, followers: 3,
+};
+
 class FakeStatsSource implements DbStatsSource {
 	readonly calls: Array<{ url: string; token?: string }> = [];
 	failWith?: string;
@@ -41,6 +46,17 @@ class FakeStatsSource implements DbStatsSource {
 			throw new Error(this.failWith);
 		}
 		return DB_STATS;
+	}
+
+	readonly totalsCalls: Array<{ url: string; token?: string }> = [];
+	totalsFailWith?: string;
+
+	async readTotals(url: string, token?: string): Promise<DbTotals> {
+		this.totalsCalls.push({ url, token });
+		if (this.totalsFailWith) {
+			throw new Error(this.totalsFailWith);
+		}
+		return DB_TOTALS;
 	}
 }
 
@@ -112,6 +128,7 @@ describe('crawler statistics in the supervisor', () => {
 		assert.equal(source.calls[0].url, 'http://127.0.0.1:4100');
 		assert.equal(source.calls[0].token, 'secret');
 		assert.ok(source.calls.length >= 2, 'read again after the interval');
+		assert.deepEqual(status.queueHistory?.slice(0, 2), [DB_STATS.queueLeft?.items, DB_STATS.queueLeft?.items]);
 		await supervisor.stopDb();
 	});
 
@@ -131,6 +148,7 @@ describe('crawler statistics in the supervisor', () => {
 		status = (await supervisor.status()).db;
 		assert.equal(status.dbStats, undefined);
 		assert.equal(status.dbStatsError, undefined);
+		assert.deepEqual(status.queueHistory, []);
 		assert.equal(source.calls.length, callsAtStop, 'no reads after the stop');
 	});
 
@@ -169,6 +187,88 @@ describe('HttpDbStatsSource', () => {
 	});
 });
 
+describe('DB size for the Insights view', () => {
+	it('reads the size in the background when the view asks, and not again for five minutes', async () => {
+		const { clock, source, supervisor } = setup(0);
+		await supervisor.startDb();
+		const events: SupervisorEvent[] = [];
+		supervisor.subscribe(event => events.push(event));
+
+		// the answer does not wait for the count, a status event comes when it is done
+		const first = await supervisor.insights();
+		assert.equal(first.totals, undefined);
+		assert.equal(first.totalsLoading, true);
+		await later(20);
+		assert.ok(events.some(event => event.kind === 'status'));
+		const second = await supervisor.insights();
+		assert.deepEqual(second.totals, DB_TOTALS);
+		assert.equal(second.totalsLoading, false);
+		assert.deepEqual(source.totalsCalls[0], { url: 'http://127.0.0.1:4100', token: 'secret' });
+
+		await supervisor.insights();
+		assert.equal(source.totalsCalls.length, 1, 'the number is reused');
+		clock.now += 6 * MIN;
+		await supervisor.insights();
+		await later(20);
+		assert.equal(source.totalsCalls.length, 2, 'it is read again when it is old');
+
+		// a stopped service has no size, and a new one starts from nothing
+		await supervisor.stopDb();
+		assert.equal((await supervisor.insights()).totals, undefined);
+	});
+
+	it('shows a failed count and tries again after a minute', async () => {
+		const { clock, source, supervisor } = setup(0);
+		source.totalsFailWith = 'DB service answered HTTP 404 for the DB size';
+		await supervisor.startDb();
+		await supervisor.insights();
+		await later(20);
+		assert.equal((await supervisor.insights()).totalsError, 'DB service answered HTTP 404 for the DB size');
+		assert.equal(source.totalsCalls.length, 1);
+
+		clock.now += 2 * MIN;
+		source.totalsFailWith = undefined;
+		await supervisor.insights();
+		await later(20);
+		const recovered = await supervisor.insights();
+		assert.equal(recovered.totalsError, undefined);
+		assert.deepEqual(recovered.totals, DB_TOTALS);
+		await supervisor.stopDb();
+	});
+
+	it('keeps a history of the flow and drops it when the counters start again', async () => {
+		const { clock, supervisor } = setup(20);
+		await supervisor.startDb();
+		await later(60);
+		// the test fake has no flow, so there is nothing to keep
+		assert.deepEqual((await supervisor.insights()).history, []);
+		clock.now += MIN;
+		await supervisor.stopDb();
+	});
+
+	it('reads the DB size over HTTP with the token', async () => {
+		const server = http.createServer((request, response) => {
+			response.setHeader('content-type', 'application/json');
+			if (request.url === '/totals' && request.headers.authorization === 'Bearer secret') {
+				response.end(JSON.stringify({ ...DB_TOTALS, countedAt: DB_TOTALS.countedAt.toISOString() }));
+			} else {
+				response.statusCode = 401;
+				response.end('{"message":"Unauthorized"}');
+			}
+		});
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+		const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+		try {
+			const source = new HttpDbStatsSource();
+			assert.deepEqual(await source.readTotals(url, 'secret'), DB_TOTALS);
+			await assert.rejects(source.readTotals(url), /HTTP 401 for the DB size/);
+		} finally {
+			server.closeAllConnections();
+			await new Promise(resolve => server.close(resolve));
+		}
+	});
+});
+
 describe('statistics on the page', () => {
 	const baseStatus = {
 		db: { state: 'running' as const, url: 'http://127.0.0.1:4100', dbStats: DB_STATS },
@@ -187,7 +287,9 @@ describe('statistics on the page', () => {
 
 		assert.match(html, /queue left: 1,500 items, 42 accounts/);
 		assert.match(html, /12 claimed, 9 items saved, 1 accounts saved/);
-		assert.match(html, /120\.5 requests\/min, 60 URLs\/min, 3 HTTP 429\/hour/);
+		assert.match(html, /<b>120\.5<\/b> requests\/min/);
+		assert.match(html, /<b>60<\/b> URLs\/min/);
+		assert.match(html, /stat-warn"><b>3<\/b> HTTP 429\/hour/);
 		assert.match(html, /12,345 requests, 800 saved, 12 failed, 4 HTTP 429/);
 		assert.match(html, /paused after HTTP 429, 1m 05s left/);
 	});
@@ -218,5 +320,29 @@ describe('statistics on the page', () => {
 		}, config);
 
 		assert.match(html, /Statistics: timed out &lt;b&gt;/);
+	});
+
+	it('draws the charts with attributes only, because the page CSP has no inline styles', () => {
+		const [crawler] = baseStatus.crawlers;
+		const values = Array.from({ length: 30 }, (_, i) => i * 2);
+		const html = renderStatus({
+			db: { ...baseStatus.db, queueHistory: [9, 7, 5] },
+			crawlers: [{ ...crawler, series: { requests: values, urls: values, http429: values } }],
+		}, config);
+
+		assert.match(html, /<svg class="chart"/);
+		assert.match(html, /<svg class="spark spark-req"/);
+		assert.match(html, /<svg class="spark spark-queue"/);
+		assert.doesNotMatch(html, /\sstyle=/);
+	});
+
+	it('keeps the same lines in a crawler row with and without a pause', () => {
+		const [crawler] = baseStatus.crawlers;
+		const lines = (html: string) => html.match(/class="(?:note|stats|meta clip)/g)?.length;
+		const calm = { ...baseStatus, crawlers: [{ ...crawler, stats: { ...crawler.stats, pauseMs: 0 } }] };
+		const empty = { ...baseStatus, crawlers: [{ name: crawler.name, configured: true, state: 'running' as const }] };
+
+		assert.equal(lines(renderStatus(calm, config)), lines(renderStatus(baseStatus, config)));
+		assert.equal(lines(renderStatus(empty, config)), lines(renderStatus(baseStatus, config)));
 	});
 });

@@ -12,7 +12,9 @@ export * from './secrets';
 export * from './security';
 export * from './service';
 export * from './supervisor';
+export * from './insights';
 export * from './ui';
+export * from './ui-insights';
 export * from './ui-render';
 export * from './webshare';
 

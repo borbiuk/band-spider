@@ -5,8 +5,8 @@ import { RateLimitedError, RateLimitGate } from './rate-limit-gate';
 import { SerialQueue } from './serial-queue';
 
 /** The pause from the end of one request to the start of the next one is a random time between these two values. */
-export const MIN_REQUEST_DELAY_MS = 400;
-export const MAX_REQUEST_DELAY_MS = 450;
+export const MIN_REQUEST_DELAY_MS = 550;
+export const MAX_REQUEST_DELAY_MS = 700;
 
 /** A request that takes longer is cancelled and counted as a normal failure. */
 export const REQUEST_TIMEOUT_MS = 30_000;

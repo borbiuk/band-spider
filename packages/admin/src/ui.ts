@@ -3,12 +3,14 @@ import path from 'node:path';
 import { errorMessage } from '@band-spider/core';
 import { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { autoAddText, AutoCrawlerService, autoCrawlerKindSchema } from './auto-crawlers';
 import { AdminConfig, adminConfigSchema, crawlerSettingSchema, CrawlerSetting, poolKeyOf } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError, conflict, notFound } from './errors';
 import { ImportMode, poolUsage, ProxyPoolService } from './proxy-pool';
 import { maskConfig, restoreSecrets } from './secrets';
 import { Supervisor } from './supervisor';
+import { renderInsights } from './ui-insights';
 import {
 	emptyForm,
 	formFromSetting,
@@ -20,12 +22,14 @@ import {
 	renderStatus,
 	sharedPoolWarning,
 	stripAnsi,
+	toast,
 } from './ui-render';
 
 export interface UiOptions {
 	supervisor: Supervisor;
 	configStore: ConfigStore;
 	proxyPool: ProxyPoolService;
+	autoCrawlers: AutoCrawlerService;
 }
 
 // The page files are in packages/admin/ui, next to dist. They need no build step.
@@ -49,7 +53,7 @@ const formSchema = z.object({
 	name: z.string().default(''),
 	type: z.string().default('item'),
 	reverse: z.string().optional(),
-	workers: z.string().default('1'),
+	workers: z.string().default(''),
 	minDelayMs: z.string().default(''),
 	maxDelayMs: z.string().default(''),
 	idleMs: z.string().default(''),
@@ -63,6 +67,8 @@ const formSchema = z.object({
 	listId: z.string().default(''),
 	poolKey: z.string().default(''),
 });
+
+const freeCrawlersFormSchema = z.object({ type: autoCrawlerKindSchema.default('item') });
 
 const importFormSchema = z.object({
 	text: z.string().default(''),
@@ -90,7 +96,7 @@ const settingFromForm = (form: FormValues): unknown => {
 		name: form.name.trim(),
 		type: form.type,
 		reverse: form.reverse,
-		workers: Number(form.workers),
+		workers: optionalNumber(form.workers),
 		minDelayMs: optionalNumber(form.minDelayMs),
 		maxDelayMs: optionalNumber(form.maxDelayMs),
 		idleMs: optionalNumber(form.idleMs),
@@ -114,7 +120,7 @@ const html = (reply: FastifyReply, body: string): FastifyReply =>
 	reply.type('text/html; charset=utf-8').header('cache-control', 'no-store').send(body);
 
 /** The page, the htmx fragments and the SSE stream. All routes pass the security hook of the app. */
-export const registerUi = (app: FastifyInstance, { supervisor, configStore, proxyPool }: UiOptions): void => {
+export const registerUi = (app: FastifyInstance, { supervisor, configStore, proxyPool, autoCrawlers }: UiOptions): void => {
 	const index = readUiFile('index.html');
 	const files: Array<[string, string, Buffer]> = [
 		['/assets/htmx.min.js', 'text/javascript; charset=utf-8', fs.readFileSync(HTMX_FILE)],
@@ -139,23 +145,30 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 		app.get(route, async (_request, reply) => reply.type(type).header('cache-control', 'no-cache').send(content));
 	}
 
-	// The current status with an optional error message
-	const statusHtml = async (error?: string, warning?: string): Promise<string> =>
-		renderStatus(await supervisor.status(), await configStore.load(), error, warning);
+	// The current status. The blocks of the page are changed in place ("morph"), so the page does not jump.
+	const statusHtml = async (): Promise<string> =>
+		renderStatus(await supervisor.status(), await configStore.load());
+
+	const statusOob = async (): Promise<string> =>
+		`<div id="status" hx-swap-oob="morph">${await statusHtml()}</div>`;
 
 	// The pool list changes when a crawler is added, changed or removed, so those responses refresh it too
 	const poolListOob = async (): Promise<string> =>
-		`<div id="proxy-list" hx-swap-oob="innerHTML">${renderProxyList(await proxyPool.list())}</div>`;
+		`<div id="proxy-list" hx-swap-oob="morph">${renderProxyList(await proxyPool.list())}</div>`;
 
-	// A control button never fails the request, because htmx does not swap error responses. The error is shown on the page.
-	const control = async (reply: FastifyReply, job: () => Promise<void>, refreshPool = false): Promise<FastifyReply> => {
-		let error: string | undefined;
+	const errorText = (error: unknown): string => error instanceof AdminError ? error.message : errorMessage(error);
+
+	// A control button never fails the request, because htmx does not swap error responses. The error shows as a message
+	// in the corner of the page, and the next live update of the status does not remove it.
+	const control = async (reply: FastifyReply, job: () => Promise<void>, refreshPool = false, done?: string): Promise<FastifyReply> => {
+		let message = '';
 		try {
 			await job();
+			message = done ? toast('ok', done) : '';
 		} catch (caught) {
-			error = caught instanceof AdminError ? caught.message : errorMessage(caught);
+			message = toast('error', errorText(caught));
 		}
-		return html(reply, await statusHtml(error) + (refreshPool ? await poolListOob() : ''));
+		return html(reply, await statusHtml() + message + (refreshPool ? await poolListOob() : ''));
 	};
 
 	app.get('/fragments/status', async (_request, reply) => html(reply, await statusHtml()));
@@ -190,7 +203,7 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 				throw conflict(`Stop crawler ${name} first`);
 			}
 			await configStore.save({ ...config, crawlers: config.crawlers.filter(crawler => crawler.name !== name) });
-		}, true);
+		}, true, `Crawler ${name} removed`);
 	});
 
 	app.get('/fragments/crawler-form', async (request, reply) => {
@@ -207,6 +220,13 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 	});
 
 	app.get('/fragments/crawler-form-close', async (_request, reply) => html(reply, ''));
+
+	// The Insights view. It asks the supervisor for the DB size, and a status event refreshes the view when the count is done.
+	app.get('/fragments/insights', async (_request, reply) => html(reply, renderInsights(await supervisor.insights(), Date.now())));
+
+	app.get('/fragments/insights-close', async (_request, reply) => html(reply, ''));
+
+	app.get('/fragments/logs-close', async (_request, reply) => html(reply, ''));
 
 	// Saves a new or an edited crawler. A bad form is shown again with the message.
 	app.post('/fragments/crawlers', async (request, reply) => {
@@ -258,7 +278,9 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 			? sharedPoolWarning(proxy.key, poolUsage(config).get(proxy.key) ?? [], setting.data.name)
 			: undefined;
 		// the form closes, and the status and the pool list are updated in the same response
-		return html(reply, `<div id="status" hx-swap-oob="innerHTML">${await statusHtml(undefined, warning)}</div>${await poolListOob()}`);
+		return html(reply, await statusOob() + await poolListOob()
+			+ toast('ok', `Crawler ${setting.data.name} saved. It uses the new settings at the next start.`)
+			+ (warning ? toast('warn', warning) : ''));
 	});
 
 	app.get('/fragments/proxy-import', async (_request, reply) => html(reply, renderProxyImport()));
@@ -275,8 +297,19 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 			const result = await proxyPool.importList(form.data.text, form.data.mode as ImportMode);
 			return html(reply, renderProxyImport({ result }) + await poolListOob());
 		} catch (error) {
-			return html(reply, renderProxyImport({ error: error instanceof AdminError ? error.message : errorMessage(error) }));
+			return html(reply, renderProxyImport({ error: errorText(error) }));
 		}
+	});
+
+	// Adds one crawler for each free proxy. The crawler table and the pool list are updated in the same response.
+	app.post('/fragments/proxies/free-crawlers', async (request, reply) => {
+		const form = freeCrawlersFormSchema.safeParse(request.body ?? {});
+		if (!form.success) {
+			return html(reply, renderProxyList(await proxyPool.list()) + toast('error', issuesText(form.error)));
+		}
+		const result = await autoCrawlers.addForFreeProxies(form.data.type);
+		return html(reply, renderProxyList(await proxyPool.list()) + await statusOob()
+			+ toast(result.added === 0 ? 'warn' : 'ok', autoAddText(result)));
 	});
 
 	app.delete('/fragments/proxy-list/:key', async (request, reply) => {
@@ -285,9 +318,9 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 		try {
 			await proxyPool.remove(key);
 		} catch (caught) {
-			error = caught instanceof AdminError ? caught.message : errorMessage(caught);
+			error = errorText(caught);
 		}
-		return html(reply, renderProxyList(await proxyPool.list(), error));
+		return html(reply, renderProxyList(await proxyPool.list()) + (error ? toast('error', error) : ''));
 	});
 
 	app.get('/fragments/logs', async (request, reply) => {

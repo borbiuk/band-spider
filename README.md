@@ -77,8 +77,14 @@ The startup log prints a URL like `http://127.0.0.1:4200/session?token=...`. Ope
 session cookie and shows the admin page. From the page you can:
 
 - start, stop and restart the DB service, each crawler, or everything at once;
-- add, edit and remove crawlers (items or accounts, newest first, workers, delays, proxy);
-- watch the state, the logs, the speed, HTTP 429 answers and the queue that is left.
+- add, edit and remove crawlers (items or accounts, proxy; workers, delays, idle wait and newest first are under "More settings"
+  and only saved when they differ from the defaults);
+- watch the state, the logs, the speed, HTTP 429 answers and the queue that is left;
+- press **View** to see how well the crawl fills the DB: new items, accounts and links, the share of new records per
+  source, collection and wishlist, the queue and when it will be empty, and the efficiency of each crawler.
+  The DB service counts these with `GET /stats` (`flow`, since it started) and `GET /totals` (the rows of the DB).
+  Counting a big DB takes seconds and blocks the service, so `/totals` is cached for five minutes and the admin reads it
+  only while the View is open.
 
 Crawlers start only after the DB service is ready. Stopping the admin stops all children.
 
@@ -113,6 +119,11 @@ lines that start with `#` are ignored. Same `host:port` twice in one file: the f
    entries that another crawler already uses. Using one entry in two crawlers is only a warning, but the rule is one
    crawler per IP.
 6. The pool list shows each proxy and the crawlers that use it. A proxy that a crawler uses cannot be deleted.
+7. **Add crawlers for free proxies** creates one crawler for each proxy that no crawler uses. Choose the type next to the
+   button: `item` (default), `account`, or `split` (items and accounts in turn over the free proxies, items first). The
+   crawlers are named `items-1`, `items-2`, ... and `accounts-1`, ... (the next free number, so a name never clashes).
+   Only the name, the type and the proxy are saved; every other setting stays at its default. The crawlers are not
+   started. The page shows "N crawlers added" and refreshes the crawler table and the pool list.
 
 The same from a script (same token and Origin rules as the other routes; passwords are never returned):
 
@@ -122,7 +133,14 @@ curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 # {"added":2,"updated":0,"skipped":0,"errors":[],"duplicateLines":[]}
 ```
 
-`GET /proxies` lists the pool (key, host, port, username, usedBy), `DELETE /proxies/:key` deletes one entry (the key is
+```
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"type": "split"}' http://127.0.0.1:4200/proxies/free-crawlers
+# {"added":2,"names":["items-1","accounts-1"]}
+```
+
+`POST /proxies/free-crawlers` adds one crawler for each free proxy (`type` is `item` (default), `account` or `split`).
+With no free proxy it returns `{"added":0,"names":[]}`. `GET /proxies` lists the pool (key, host, port, username, usedBy), `DELETE /proxies/:key` deletes one entry (the key is
 `host:port`, URL-encoded). The pool is saved in the admin config as `proxyPool`, and `GET /config` shows its passwords
 as `********`.
 
@@ -236,7 +254,7 @@ npx pino-pretty < logfile.log
 ## 🌐 How pages are read
 
 Pages are read with plain HTTP requests. All workers of one run share one HTTP client (one IP): requests never
-overlap, and a random pause of 400-450 ms is kept from the end of one request to the start of the next. A pause after
+overlap, and a random pause of 550-700 ms is kept from the end of one request to the start of the next. A pause after
 HTTP 429 stops all requests of that client. No browser is needed.
 
 ## 🧪 Tests

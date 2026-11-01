@@ -22,9 +22,11 @@ const main = async (): Promise<void> => {
 	process.send?.({ type: READY_MESSAGE_TYPE, url: service.url });
 
 	// The first signal stops after the current requests, a second one exits at once
-	const stop = (name: string): void => {
-		logger.warn(logMessage(LogSource.Main, `${name}: stopping, send it again to stop now`));
-		process.once(name as NodeJS.Signals, () => process.exit(1));
+	const stop = (reason: string, signal?: NodeJS.Signals): void => {
+		logger.warn(logMessage(LogSource.Main, signal ? `${reason}: stopping, send it again to stop now` : `${reason}: stopping`));
+		if (signal) {
+			process.once(signal, () => process.exit(1));
+		}
 		service.stop().then(
 			() => process.exit(0),
 			error => {
@@ -33,8 +35,12 @@ const main = async (): Promise<void> => {
 			},
 		);
 	};
-	process.once('SIGINT', () => stop('SIGINT'));
-	process.once('SIGTERM', () => stop('SIGTERM'));
+	process.once('SIGINT', () => stop('SIGINT', 'SIGINT'));
+	process.once('SIGTERM', () => stop('SIGTERM', 'SIGTERM'));
+	// started by the admin: stop when the admin is gone, so the port and the DB are not kept busy
+	if (process.send) {
+		process.once('disconnect', () => stop('The admin is gone'));
+	}
 };
 
 // Only the entry point starts the service, a test can import this file

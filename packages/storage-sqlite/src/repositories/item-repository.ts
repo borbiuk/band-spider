@@ -1,4 +1,4 @@
-import { EntityManager, ILike, IsNull, LessThan } from 'typeorm';
+import { EntityManager, ILike, IsNull, LessThan, Not } from 'typeorm';
 import { chunk, isNullOrUndefined } from '@band-spider/core';
 import { InsertResult } from '../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';
@@ -28,6 +28,15 @@ export class ItemRepository {
 	/** How many items are left to process. The filter is the one of `getNotProcessed`. */
 	public async countNotProcessed(): Promise<number> {
 		return await this.manager.getRepository(ItemEntity).count({ where: this.notProcessedWhere() });
+	}
+
+	public async countAll(): Promise<number> {
+		return await this.manager.getRepository(ItemEntity).count();
+	}
+
+	/** How many items were processed. A failed item is not processed. */
+	public async countProcessed(): Promise<number> {
+		return await this.manager.getRepository(ItemEntity).count({ where: { lastProcessingDate: Not(IsNull()) } });
 	}
 
 	private notProcessedWhere() {

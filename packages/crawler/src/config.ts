@@ -1,7 +1,8 @@
+import { DEFAULT_IDLE_MS } from '@band-spider/core';
 import { z } from 'zod';
 
 export const MAX_WORKERS = 64;
-export const DEFAULT_IDLE_MS = 30_000;
+export { DEFAULT_IDLE_MS };
 
 /** The settings of one crawler process. */
 export const crawlerConfigSchema = z.object({
