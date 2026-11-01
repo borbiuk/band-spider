@@ -8,7 +8,6 @@ import { BandDatabase } from '../data/db';
 import type { ItemRepository } from '../data/repositories/item-repository';
 import { UrlType } from '../models/url-type';
 import { processAccount } from './account/account-handler';
-import { BrowserPageSource, BrowserPool } from './browser/browser-page-source';
 import { processItem } from './item/item-handler';
 import { FetchPageReader, PageReader, PageSource } from './page-reader';
 import { ProcessingQueue, QueueEvent } from './processing-queue';
@@ -50,11 +49,8 @@ export class BandSpider {
 
 	public async run(
 		{
-			concurrencyBrowsers,
-			headless,
+			concurrency,
 			type,
-			docker,
-			browser,
 			reverse,
 		}: BandSpiderOptions,
 		/** When aborted, every worker stops after its current URL. */
@@ -76,13 +72,11 @@ export class BandSpider {
 		);
 		logger.debug('Queue ready!');
 
-		const createSource = browser
-			? this.createBrowserSourceFactory(headless, docker)
-			: this.createFetchSourceFactory();
+		const createSource = this.createFetchSourceFactory();
 
 		// create jobs
-		logger.debug(`${concurrencyBrowsers} Jobs (${browser ? 'Browsers' : 'HTTP'}) init starting...`);
-		const promises: Promise<void>[] = Array.from({ length: concurrencyBrowsers })
+		logger.debug(`${concurrency} Jobs (HTTP) init starting...`);
+		const promises: Promise<void>[] = Array.from({ length: concurrency })
 			.map(async (_, id: number) => {
 				return this.startPageProcessing(
 					await createSource(id),
@@ -110,17 +104,6 @@ export class BandSpider {
 			afterUrl: async () => { },
 			close: async () => { },
 		});
-	}
-
-	/** Puppeteer, the fallback used with `--browser`. */
-	private createBrowserSourceFactory(headless: boolean, docker: boolean): (id: number) => Promise<PageSource> {
-		const pool = new BrowserPool({
-			headless,
-			docker,
-			onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(url, retryAfter),
-		});
-
-		return (id: number) => BrowserPageSource.create(pool, id);
 	}
 
 	private async startPageProcessing(

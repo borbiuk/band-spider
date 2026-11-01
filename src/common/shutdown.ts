@@ -14,8 +14,7 @@ const SIGNALS = Object.keys(SIGNAL_EXIT_CODES) as StopSignal[];
 /**
  * Asks the run to stop on the first SIGINT or SIGTERM: the returned signal is aborted, so the
  * workers finish the current URL and stop, and the process exits with the matching exit code.
- * A second signal exits at once, also during a long pause after HTTP 429. It exits with
- * `process.exit()`, so Puppeteer still kills the browsers it launched.
+ * A second signal exits at once, also during a long pause after HTTP 429.
  */
 export function stopOnSignals(): AbortSignal {
 	const controller = new AbortController();

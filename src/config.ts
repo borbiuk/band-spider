@@ -3,19 +3,15 @@ import type { DatabaseConfig } from './data/db';
 import { UrlType } from './models/url-type';
 
 export interface BandSpiderOptions {
-	concurrencyBrowsers: number,
-	headless: boolean,
+	concurrency: number,
 	type: UrlType,
-	docker: boolean,
 	superTag: boolean,
-	/** Read pages with Puppeteer instead of plain HTTP requests. */
-	browser: boolean,
 	/** Take the newest unprocessed URLs first (highest id), instead of the oldest. */
 	reverse: boolean,
 }
 
-// Count of parallel URL workers (Browsers).
-export const PARALLEL_BROWSERS_COUNT: number = 1;
+// Count of parallel URL workers.
+export const PARALLEL_WORKERS_COUNT: number = 1;
 
 /**
  * Reads the options from the command line arguments.
@@ -23,12 +19,9 @@ export const PARALLEL_BROWSERS_COUNT: number = 1;
  * @param args - The arguments after the script path (`process.argv.slice(2)`).
  */
 export const parseOptions = (args: string[]): BandSpiderOptions => ({
-	concurrencyBrowsers: PARALLEL_BROWSERS_COUNT,
-	headless: args.includes('--headless'),
+	concurrency: PARALLEL_WORKERS_COUNT,
 	type: args.includes('--account') ? UrlType.Account : UrlType.Item,
-	docker: args.includes('--docker'),
 	superTag: args.includes('--superTag'),
-	browser: args.includes('--browser'),
 	reverse: args.includes('--reverse'),
 });
 

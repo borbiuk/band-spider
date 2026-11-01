@@ -39,7 +39,7 @@ const main = async (): Promise<void> => {
 		if (options.superTag) {
 			return await new SuperTagUpdate(database).run(options);
 		} else {
-			// Ctrl-C stops the workers after the current URL, so the DB and the browsers are closed
+			// Ctrl-C stops the workers after the current URL, so the DB is closed
 			return await new BandSpider(database).run(options, stopOnSignals());
 		}
 	} finally {

@@ -3,26 +3,23 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
-import { BandSpiderOptions, DEFAULT_DB_FILE, PARALLEL_BROWSERS_COUNT, parseOptions, readDatabaseConfig } from '../config';
+import { BandSpiderOptions, DEFAULT_DB_FILE, PARALLEL_WORKERS_COUNT, parseOptions, readDatabaseConfig } from '../config';
 import { UrlType } from '../models/url-type';
 
 // tests run from `dist/tests`
 const scripts: Record<string, string> = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8')).scripts;
 
 const options = (overrides: Partial<BandSpiderOptions> = {}): BandSpiderOptions => ({
-	concurrencyBrowsers: 1,
-	headless: false,
+	concurrency: 1,
 	type: UrlType.Item,
-	docker: false,
 	superTag: false,
-	browser: false,
 	reverse: false,
 	...overrides,
 });
 
 describe('parseOptions', () => {
 	it('keeps one worker', () => {
-		assert.equal(PARALLEL_BROWSERS_COUNT, 1);
+		assert.equal(PARALLEL_WORKERS_COUNT, 1);
 	});
 
 	it('gives the defaults without flags', () => {
@@ -30,29 +27,20 @@ describe('parseOptions', () => {
 	});
 
 	it('reads each flag', () => {
-		assert.deepEqual(parseOptions(['--headless']), options({ headless: true }));
 		assert.deepEqual(parseOptions(['--account']), options({ type: UrlType.Account }));
-		assert.deepEqual(parseOptions(['--docker']), options({ docker: true }));
 		assert.deepEqual(parseOptions(['--superTag']), options({ superTag: true }));
-		assert.deepEqual(parseOptions(['--browser']), options({ browser: true }));
 		assert.deepEqual(parseOptions(['--reverse']), options({ reverse: true }));
 	});
 
 	it('matches whole arguments only', () => {
-		assert.deepEqual(parseOptions(['--headless=false', '--Account', 'account', '--supertag']), options());
+		assert.deepEqual(parseOptions(['--account=true', '--Account', 'account', '--supertag']), options());
 	});
 
 	const expected: Record<string, BandSpiderOptions> = {
-		'db:accounts': options({ headless: true, type: UrlType.Account }),
-		'db:items': options({ headless: true }),
-		'db:accounts:reverse': options({ headless: true, type: UrlType.Account, reverse: true }),
-		'db:items:reverse': options({ headless: true, reverse: true }),
-		'db:accounts:browser': options({ headless: true, type: UrlType.Account, browser: true }),
-		'db:items:browser': options({ headless: true, browser: true }),
-		'debug:db:accounts': options({ type: UrlType.Account, browser: true }),
-		'debug:db:items': options({ browser: true }),
-		'docker:db:accounts': options({ headless: true, type: UrlType.Account, docker: true, browser: true }),
-		'docker:db:items': options({ headless: true, docker: true, browser: true }),
+		'db:accounts': options({ type: UrlType.Account }),
+		'db:items': options(),
+		'db:accounts:reverse': options({ type: UrlType.Account, reverse: true }),
+		'db:items:reverse': options({ reverse: true }),
 		'superTag': options({ superTag: true }),
 	};
 

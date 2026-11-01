@@ -7,20 +7,14 @@ import { describe, it } from 'node:test';
 const packageJson = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf8'));
 const scripts: Record<string, string> = packageJson.scripts;
 
-const KNOWN_FLAGS = ['--headless', '--account', '--docker', '--superTag', '--browser', '--reverse'];
+const KNOWN_FLAGS = ['--account', '--superTag', '--reverse'];
 
 /** Flags passed to the app by every script that runs it. */
 const APP_RUNS: Record<string, string[]> = {
-	'db:accounts': ['--headless', '--account'],
-	'db:items': ['--headless'],
-	'db:accounts:reverse': ['--headless', '--account', '--reverse'],
-	'db:items:reverse': ['--headless', '--reverse'],
-	'db:accounts:browser': ['--headless', '--account', '--browser'],
-	'db:items:browser': ['--headless', '--browser'],
-	'debug:db:accounts': ['--account', '--browser'],
-	'debug:db:items': ['--browser'],
-	'docker:db:accounts': ['--headless', '--account', '--docker', '--browser'],
-	'docker:db:items': ['--headless', '--docker', '--browser'],
+	'db:accounts': ['--account'],
+	'db:items': [],
+	'db:accounts:reverse': ['--account', '--reverse'],
+	'db:items:reverse': ['--reverse'],
 	'superTag': ['--superTag'],
 };
 
@@ -29,7 +23,6 @@ describe('npm scripts', () => {
 		assert.deepEqual(Object.keys(scripts).sort(), [
 			...Object.keys(APP_RUNS),
 			'build',
-			'install-browser',
 			'test',
 		].sort());
 	});
