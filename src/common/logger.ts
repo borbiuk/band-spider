@@ -1,5 +1,5 @@
 import clc from 'cli-color';
-import pino, { Logger } from 'pino';
+import pino, { DestinationStream, Logger } from 'pino';
 import pretty from 'pino-pretty';
 
 const level = 'debug';
@@ -28,7 +28,16 @@ export const logger: Logger = pino({ level }, streams);
  */
 export function logToFile(path: string = LOG_FILE): void {
 	// sync writes: nothing is lost when the process exits
-	streams.add({ level, stream: pino.destination({ dest: path, append: true, mkdir: true, sync: true }) });
+	const file = pino.destination({ dest: path, append: true, mkdir: true, sync: true });
+	streams.add({ level, stream: withoutColors(file) });
+}
+
+// A terminal color code as it is written in a JSON string, e.g. `\u001b[38;5;75m`.
+const JSON_COLOR_CODE = /\\u001b\[[0-9;]*m/g;
+
+/** Removes the terminal color codes from the log lines: they are only useful in the console. */
+function withoutColors(stream: DestinationStream): DestinationStream {
+	return { write: (line: string) => stream.write(line.replace(JSON_COLOR_CODE, '')) };
 }
 
 export const accountColor = clc.xterm(215);

@@ -3,7 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
-import { LOG_FILE, logger, logToFile } from '../common/logger';
+import clc from 'cli-color';
+import { LOG_FILE, logger, logToFile, urlColor } from '../common/logger';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-log-'));
 const file = path.join(dir, 'nested', 'test.log');
@@ -46,5 +47,12 @@ describe('logger', () => {
 
 		assert.equal(readLines().at(-1).msg, 'one more line');
 		assert.equal(readLines().length, 5);
+	});
+
+	it('writes no terminal color codes to the file', () => {
+		logger.info(`\t📀 ${urlColor('https://band.bandcamp.com/track/a')} ${clc.xterm(215)('1/2')}`);
+
+		assert.equal(readLines().at(-1).msg, '\t📀 https://band.bandcamp.com/track/a 1/2');
+		assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /u001b|38;5;/);
 	});
 });
