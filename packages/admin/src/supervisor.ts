@@ -1,10 +1,11 @@
 import { logger, logMessage, LogSource } from '@band-spider/core';
 import { z } from 'zod';
-import { AdminConfig, CrawlerSetting, proxyUrlOf } from './config';
+import { AdminConfig, CrawlerSetting, proxyUrlOf, proxyUrlOfEntry } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError, conflict, notFound } from './errors';
 import { ChildStatus, CrawlerCounts, ManagedChild } from './managed-child';
 import { ProcessLauncher } from './process-launcher';
+import { pickProxy, ProxyListSource, WebshareProxySource } from './webshare';
 
 export interface SupervisorEntries {
 	/** The script of the DB service. */
@@ -17,6 +18,8 @@ export interface SupervisorOptions {
 	launcher: ProcessLauncher;
 	configStore: ConfigStore;
 	entries: SupervisorEntries;
+	/** Makes the proxy list source for an API key. The Webshare API is the default. */
+	proxyListFactory?: (apiKey: string) => ProxyListSource;
 	/** How long a start waits for the DB service ready message. */
 	readyTimeoutMs?: number;
 	/** How long a child gets to stop before it is killed. */
@@ -171,7 +174,9 @@ export class Supervisor {
 		// marked before the wait, so a second start is refused
 		child.begin();
 
+		let proxyUrl: string | undefined;
 		try {
+			proxyUrl = await this.resolveProxy(setting, config);
 			await this.ensureDbReady();
 		} catch (error) {
 			const message = `DB service is not ready: ${(error as Error).message}`;
@@ -190,7 +195,7 @@ export class Supervisor {
 		}, (self, message) => this.onCrawlerMessage(self, message));
 		child.send({
 			type: 'config',
-			config: this.crawlerConfig(setting, this.db.url, config.dbService.token),
+			config: this.crawlerConfig(setting, proxyUrl, this.db.url, config.dbService.token),
 		});
 	}
 
@@ -253,6 +258,20 @@ export class Supervisor {
 		}
 	}
 
+	/** The proxy URL of a crawler. A Webshare list proxy is looked up now, so the list is fresh at each start. */
+	private async resolveProxy(setting: CrawlerSetting, config: AdminConfig): Promise<string | undefined> {
+		const { proxy } = setting;
+		if (proxy.kind !== 'webshare-list') {
+			return proxyUrlOf(proxy);
+		}
+		if (!config.webshare) {
+			throw new AdminError('No Webshare API key in the config', 400);
+		}
+		const factory = this.options.proxyListFactory ?? (apiKey => new WebshareProxySource({ apiKey }));
+		const entries = await factory(config.webshare.apiKey).list();
+		return proxyUrlOfEntry(pickProxy(entries, proxy));
+	}
+
 	private watch(child: ManagedChild, source: string): void {
 		child.onChange = () => this.emit({ kind: 'status' });
 		child.onOutput = text => this.emit({ kind: 'log', source, text });
@@ -282,7 +301,7 @@ export class Supervisor {
 		}
 	}
 
-	private crawlerConfig(setting: CrawlerSetting, dbUrl: string | undefined, token: string | undefined): Record<string, unknown> {
+	private crawlerConfig(setting: CrawlerSetting, proxyUrl: string | undefined, dbUrl: string | undefined, token: string | undefined): Record<string, unknown> {
 		return {
 			dbUrl,
 			token,
@@ -291,7 +310,7 @@ export class Supervisor {
 			workers: setting.workers,
 			minDelayMs: setting.minDelayMs,
 			maxDelayMs: setting.maxDelayMs,
-			proxy: proxyUrlOf(setting.proxy),
+			proxy: proxyUrl,
 		};
 	}
 }

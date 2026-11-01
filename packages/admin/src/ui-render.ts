@@ -34,6 +34,8 @@ export const proxyText = (setting: CrawlerSetting): string => {
 			}
 		case 'webshare':
 			return `webshare ${proxy.entry.host}:${proxy.entry.port}`;
+		case 'webshare-list':
+			return proxy.id !== undefined ? `webshare list, id ${proxy.id}` : `webshare list, #${proxy.index}`;
 	}
 };
 
@@ -116,11 +118,13 @@ export interface FormValues {
 	wsPort: string;
 	wsUser: string;
 	wsPassword: string;
+	listIndex: string;
+	listId: string;
 }
 
 export const emptyForm = (): FormValues => ({
 	original: '', name: '', type: 'item', reverse: false, workers: '1', minDelayMs: '', maxDelayMs: '',
-	proxyKind: 'none', proxyUrl: '', wsHost: '', wsPort: '', wsUser: '', wsPassword: '',
+	proxyKind: 'none', proxyUrl: '', wsHost: '', wsPort: '', wsUser: '', wsPassword: '', listIndex: '', listId: '',
 });
 
 /** Fills the form from a setting. The caller passes a config with masked secrets. */
@@ -143,6 +147,9 @@ export const formFromSetting = (setting: CrawlerSetting): FormValues => {
 		form.wsPort = String(setting.proxy.entry.port);
 		form.wsUser = setting.proxy.entry.username;
 		form.wsPassword = setting.proxy.entry.password;
+	} else if (setting.proxy.kind === 'webshare-list') {
+		form.listIndex = setting.proxy.index === undefined ? '' : String(setting.proxy.index);
+		form.listId = setting.proxy.id ?? '';
 	}
 	return form;
 };
@@ -168,12 +175,14 @@ export const renderCrawlerForm = (form: FormValues, error?: string): string => `
 	</div>
 	<h3>Proxy</h3>
 	<div class="grid">
-		${field('Proxy', select('proxyKind', form.proxyKind, ['none', 'url', 'webshare']))}
+		${field('Proxy', select('proxyKind', form.proxyKind, ['none', 'url', 'webshare', 'webshare-list']))}
 		${field('Proxy URL (for "url")', input('proxyUrl', form.proxyUrl, 'placeholder="http://user:pass@host:port"'))}
 		${field('Webshare host', input('wsHost', form.wsHost))}
 		${field('Webshare port', input('wsPort', form.wsPort, 'type="number" min="1" max="65535"'))}
 		${field('Webshare user name', input('wsUser', form.wsUser))}
 		${field('Webshare password', input('wsPassword', form.wsPassword, 'type="password" autocomplete="off"'))}
+		${field('Webshare list: proxy number (from 0)', input('listIndex', form.listIndex, 'type="number" min="0"'))}
+		${field('Webshare list: proxy id (instead of the number)', input('listId', form.listId))}
 	</div>
 	<p class="meta">Changes are used the next time the crawler starts.</p>
 	<div class="buttons">

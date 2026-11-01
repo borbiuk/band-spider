@@ -14,6 +14,7 @@ const maskUrl = (value: string): string => {
 
 /** A copy of the config that is safe to send to the browser. */
 export const maskConfig = (config: AdminConfig): AdminConfig => ({
+	...(config.webshare ? { webshare: { ...config.webshare, apiKey: SECRET_MASK } } : {}),
 	dbService: {
 		...config.dbService,
 		...(config.dbService.token === undefined ? {} : { token: SECRET_MASK }),
@@ -22,6 +23,7 @@ export const maskConfig = (config: AdminConfig): AdminConfig => ({
 		const { proxy } = crawler;
 		switch (proxy.kind) {
 			case 'none':
+			case 'webshare-list':
 				return crawler;
 			case 'url':
 				return { ...crawler, proxy: { ...proxy, url: maskUrl(proxy.url) } };
@@ -46,7 +48,15 @@ export const restoreSecrets = (incoming: AdminConfig, saved: AdminConfig): Admin
 		}
 		token = saved.dbService.token;
 	}
+	let webshare = incoming.webshare;
+	if (webshare?.apiKey === SECRET_MASK) {
+		if (!saved.webshare) {
+			throw missingSecret('The Webshare API key');
+		}
+		webshare = saved.webshare;
+	}
 	return {
+		...(webshare ? { webshare } : {}),
 		dbService: { ...incoming.dbService, ...(token === undefined ? {} : { token }) },
 		crawlers: incoming.crawlers.map(crawler => {
 			const { proxy } = crawler;
