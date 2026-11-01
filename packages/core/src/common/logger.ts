@@ -55,7 +55,6 @@ export const tagColor = clc.xterm(151);
 export const urlColor = clc.xterm(75);
 
 export const errorColor = clc.xterm(203);
-export const warningColor = clc.xterm(214);
 export const speedColor = clc.xterm(226);
 export const successColor = clc.xterm(112);
 
