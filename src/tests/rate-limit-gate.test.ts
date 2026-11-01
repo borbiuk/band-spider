@@ -27,8 +27,8 @@ describe('rate limit constants', () => {
 		assert.equal(BASE_PAUSE_MS, 30_000);
 		assert.equal(MAX_PAUSE_MS, 900_000);
 		assert.equal(JITTER_RATIO, 0.1);
-		assert.equal(MIN_REQUEST_DELAY_MS, 500);
-		assert.equal(MAX_REQUEST_DELAY_MS, 1_500);
+		assert.equal(MIN_REQUEST_DELAY_MS, 400);
+		assert.equal(MAX_REQUEST_DELAY_MS, 450);
 		assert.equal(REQUEST_TIMEOUT_MS, 30_000);
 	});
 });

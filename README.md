@@ -78,7 +78,7 @@ npx pino-pretty < logfile.log
 
 ## 🌐 How pages are read
 
-Pages are read with plain HTTP requests, with a random pause of 0.5-1.5 s between requests and a shared pause after
+Pages are read with plain HTTP requests, with a random pause of 400-450 ms between requests and a shared pause after
 HTTP 429. No browser is needed.
 
 ## 🧪 Tests
