@@ -1,4 +1,4 @@
-import { AdminConfig } from './config';
+import { AdminConfig, poolKeyOf } from './config';
 import { AdminError } from './errors';
 
 /** What the API shows instead of a secret. It has no part of the real value. */
@@ -15,6 +15,7 @@ const maskUrl = (value: string): string => {
 /** A copy of the config that is safe to send to the browser. */
 export const maskConfig = (config: AdminConfig): AdminConfig => ({
 	...(config.webshare ? { webshare: { ...config.webshare, apiKey: SECRET_MASK } } : {}),
+	proxyPool: config.proxyPool.map(entry => ({ ...entry, password: SECRET_MASK })),
 	dbService: {
 		...config.dbService,
 		...(config.dbService.token === undefined ? {} : { token: SECRET_MASK }),
@@ -24,6 +25,7 @@ export const maskConfig = (config: AdminConfig): AdminConfig => ({
 		switch (proxy.kind) {
 			case 'none':
 			case 'webshare-list':
+			case 'pool':
 				return crawler;
 			case 'url':
 				return { ...crawler, proxy: { ...proxy, url: maskUrl(proxy.url) } };
@@ -55,8 +57,19 @@ export const restoreSecrets = (incoming: AdminConfig, saved: AdminConfig): Admin
 		}
 		webshare = saved.webshare;
 	}
+	const proxyPool = incoming.proxyPool.map(entry => {
+		if (entry.password !== SECRET_MASK) {
+			return entry;
+		}
+		const old = saved.proxyPool.find(item => poolKeyOf(item) === poolKeyOf(entry));
+		if (!old) {
+			throw missingSecret(`The password of the pool proxy ${poolKeyOf(entry)}`);
+		}
+		return { ...entry, password: old.password };
+	});
 	return {
 		...(webshare ? { webshare } : {}),
+		proxyPool,
 		dbService: { ...incoming.dbService, ...(token === undefined ? {} : { token }) },
 		crawlers: incoming.crawlers.map(crawler => {
 			const { proxy } = crawler;

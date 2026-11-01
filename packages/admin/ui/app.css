@@ -105,6 +105,16 @@ input, select {
 	color: var(--text);
 }
 input[readonly] { opacity: 0.6; }
+textarea {
+	font: 12px/1.4 ui-monospace, monospace;
+	padding: 4px 6px;
+	border: 1px solid var(--line);
+	border-radius: 4px;
+	background: var(--bg);
+	color: var(--text);
+	width: 100%;
+}
+.panel ul { margin: 0 0 8px; padding-left: 20px; }
 
 pre {
 	margin: 0;
