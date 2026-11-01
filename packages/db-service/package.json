@@ -1,0 +1,17 @@
+{
+	"name": "@band-spider/db-service",
+	"version": "1.0.0",
+	"private": true,
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"type": "commonjs",
+	"dependencies": {
+		"@band-spider/contracts": "1.0.0",
+		"@band-spider/core": "1.0.0",
+		"@band-spider/storage-sqlite": "1.0.0",
+		"fastify": "5.12.7",
+		"fastify-type-provider-zod": "7.0.0",
+		"reflect-metadata": "0.2.2",
+		"zod": "4.6.7"
+	}
+}
