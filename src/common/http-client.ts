@@ -3,8 +3,8 @@ import { HttpStatusError, PageNotFoundError } from './errors';
 import { RateLimitedError, RateLimitGate } from './rate-limit-gate';
 
 /** The pause between two requests is a random time between these two values. */
-export const MIN_REQUEST_DELAY_MS = 500;
-export const MAX_REQUEST_DELAY_MS = 1_500;
+export const MIN_REQUEST_DELAY_MS = 400;
+export const MAX_REQUEST_DELAY_MS = 450;
 
 /** A request that takes longer is cancelled and counted as a normal failure. */
 export const REQUEST_TIMEOUT_MS = 30_000;

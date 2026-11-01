@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, describe, it } from 'node:test';
 import clc from 'cli-color';
-import { LOG_FILE, logger, logToFile, urlColor } from '../common/logger';
+import { prettyFactory } from 'pino-pretty';
+import { LOG_FILE, logger, logToFile, PRETTY_OPTIONS, urlColor } from '../common/logger';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-log-'));
 const file = path.join(dir, 'nested', 'test.log');
@@ -54,5 +55,11 @@ describe('logger', () => {
 
 		assert.equal(readLines().at(-1).msg, '\t📀 https://band.bandcamp.com/track/a 1/2');
 		assert.doesNotMatch(fs.readFileSync(file, 'utf8'), /u001b|38;5;/);
+	});
+
+	it('keeps the color codes of a message in the console', () => {
+		const line = prettyFactory(PRETTY_OPTIONS)({ level: 30, time: 0, msg: `url ${urlColor('https://band.bandcamp.com')}` });
+
+		assert.ok(line.includes('\u001b[38;5;75mhttps://band.bandcamp.com'));
 	});
 });

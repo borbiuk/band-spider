@@ -1,19 +1,25 @@
 import clc from 'cli-color';
 import pino, { DestinationStream, Logger } from 'pino';
-import pretty from 'pino-pretty';
+import pretty, { PrettyOptions } from 'pino-pretty';
 
 const level = 'debug';
 
 /** The log file of the app, relative to the working directory. */
 export const LOG_FILE = 'logfile.log';
 
-// Pretty print configuration for console output
-const prettyStream = pretty({
+/** Pretty print configuration for console output. */
+export const PRETTY_OPTIONS: PrettyOptions = {
 	colorize: true,
 	colorizeObjects: true,
 	singleLine: true,
 	ignore: 'pid,hostname',
-});
+	// pino-pretty removes control characters from a message, so the escape character of the color
+	// codes is lost and the rest of the code (e.g. `[38;5;75m`) is printed as text.
+	// A message format function is the one path that keeps the message as it is.
+	messageFormat: (log, messageKey) => String(log[messageKey] ?? ''),
+};
+
+const prettyStream = pretty(PRETTY_OPTIONS);
 
 // Every log line goes to all of these streams: the console now, the file after `logToFile`.
 const streams = pino.multistream([{ level, stream: prettyStream }]);

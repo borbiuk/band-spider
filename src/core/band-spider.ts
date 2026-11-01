@@ -254,7 +254,7 @@ export class BandSpider {
 		const pause = this.rateLimitGate.trip(retryAfter);
 		if (pause.started) {
 			logger.warn(
-				{ url, status: 429, retryAfter: retryAfter ?? null, pauseSeconds: Math.round(pause.pauseMs / 1000), level: pause.level },
+				{ url, status: 429, retryAfter: retryAfter ?? null, pauseSeconds: Math.round(pause.pauseMs / 1000), backoffLevel: pause.level },
 				logMessage(LogSource.Browser, 'HTTP 429, all workers paused')
 			);
 		}
