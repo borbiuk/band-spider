@@ -12,7 +12,7 @@ import {
 	PageReader,
 	UrlType,
 } from '@band-spider/core';
-import { CrawlerConfig } from './config';
+import { CrawlerConfig, DEFAULT_IDLE_MS } from './config';
 import { CountingCrawlStore, CrawlerCounts } from './counting-crawl-store';
 import { CrawlTransport, HttpCrawlTransport } from './crawl-transport';
 import { collectMetrics, CrawlerMetrics } from './metrics';
@@ -47,6 +47,7 @@ const DEFAULT_METRICS_INTERVAL_MS = 60_000;
 export const toSpiderOptions = (config: CrawlerConfig): BandSpiderOptions => {
 	const minDelayMs = config.minDelayMs ?? Math.min(MIN_REQUEST_DELAY_MS, config.maxDelayMs ?? MIN_REQUEST_DELAY_MS);
 	const maxDelayMs = config.maxDelayMs ?? Math.max(MAX_REQUEST_DELAY_MS, minDelayMs);
+	const idleMs = config.idleMs ?? DEFAULT_IDLE_MS;
 	return {
 		concurrency: config.workers,
 		type: config.type as UrlType,
@@ -54,6 +55,7 @@ export const toSpiderOptions = (config: CrawlerConfig): BandSpiderOptions => {
 		reverse: config.reverse,
 		minDelayMs,
 		maxDelayMs,
+		idleWaitMs: idleMs === 0 ? undefined : idleMs,
 		...(config.proxy !== undefined ? { proxy: config.proxy } : {}),
 	};
 };
@@ -61,7 +63,7 @@ export const toSpiderOptions = (config: CrawlerConfig): BandSpiderOptions => {
 /**
  * The composition root of a crawler: wires the remote store, the counters and the spider.
  * It resolves with the counts when the workers have stopped, because the signal was aborted or
- * because there are no URLs left. The proxy is only given to the spider, the transport to the DB
+ * because there are no URLs left (only with `idleMs: 0`). The proxy is only given to the spider, the transport to the DB
  * service never uses it.
  */
 export const runCrawler = async (config: CrawlerConfig, deps: CrawlerDeps = {}): Promise<CrawlerCounts> => {
@@ -77,13 +79,14 @@ export const runCrawler = async (config: CrawlerConfig, deps: CrawlerDeps = {}):
 		}
 	});
 
-	// the HTTP client of each worker counts its requests and 429 answers
-	const clients: HttpClient[] = [];
+	// the workers share one HTTP client, which counts the requests and 429 answers
+	const clients = new Set<HttpClient>();
 	const createReader = (http: HttpClient): PageReader => {
-		clients.push(http);
+		clients.add(http);
 		return (deps.createReader ?? (client => new FetchPageReader(client)))(http);
 	};
-	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics(clients, store.counts) });
+	const spider = new BandSpider(store, createReader);
+	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics([...clients], store.counts, spider.isIdle) });
 	const metricsTimer = setInterval(sendMetrics, metricsIntervalMs);
 	// the timer must not keep the process alive
 	metricsTimer.unref();
@@ -92,7 +95,7 @@ export const runCrawler = async (config: CrawlerConfig, deps: CrawlerDeps = {}):
 	onEvent({ type: 'started' });
 
 	try {
-		await new BandSpider(store, createReader).run(toSpiderOptions(config), signal);
+		await spider.run(toSpiderOptions(config), signal);
 		sendMetrics();
 		onEvent({ type: 'stopped', counts: { ...store.counts } });
 		return store.counts;

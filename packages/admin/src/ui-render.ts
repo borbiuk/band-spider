@@ -37,6 +37,7 @@ export const statsText = (stats?: CrawlerStats): string => {
 	return `${stats.requestsPerMin} requests/min, ${stats.urlsPerMin} URLs/min, ${stats.http429PerHour} HTTP 429/hour`
 		+ `<br><span class="meta">total: ${number(stats.totals.requests)} requests, ${number(stats.totals.processed)} saved, `
 		+ `${number(stats.totals.failed)} failed, ${number(stats.totals.http429)} HTTP 429</span>`
+		+ (stats.idle ? '<br><span class="meta">waiting for URLs</span>' : '')
 		+ (stats.pauseMs > 0 ? `<br><span class="warn">paused after HTTP 429, ${esc(durationText(stats.pauseMs))} left</span>` : '');
 };
 
@@ -149,6 +150,7 @@ export interface FormValues {
 	workers: string;
 	minDelayMs: string;
 	maxDelayMs: string;
+	idleMs: string;
 	proxyKind: string;
 	proxyUrl: string;
 	wsHost: string;
@@ -160,7 +162,7 @@ export interface FormValues {
 }
 
 export const emptyForm = (): FormValues => ({
-	original: '', name: '', type: 'item', reverse: false, workers: '1', minDelayMs: '', maxDelayMs: '',
+	original: '', name: '', type: 'item', reverse: false, workers: '1', minDelayMs: '', maxDelayMs: '', idleMs: '',
 	proxyKind: 'none', proxyUrl: '', wsHost: '', wsPort: '', wsUser: '', wsPassword: '', listIndex: '', listId: '',
 });
 
@@ -175,6 +177,7 @@ export const formFromSetting = (setting: CrawlerSetting): FormValues => {
 		workers: String(setting.workers),
 		minDelayMs: setting.minDelayMs === undefined ? '' : String(setting.minDelayMs),
 		maxDelayMs: setting.maxDelayMs === undefined ? '' : String(setting.maxDelayMs),
+		idleMs: setting.idleMs === undefined ? '' : String(setting.idleMs),
 		proxyKind: setting.proxy.kind,
 	};
 	if (setting.proxy.kind === 'url') {
@@ -208,6 +211,7 @@ export const renderCrawlerForm = (form: FormValues, error?: string): string => `
 		${field('Workers (1-64)', input('workers', form.workers, 'type="number" min="1" max="64"'))}
 		${field('Min delay, ms (optional)', input('minDelayMs', form.minDelayMs, 'type="number" min="0"'))}
 		${field('Max delay, ms (optional)', input('maxDelayMs', form.maxDelayMs, 'type="number" min="0"'))}
+		${field('Wait when no URLs, ms (optional, default 30000, 0 = exit)', input('idleMs', form.idleMs, 'type="number" min="0"'))}
 		<label class="check"><input type="checkbox" name="reverse"${form.reverse ? ' checked' : ''}> Newest first</label>
 	</div>
 	<h3>Proxy</h3>

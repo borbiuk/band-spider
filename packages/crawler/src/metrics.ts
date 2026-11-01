@@ -10,22 +10,25 @@ export interface CrawlerMetrics {
 	processed: number;
 	/** URLs given back as failed or not found. */
 	failed: number;
-	/** The longest pause after a 429 that is still active, over all workers, in ms. */
+	/** The longest pause after a 429 that is still active, over all clients, in ms. */
 	pauseMs: number;
+	/** True while the crawler waits for new URLs. */
+	idle: boolean;
 }
 
-/** What the crawler reads from the HTTP client of a worker. HttpClient has these. */
+/** What the crawler reads from an HTTP client. HttpClient has these. */
 export interface RequestMeter {
 	readonly requestCount: number;
 	readonly rateLimitedCount: number;
 	readonly pauseLeftMs: number;
 }
 
-/** Puts the numbers of all workers and the URL counts together. */
-export const collectMetrics = (meters: readonly RequestMeter[], counts: CrawlerCounts): CrawlerMetrics => ({
+/** Puts the numbers of all clients and the URL counts together. */
+export const collectMetrics = (meters: readonly RequestMeter[], counts: CrawlerCounts, idle = false): CrawlerMetrics => ({
 	requests: meters.reduce((sum, meter) => sum + meter.requestCount, 0),
 	http429: meters.reduce((sum, meter) => sum + meter.rateLimitedCount, 0),
 	processed: counts.saved,
 	failed: counts.failed + counts.notFound,
 	pauseMs: meters.reduce((longest, meter) => Math.max(longest, meter.pauseLeftMs), 0),
+	idle,
 });

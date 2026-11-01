@@ -75,6 +75,7 @@ const metricsSchema = z.object({
 	processed: z.number(),
 	failed: z.number(),
 	pauseMs: z.number(),
+	idle: z.boolean().optional(),
 });
 
 /** What a DB service sends over IPC. */
@@ -400,6 +401,7 @@ export class Supervisor {
 			workers: setting.workers,
 			minDelayMs: setting.minDelayMs,
 			maxDelayMs: setting.maxDelayMs,
+			idleMs: setting.idleMs,
 			proxy: proxyUrl,
 		};
 	}

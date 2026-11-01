@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from 'node:timers/promises';
 import { errorMessage, PageNotFoundError } from './common/errors';
 import { HttpClient } from './common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from './common/logger';
@@ -36,11 +37,20 @@ export class BandSpider {
 	// take the newest unprocessed URLs from the DB first (`--reverse`)
 	private newestFirst = false;
 
+	// the workers that wait for new URLs, and how many workers there are
+	private readonly idleWorkers = new Set<number>();
+	private workerCount = 0;
+
 	constructor(
 		private readonly store: CrawlStore,
 		/** Builds the reader of a worker from its HTTP client. A test passes a fake one. */
 		private readonly createReader: (http: HttpClient) => PageReader = http => new FetchPageReader(http),
 	) {
+	}
+
+	/** True while every worker waits for new URLs (only with `idleWaitMs`). */
+	public get isIdle(): boolean {
+		return this.workerCount > 0 && this.idleWorkers.size === this.workerCount;
 	}
 
 	public async run(
@@ -51,25 +61,29 @@ export class BandSpider {
 			proxy,
 			minDelayMs,
 			maxDelayMs,
+			idleWaitMs,
 		}: BandSpiderOptions,
 		/** When aborted, every worker stops after its current URL. */
 		stop: AbortSignal = new AbortController().signal,
 	): Promise<void> {
 
 		this.newestFirst = reverse;
+		this.workerCount = concurrency;
+		this.idleWorkers.clear();
 
 		const proxySource: ProxySource = proxy === undefined ? new NoProxy() : new StaticProxy(proxy);
-		const createSource = this.createFetchSourceFactory(proxySource, { minDelayMs, maxDelayMs });
+		const source = this.createFetchSource(proxySource, { minDelayMs, maxDelayMs });
 
 		// create jobs
 		logger.debug(`${concurrency} Jobs (HTTP) init starting...`);
 		const promises: Promise<void>[] = Array.from({ length: concurrency })
 			.map(async (_, id: number) => {
 				return this.startPageProcessing(
-					await createSource(id),
+					this.createWorkerSource(source),
 					type,
 					id,
 					stop,
+					idleWaitMs,
 				);
 			});
 		logger.debug('Jobs started!');
@@ -82,25 +96,30 @@ export class BandSpider {
 		}
 	}
 
-	/** Plain HTTP: every worker has its own client and its own 429 pause, as if it ran from its own IP. */
-	private createFetchSourceFactory(
+	/**
+	 * Plain HTTP: all workers share one client and one 429 pause, because they share one proxy, so
+	 * one IP. The client keeps the pause between requests for all of them.
+	 */
+	private createFetchSource(
 		proxySource: ProxySource,
 		delays: { minDelayMs?: number, maxDelayMs?: number },
-	): (id: number) => Promise<PageSource> {
-		return async () => {
-			const rateLimitGate = new RateLimitGate();
-			const http = new HttpClient(rateLimitGate, {
-				proxySource,
-				...delays,
-				onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(rateLimitGate, url, retryAfter),
-			});
+	): { http: HttpClient, rateLimitGate: RateLimitGate } {
+		const rateLimitGate = new RateLimitGate();
+		const http = new HttpClient(rateLimitGate, {
+			proxySource,
+			...delays,
+			onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(rateLimitGate, url, retryAfter),
+		});
+		return { http, rateLimitGate };
+	}
 
-			return {
-				reader: this.createReader(http),
-				rateLimitGate,
-				afterUrl: async () => { },
-				close: async () => { },
-			};
+	/** A worker has its own reader, but uses the shared client and gate. */
+	private createWorkerSource(shared: { http: HttpClient, rateLimitGate: RateLimitGate }): PageSource {
+		return {
+			reader: this.createReader(shared.http),
+			rateLimitGate: shared.rateLimitGate,
+			afterUrl: async () => { },
+			close: async () => { },
 		};
 	}
 
@@ -109,13 +128,14 @@ export class BandSpider {
 		type: UrlType,
 		id: number,
 		stop: AbortSignal,
+		idleWaitMs?: number,
 	) {
 		if (isNullOrUndefined(this.statistic.start)) {
 			this.statistic.start = new Date().getTime()
 		}
 
 		try {
-			await this.processQueue(source, type, id, stop);
+			await this.processQueue(source, type, id, stop, idleWaitMs);
 		} finally {
 			await source.close();
 		}
@@ -129,6 +149,7 @@ export class BandSpider {
 		type: UrlType,
 		id: number,
 		stop: AbortSignal,
+		idleWaitMs?: number,
 	): Promise<void> {
 		while (!stop.aborted) {
 			// do not take a URL while the pause after HTTP 429 is active
@@ -140,8 +161,15 @@ export class BandSpider {
 			// claim: new URLs of a page are in the store, so they come back here
 			const [task] = await this.store.claim(type, 1, this.newestFirst);
 			if (isNullOrUndefined(task)) {
-				break;
+				// the CLI ends here, a long-running crawler waits for new URLs
+				if (idleWaitMs === undefined) {
+					break;
+				}
+				this.setIdle(id, true);
+				await sleep(idleWaitMs, undefined, { signal: stop }).catch(() => { });
+				continue;
 			}
+			this.setIdle(id, false);
 
 			// process
 			const result = await this.processUrl(task, source, id);
@@ -173,6 +201,19 @@ export class BandSpider {
 			}
 
 			await source.afterUrl();
+		}
+	}
+
+	/** Logs one line when all workers start to wait and one when they get URLs again. */
+	private setIdle(id: number, idle: boolean): void {
+		const wasIdle = this.isIdle;
+		if (idle) {
+			this.idleWorkers.add(id);
+		} else {
+			this.idleWorkers.delete(id);
+		}
+		if (this.isIdle !== wasIdle) {
+			logger.info(logMessage(LogSource.Main, this.isIdle ? 'No URLs to process, waiting for new ones' : 'Got URLs again, processing'));
 		}
 	}
 
@@ -225,13 +266,13 @@ export class BandSpider {
 		}
 	}
 
-	/** Starts the pause of one worker and logs one line when a new pause starts. */
+	/** Starts the pause of the shared gate and logs one line when a new pause starts. */
 	private pauseOnRateLimit(gate: RateLimitGate, url: string, retryAfter?: string): void {
 		const pause = gate.trip(retryAfter);
 		if (pause.started) {
 			logger.warn(
 				{ url, status: 429, retryAfter: retryAfter ?? null, pauseSeconds: Math.round(pause.pauseMs / 1000), backoffLevel: pause.level },
-				logMessage(LogSource.Browser, 'HTTP 429, worker paused')
+				logMessage(LogSource.Browser, 'HTTP 429, requests paused')
 			);
 		}
 	}

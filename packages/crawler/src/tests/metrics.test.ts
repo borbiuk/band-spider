@@ -12,7 +12,7 @@ import { BandDatabase } from '@band-spider/storage-sqlite';
 import { collectMetrics, CrawlerEvent, emptyCounts, runCrawler } from '../index';
 
 describe('collectMetrics', () => {
-	it('adds up the workers and takes the longest pause', () => {
+	it('adds up the clients and takes the longest pause', () => {
 		const metrics = collectMetrics(
 			[
 				{ requestCount: 5, rateLimitedCount: 1, pauseLeftMs: 0 },
@@ -22,11 +22,11 @@ describe('collectMetrics', () => {
 			{ ...emptyCounts(), claimed: 9, saved: 6, failed: 2, notFound: 1, rateLimited: 3 },
 		);
 
-		assert.deepEqual(metrics, { requests: 13, http429: 3, processed: 6, failed: 3, pauseMs: 12_000 });
+		assert.deepEqual(metrics, { requests: 13, http429: 3, processed: 6, failed: 3, pauseMs: 12_000, idle: false });
 	});
 
 	it('is all zero without workers', () => {
-		assert.deepEqual(collectMetrics([], emptyCounts()), { requests: 0, http429: 0, processed: 0, failed: 0, pauseMs: 0 });
+		assert.deepEqual(collectMetrics([], emptyCounts()), { requests: 0, http429: 0, processed: 0, failed: 0, pauseMs: 0, idle: false });
 	});
 });
 
@@ -64,7 +64,7 @@ describe('crawler metrics event', () => {
 
 			const events: CrawlerEvent[] = [];
 			await runCrawler({
-				dbUrl: service.url, type: 'item', reverse: false, workers: 2, minDelayMs: 0, maxDelayMs: 0,
+				dbUrl: service.url, type: 'item', reverse: false, workers: 2, minDelayMs: 0, maxDelayMs: 0, idleMs: 0,
 			}, { createReader, onEvent: event => events.push(event), metricsIntervalMs: 3_600_000 });
 
 			// the timer never fired, so the one metrics event is the one before `stopped`
@@ -72,7 +72,7 @@ describe('crawler metrics event', () => {
 			assert.equal(metrics.length, 1);
 			assert.deepEqual(metrics[0], {
 				type: 'metrics',
-				metrics: { requests: 3, http429: 0, processed: 3, failed: 0, pauseMs: 0 },
+				metrics: { requests: 3, http429: 0, processed: 3, failed: 0, pauseMs: 0, idle: false },
 			});
 			assert.equal(events.at(-1)?.type, 'stopped');
 			assert.equal(events.at(-2)?.type, 'metrics');

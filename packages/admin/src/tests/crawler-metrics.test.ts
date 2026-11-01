@@ -34,6 +34,7 @@ describe('CrawlerMetricsTracker', () => {
 			http429PerHour: 2,
 			totals: { requests: 120, processed: 40, failed: 20, http429: 2 },
 			pauseMs: 5000,
+			idle: false,
 			reportedAt: clock.now,
 		});
 	});

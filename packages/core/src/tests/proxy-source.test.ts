@@ -16,37 +16,94 @@ const close = (server: http.Server): Promise<void> => new Promise(resolve => {
 });
 
 describe('request pacing', () => {
-	const create = (starts: number[] = []) => new HttpClient(new RateLimitGate(), {
-		fetchFn: async () => { starts.push(Date.now()); return new Response('ok'); },
-		minDelayMs: 40,
-		maxDelayMs: 40,
+	const PAUSE_MS = 40;
+
+	interface Entry { start: number, end: number }
+
+	/** A fetch that takes `durationMs` and records when each request starts and ends. */
+	const create = (log: Entry[], durationMs = 0) => new HttpClient(new RateLimitGate(), {
+		fetchFn: async () => {
+			const entry = { start: Date.now(), end: 0 };
+			log.push(entry);
+			await new Promise(resolve => setTimeout(resolve, durationMs));
+			entry.end = Date.now();
+			return new Response('ok');
+		},
+		minDelayMs: PAUSE_MS,
+		maxDelayMs: PAUSE_MS,
 	});
 
-	it('keeps the minimum distance between request starts for many callers of one client', async () => {
-		const starts: number[] = [];
-		const client = create(starts);
+	it('counts the pause from the end of the previous request to the start of the next one', async () => {
+		const log: Entry[] = [];
+		const client = create(log, 60);
+
+		await client.get('https://x.bandcamp.com/a');
+		await client.get('https://x.bandcamp.com/b');
+
+		// a small tolerance for timer rounding
+		assert.ok(log[1].start - log[0].end >= PAUSE_MS - 5, `gap: ${log[1].start - log[0].end}`);
+		// the request time is not part of the pause: start to start is about 60 + 40 ms
+		assert.ok(log[1].start - log[0].start >= 60 + PAUSE_MS - 5);
+	});
+
+	it('never overlaps requests and keeps the pause for many concurrent callers', async () => {
+		const log: Entry[] = [];
+		const client = create(log, 10);
 
 		await Promise.all(Array.from({ length: 6 }, (_, i) => client.get(`https://x.bandcamp.com/${i}`)));
 
-		assert.equal(starts.length, 6);
-		for (let i = 1; i < starts.length; i++) {
-			// a small tolerance for timer rounding
-			assert.ok(starts[i] - starts[i - 1] >= 35, `gap ${i}: ${starts[i] - starts[i - 1]}`);
+		assert.equal(log.length, 6);
+		for (let i = 1; i < log.length; i++) {
+			assert.ok(log[i].start >= log[i - 1].end, `request ${i} started before the previous one ended`);
+			assert.ok(log[i].start - log[i - 1].end >= PAUSE_MS - 5, `gap ${i}: ${log[i].start - log[i - 1].end}`);
 		}
 	});
 
+	it('serves concurrent callers in the order of the calls', async () => {
+		const order: string[] = [];
+		const client = new HttpClient(new RateLimitGate(), {
+			fetchFn: async input => { order.push(String(input)); return new Response('ok'); },
+			minDelayMs: 0,
+			maxDelayMs: 0,
+		});
+
+		await Promise.all(['a', 'b', 'c', 'd'].map(name => client.get(name)));
+
+		assert.deepEqual(order, ['a', 'b', 'c', 'd']);
+	});
+
+	it('counts the pause from the end of a failed request too', async () => {
+		const log: Entry[] = [];
+		const client = new HttpClient(new RateLimitGate(), {
+			fetchFn: async () => {
+				const entry = { start: Date.now(), end: 0 };
+				log.push(entry);
+				await new Promise(resolve => setTimeout(resolve, 30));
+				entry.end = Date.now();
+				throw new Error('network down');
+			},
+			minDelayMs: PAUSE_MS,
+			maxDelayMs: PAUSE_MS,
+		});
+
+		await assert.rejects(client.get('https://x.bandcamp.com/a'), /network down/);
+		await assert.rejects(client.get('https://x.bandcamp.com/b'), /network down/);
+
+		assert.ok(log[1].start - log[0].end >= PAUSE_MS - 5);
+	});
+
 	it('does not delay the first request', async () => {
-		const starts: number[] = [];
+		const log: Entry[] = [];
 		const before = Date.now();
-		await create(starts).get('https://x.bandcamp.com/a');
-		assert.ok(starts[0] - before < 30);
+		await create(log).get('https://x.bandcamp.com/a');
+		assert.ok(log[0].start - before < 30);
 	});
 
 	it('does not share the pacing between two clients', async () => {
-		const starts: number[] = [];
+		const log: Entry[] = [];
 		const before = Date.now();
-		await Promise.all([create(starts).get('https://x.bandcamp.com/a'), create(starts).get('https://x.bandcamp.com/b')]);
-		assert.ok(starts.every(start => start - before < 30));
+		await Promise.all([create(log).get('https://x.bandcamp.com/a'), create(log).get('https://x.bandcamp.com/b')]);
+		assert.ok(log.every(entry => entry.start - before < 30));
 	});
 });
 

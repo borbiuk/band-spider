@@ -8,9 +8,11 @@ export interface BandSpiderOptions {
 	reverse: boolean,
 	/** Send the requests through this proxy URL (`--proxy <url>`). Without it the local IP is used. */
 	proxy?: string,
-	/** The random pause between two requests of one worker. The HTTP client defaults are used when not set. */
+	/** The random pause from the end of one request to the start of the next one. The HTTP client defaults are used when not set. */
 	minDelayMs?: number,
 	maxDelayMs?: number,
+	/** When no URL is left, wait this long and try again, until stopped. Without it the run ends when the queue is empty (CLI). */
+	idleWaitMs?: number,
 }
 
 // Count of parallel URL workers.

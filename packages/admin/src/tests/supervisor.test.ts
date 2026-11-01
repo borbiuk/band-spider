@@ -83,6 +83,7 @@ describe('Supervisor', () => {
 				workers: 2,
 				minDelayMs: undefined,
 				maxDelayMs: undefined,
+				idleMs: undefined,
 				proxy: 'http://p:8080',
 			},
 		});
