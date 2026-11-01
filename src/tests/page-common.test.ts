@@ -63,12 +63,11 @@ describe('buildItemPageData', () => {
 		assert.deepEqual(buildItemPageData(trackUrl, raw({ albumLink: { href: null } }), null).album, { data: null });
 	});
 
-	it('reports a missing album link element as an error', () => {
+	it('gives no album and no error for a single track, whose page has no album link element', () => {
 		const data = buildItemPageData(trackUrl, raw({ albumLink: null }), null);
 
-		assert.equal(data.album.data, null);
-		assert.equal(data.album.error.message, 'Error: failed to find element matching selector "#buyAlbumLink"');
-		assert.deepEqual(data.errors, [data.album.error]);
+		assert.deepEqual(data.album, { data: null });
+		assert.deepEqual(data.errors, []);
 	});
 
 	it('reports a missing credits element and a missing image as errors', () => {

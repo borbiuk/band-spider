@@ -139,11 +139,8 @@ function parseTrackAlbum(albumLink: { href: string | null } | null, url: string)
 	const { hostname, protocol } = new URL(url);
 	const domain = protocol + '//' + hostname;
 
-	if (albumLink === null) {
-		return errorItemData(selectorNotFound(ITEM_SELECTORS.albumLink));
-	}
-
-	return isEmptyString(albumLink.href)
+	// a single track is not part of an album, so its page has no album link
+	return albumLink === null || isEmptyString(albumLink.href)
 		? defaultItemTabData()
 		: { data: domain + albumLink.href };
 }
