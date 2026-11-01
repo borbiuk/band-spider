@@ -1,0 +1,11 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "./src",
+		"tsBuildInfoFile": "./dist/.tsbuildinfo",
+		"emitDecoratorMetadata": true,
+		"experimentalDecorators": true
+	},
+	"references": [{ "path": "../core" }]
+}

@@ -21,6 +21,17 @@ versions from the lockfile:
 `better-sqlite3` 13 is used on purpose, although TypeORM 1.1 lists `^12` as its peer. The `overrides` entry in
 `package.json` makes TypeORM use the same version, so no `--legacy-peer-deps` is needed.
 
+## 📦 Packages
+
+The code is split into npm workspaces in `packages/`. `npm run build` builds all of them with TypeScript project
+references (`tsc -b`), and `npm test` builds and runs the tests of every package.
+
+| Package | Content |
+|---|---|
+| `@band-spider/core` | Domain types, the `CrawlStore` interface, page readers and parsing, `HttpClient`, the spider loop. It does not use TypeORM or SQLite. |
+| `@band-spider/storage-sqlite` | TypeORM entities, repositories, `BandDatabase` and `LocalCrawlStore`. |
+| `@band-spider/cli` | The entry point (`dist/index.js`) that the npm scripts run. |
+
 ## 🚀 Run
 
 The app reads the URLs to process from the database. A new DB file is created with the schema on the first start.
@@ -52,7 +63,7 @@ these marks in the `account-scans` table; a tab without a mark (or whose marked 
 To send the requests through a proxy (a manual test option), pass its URL. Without the flag the local IP is used:
 
 ```shell
-npm run build && node ./dist/index.js --proxy http://user:pass@host:port
+npm run build && node ./packages/cli/dist/index.js --proxy http://user:pass@host:port
 ```
 
 To link tags to super tags:
@@ -61,7 +72,8 @@ To link tags to super tags:
 npm run superTag
 ```
 
-Every script builds the app first (`npm run build`) and then runs `node ./dist/index.js` with its flags.
+Every script builds the app first (`npm run build`) and then runs `node ./packages/cli/dist/index.js` with its flags.
+Run the scripts from the repository root, so the DB file and `logfile.log` stay there.
 
 ### ⚙️ Settings
 

@@ -3,34 +3,27 @@
 	"version": "1.0.0",
 	"description": "",
 	"private": true,
-	"main": "dist/index.js",
 	"type": "commonjs",
 	"engines": {
 		"node": "^22.13.0 || >=24.11.0"
 	},
+	"workspaces": [
+		"packages/core",
+		"packages/storage-sqlite",
+		"packages/cli"
+	],
 	"scripts": {
-		"build": "rm -rf dist && tsc",
-		"db:accounts": "npm run build && node ./dist/index.js --account",
-		"db:items": "npm run build && node ./dist/index.js",
-		"db:accounts:reverse": "npm run build && node ./dist/index.js --account --reverse",
-		"db:items:reverse": "npm run build && node ./dist/index.js --reverse",
-		"test": "npm run build && node --test \"dist/tests/**/*.test.js\"",
-		"superTag": "npm run build && node ./dist/index.js --superTag"
+		"build": "rm -rf packages/*/dist && tsc -b",
+		"db:accounts": "npm run build && node ./packages/cli/dist/index.js --account",
+		"db:items": "npm run build && node ./packages/cli/dist/index.js",
+		"db:accounts:reverse": "npm run build && node ./packages/cli/dist/index.js --account --reverse",
+		"db:items:reverse": "npm run build && node ./packages/cli/dist/index.js --reverse",
+		"test": "npm run build && node --test \"packages/*/dist/tests/**/*.test.js\"",
+		"superTag": "npm run build && node ./packages/cli/dist/index.js --superTag"
 	},
 	"keywords": [],
 	"author": "",
 	"license": "ISC",
-	"dependencies": {
-		"better-sqlite3": "13.0.3",
-		"cheerio": "1.1.2",
-		"cli-color": "2.0.4",
-		"fuse.js": "7.5.0",
-		"pino": "10.4.0",
-		"pino-pretty": "13.2.0",
-		"reflect-metadata": "0.2.2",
-		"typeorm": "1.1.2",
-		"undici": "7.30.1"
-	},
 	"devDependencies": {
 		"@types/cli-color": "2.0.6",
 		"@types/node": "26.6.6",
@@ -38,7 +31,7 @@
 	},
 	"overrides": {
 		"typeorm": {
-			"better-sqlite3": "$better-sqlite3"
+			"better-sqlite3": "13.0.3"
 		}
 	}
 }

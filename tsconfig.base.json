@@ -1,0 +1,20 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"strict": true,
+		// Stage 1: null checks stay off for now, they need a separate review of the code.
+		"strictNullChecks": false,
+		"strictPropertyInitialization": false,
+		"noUnusedLocals": true,
+		"noUnusedParameters": true,
+		"skipLibCheck": true,
+		"module": "nodenext",
+		"moduleResolution": "nodenext",
+		"composite": true,
+		"declaration": true,
+		"sourceMap": true,
+		"esModuleInterop": true,
+		"isolatedModules": true,
+		"types": ["node"]
+	}
+}
