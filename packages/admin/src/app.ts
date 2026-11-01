@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { adminConfigSchema } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError } from './errors';
+import { ProxyPoolService } from './proxy-pool';
 import { maskConfig, restoreSecrets } from './secrets';
 import { registerSecurity, SecurityOptions } from './security';
 import { registerUi } from './ui';
@@ -21,6 +22,10 @@ export interface AppOptions {
 }
 
 const nameParams = z.object({ name: z.string().min(1) });
+const importBody = z.object({
+	text: z.string().min(1),
+	mode: z.enum(['append', 'replace']).default('append'),
+});
 const logsQuery = z.object({ limit: z.coerce.number().int().min(1).max(5000).optional() });
 
 /** The JSON API of the admin. It only knows the Supervisor and the ConfigStore. */
@@ -37,7 +42,8 @@ export const buildApp = ({ supervisor, configStore, security }: AppOptions): Fas
 		return reply.code(status).send({ message });
 	});
 
-	registerUi(app, { supervisor, configStore });
+	const proxyPool = new ProxyPoolService(configStore);
+	registerUi(app, { supervisor, configStore, proxyPool });
 
 	app.get('/health', async () => ({ status: 'ok' }));
 
@@ -49,6 +55,17 @@ export const buildApp = ({ supervisor, configStore, security }: AppOptions): Fas
 		const config = restoreSecrets(body, await configStore.load());
 		await configStore.save(config);
 		return maskConfig(config);
+	});
+
+	// The pool never shows a password
+	app.get('/proxies', async () => proxyPool.list());
+
+	app.post('/proxies/import', { schema: { body: importBody } }, async ({ body }) =>
+		proxyPool.importList(body.text, body.mode));
+
+	app.delete('/proxies/:key', { schema: { params: z.object({ key: z.string().min(1) }) } }, async ({ params }) => {
+		await proxyPool.remove(params.key);
+		return proxyPool.list();
 	});
 
 	app.get('/status', async () => supervisor.status());

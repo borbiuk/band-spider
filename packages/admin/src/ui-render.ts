@@ -1,6 +1,7 @@
 import { AdminConfig, CrawlerSetting } from './config';
 import { CrawlerStats } from './crawler-metrics';
 import { ChildStatus, CrawlerCounts } from './managed-child';
+import { ImportResult, PoolItem } from './proxy-pool';
 import { DbStatus, SupervisorStatus } from './supervisor';
 
 /** Escapes text for HTML, so a log line or a name cannot add markup. */
@@ -57,6 +58,8 @@ export const proxyText = (setting: CrawlerSetting): string => {
 			return `webshare ${proxy.entry.host}:${proxy.entry.port}`;
 		case 'webshare-list':
 			return proxy.id !== undefined ? `webshare list, id ${proxy.id}` : `webshare list, #${proxy.index}`;
+		case 'pool':
+			return `pool ${proxy.key}`;
 	}
 };
 
@@ -120,11 +123,12 @@ const crawlerRow = (name: string, configured: boolean, status: ChildStatus, sett
 };
 
 /** The content of the #status block: the DB service, the all-buttons and the crawler table. */
-export const renderStatus = (status: SupervisorStatus, config: AdminConfig, error?: string): string => {
+export const renderStatus = (status: SupervisorStatus, config: AdminConfig, error?: string, warning?: string): string => {
 	const settings = new Map(config.crawlers.map(crawler => [crawler.name, crawler]));
 	const rows = status.crawlers.map(crawler => crawlerRow(crawler.name, crawler.configured, crawler, settings.get(crawler.name)));
 	return `
 ${error ? `<p class="error banner">${esc(error)}</p>` : ''}
+${warning ? `<p class="warn">${esc(warning)}</p>` : ''}
 ${dbPanel(status.db)}
 <div class="panel">
 	<h2>Crawlers</h2>
@@ -159,11 +163,12 @@ export interface FormValues {
 	wsPassword: string;
 	listIndex: string;
 	listId: string;
+	poolKey: string;
 }
 
 export const emptyForm = (): FormValues => ({
 	original: '', name: '', type: 'item', reverse: false, workers: '1', minDelayMs: '', maxDelayMs: '', idleMs: '',
-	proxyKind: 'none', proxyUrl: '', wsHost: '', wsPort: '', wsUser: '', wsPassword: '', listIndex: '', listId: '',
+	proxyKind: 'none', proxyUrl: '', wsHost: '', wsPort: '', wsUser: '', wsPassword: '', listIndex: '', listId: '', poolKey: '',
 });
 
 /** Fills the form from a setting. The caller passes a config with masked secrets. */
@@ -190,6 +195,8 @@ export const formFromSetting = (setting: CrawlerSetting): FormValues => {
 	} else if (setting.proxy.kind === 'webshare-list') {
 		form.listIndex = setting.proxy.index === undefined ? '' : String(setting.proxy.index);
 		form.listId = setting.proxy.id ?? '';
+	} else if (setting.proxy.kind === 'pool') {
+		form.poolKey = setting.proxy.key;
 	}
 	return form;
 };
@@ -200,7 +207,26 @@ const input = (name: string, value: string, extra = ''): string =>
 const select = (name: string, value: string, options: string[]): string =>
 	`<select name="${name}">${options.map(option => `<option value="${option}"${option === value ? ' selected' : ''}>${option}</option>`).join('')}</select>`;
 
-export const renderCrawlerForm = (form: FormValues, error?: string): string => `
+/** The select of pool entries. An entry that another crawler uses says so. */
+const poolSelect = (form: FormValues, pool: PoolItem[]): string => {
+	const options = pool.map(item => {
+		const others = item.usedBy.filter(name => name !== form.original);
+		const label = others.length ? `${item.key} (used by ${others.join(', ')})` : item.key;
+		return `<option value="${esc(item.key)}"${item.key === form.poolKey ? ' selected' : ''}>${esc(label)}</option>`;
+	});
+	return `<select name="poolKey"><option value="">- choose -</option>${options.join('')}</select>`;
+};
+
+/** A warning when the chosen pool entry is used by another crawler. One crawler per IP is the rule. */
+export const sharedPoolWarning = (key: string, crawlers: string[], self: string): string | undefined => {
+	const others = crawlers.filter(name => name !== self);
+	return others.length ? `Proxy ${key} is also used by ${others.join(', ')}. Use one crawler per IP.` : undefined;
+};
+
+export const renderCrawlerForm = (form: FormValues, pool: PoolItem[], error?: string): string => {
+	const used = pool.find(item => item.key === form.poolKey)?.usedBy ?? [];
+	const warning = form.proxyKind === 'pool' ? sharedPoolWarning(form.poolKey, used, form.original) : undefined;
+	return `
 <form class="panel" hx-post="/fragments/crawlers" hx-target="#form-area" hx-swap="innerHTML">
 	<h2>${form.original ? `Edit crawler ${esc(form.original)}` : 'Add crawler'}</h2>
 	${error ? `<p class="error">${esc(error)}</p>` : ''}
@@ -216,7 +242,8 @@ export const renderCrawlerForm = (form: FormValues, error?: string): string => `
 	</div>
 	<h3>Proxy</h3>
 	<div class="grid">
-		${field('Proxy', select('proxyKind', form.proxyKind, ['none', 'url', 'webshare', 'webshare-list']))}
+		${field('Proxy', select('proxyKind', form.proxyKind, ['none', 'url', 'webshare', 'webshare-list', 'pool']))}
+		${field('Pool proxy (for "pool")', poolSelect(form, pool))}
 		${field('Proxy URL (for "url")', input('proxyUrl', form.proxyUrl, 'placeholder="http://user:pass@host:port"'))}
 		${field('Webshare host', input('wsHost', form.wsHost))}
 		${field('Webshare port', input('wsPort', form.wsPort, 'type="number" min="1" max="65535"'))}
@@ -225,12 +252,65 @@ export const renderCrawlerForm = (form: FormValues, error?: string): string => `
 		${field('Webshare list: proxy number (from 0)', input('listIndex', form.listIndex, 'type="number" min="0"'))}
 		${field('Webshare list: proxy id (instead of the number)', input('listId', form.listId))}
 	</div>
+	${warning ? `<p class="warn">${esc(warning)}</p>` : ''}
 	<p class="meta">Changes are used the next time the crawler starts.</p>
 	<div class="buttons">
 		<button type="submit">Save</button>
 		<button type="button" hx-get="/fragments/crawler-form-close" hx-target="#form-area" hx-swap="innerHTML">Cancel</button>
 	</div>
 </form>`;
+};
+
+/** The text after an import: "N added, M updated, K skipped" and the bad lines. */
+const importSummary = (result: ImportResult): string => {
+	const bad = result.errors.map(item => `<li>line ${item.line}: ${esc(item.message)}</li>`).join('');
+	const duplicates = result.duplicateLines.length
+		? `<p class="meta">Same host:port as an earlier line, skipped: line ${result.duplicateLines.join(', ')}</p>`
+		: '';
+	return `<p>${result.added} added, ${result.updated} updated, ${result.skipped} skipped</p>`
+		+ (bad ? `<p class="warn">Bad lines:</p><ul class="warn">${bad}</ul>` : '')
+		+ duplicates;
+};
+
+/** The import form, with the result or the error of the last import. The pasted text is never shown again. */
+export const renderProxyImport = (outcome?: { result?: ImportResult; error?: string }): string => `
+<form class="panel" hx-post="/fragments/proxy-import" hx-target="#proxy-import" hx-swap="innerHTML">
+	<h2>Proxies</h2>
+	${outcome?.error ? `<p class="error banner">${esc(outcome.error)}</p>` : ''}
+	${outcome?.result ? importSummary(outcome.result) : ''}
+	<p class="meta">One proxy per line: host:port:username:password (the Webshare file) or http://username:password@host:port.</p>
+	<div class="grid">
+		<label>File (.txt)<input type="file" id="proxy-file" accept=".txt,text/plain"></label>
+		<label>Mode<select name="mode">
+			<option value="append" selected>append (add new, update existing)</option>
+			<option value="replace">replace (the list becomes the pool)</option>
+		</select></label>
+	</div>
+	<label>Or paste the list<textarea name="text" id="proxy-text" rows="5" autocomplete="off" spellcheck="false"></textarea></label>
+	<div class="buttons">
+		<button type="submit">Import</button>
+	</div>
+</form>`;
+
+/** The pool list. It shows host:port and the crawlers that use it, never a password. */
+export const renderProxyList = (items: PoolItem[], error?: string): string => {
+	const rows = items.map(item => `
+<tr>
+	<td>${esc(item.key)}</td>
+	<td>${item.usedBy.length ? esc(item.usedBy.join(', ')) : '<span class="meta">not used</span>'}${item.usedBy.length > 1 ? '<br><span class="warn">Many crawlers use this IP. Use one crawler per IP.</span>' : ''}</td>
+	<td class="buttons">${button('Delete', `hx-delete="/fragments/proxy-list/${esc(encodeURIComponent(item.key))}" hx-target="#proxy-list" hx-swap="innerHTML" hx-confirm="Delete proxy ${esc(item.key)}?"`)}</td>
+</tr>`);
+	return `
+<div class="panel">
+	<h2>Proxy pool (${items.length})</h2>
+	${error ? `<p class="error banner">${esc(error)}</p>` : ''}
+	${rows.length === 0 ? '<p class="meta">No proxies yet.</p>' : `
+	<table>
+		<thead><tr><th>Proxy</th><th>Used by</th><th></th></tr></thead>
+		<tbody>${rows.join('')}</tbody>
+	</table>`}
+</div>`;
+};
 
 export const renderLogs = (source: string, lines: string[]): string => `
 <div class="panel">

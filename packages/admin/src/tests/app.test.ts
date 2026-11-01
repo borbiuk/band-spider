@@ -49,7 +49,7 @@ describe('admin API', () => {
 	});
 
 	it('returns the default config, then saves a new one to the file', async () => {
-		assert.deepEqual((await call('GET', '/config')).json(), { dbService: { port: 4100 }, crawlers: [] });
+		assert.deepEqual((await call('GET', '/config')).json(), { proxyPool: [], dbService: { port: 4100 }, crawlers: [] });
 
 		const response = await call('PUT', '/config', {
 			crawlers: [{ name: 'items', type: 'item' }, { name: 'accounts', type: 'account', workers: 2 }],

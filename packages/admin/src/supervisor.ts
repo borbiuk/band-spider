@@ -1,6 +1,6 @@
 import { logger, logMessage, LogSource } from '@band-spider/core';
 import { z } from 'zod';
-import { AdminConfig, CrawlerSetting, proxyUrlOf, proxyUrlOfEntry } from './config';
+import { AdminConfig, CrawlerSetting, poolKeyOf, proxyUrlOf, proxyUrlOfEntry } from './config';
 import { ConfigStore } from './config-store';
 import { CrawlerMetricsTracker } from './crawler-metrics';
 import { DbStats, DbStatsSource, HttpDbStatsSource } from './db-stats';
@@ -219,6 +219,11 @@ export class Supervisor {
 		let proxyUrl: string | undefined;
 		try {
 			proxyUrl = await this.resolveProxy(setting, config);
+		} catch (error) {
+			child.fail((error as Error).message);
+			throw error;
+		}
+		try {
 			await this.ensureDbReady();
 		} catch (error) {
 			const message = `DB service is not ready: ${(error as Error).message}`;
@@ -301,9 +306,16 @@ export class Supervisor {
 		}
 	}
 
-	/** The proxy URL of a crawler. A Webshare list proxy is looked up now, so the list is fresh at each start. */
+	/** The proxy URL of a crawler. A pool proxy is read from the config and a Webshare list proxy is looked up now, so the list is fresh at each start. */
 	private async resolveProxy(setting: CrawlerSetting, config: AdminConfig): Promise<string | undefined> {
 		const { proxy } = setting;
+		if (proxy.kind === 'pool') {
+			const entry = config.proxyPool.find(item => poolKeyOf(item) === proxy.key);
+			if (!entry) {
+				throw new AdminError(`Proxy ${proxy.key} of crawler ${setting.name} is not in the proxy pool`, 400);
+			}
+			return proxyUrlOfEntry(entry);
+		}
 		if (proxy.kind !== 'webshare-list') {
 			return proxyUrlOf(proxy);
 		}

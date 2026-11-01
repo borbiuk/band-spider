@@ -13,6 +13,13 @@ export const webshareEntrySchema = z.object({
 
 export type WebshareEntry = z.infer<typeof webshareEntrySchema>;
 
+/** One proxy of the pool that is imported from a file. Same shape as a Webshare entry. */
+export const poolEntrySchema = webshareEntrySchema;
+export type PoolEntry = WebshareEntry;
+
+/** The key of a pool entry: host:port. A crawler points to it. */
+export const poolKeyOf = ({ host, port }: { host: string; port: number }): string => `${host}:${port}`;
+
 /** How a crawler reaches Bandcamp: from the local IP, through a proxy URL, or through a Webshare entry. */
 export const proxySettingSchema = z.discriminatedUnion('kind', [
 	z.object({ kind: z.literal('none') }),
@@ -24,6 +31,8 @@ export const proxySettingSchema = z.discriminatedUnion('kind', [
 		index: z.number().int().min(0).optional(),
 		id: z.string().min(1).optional(),
 	}).refine(ref => (ref.index === undefined) !== (ref.id === undefined), { message: 'give an index or an id, not both' }),
+	// one proxy of the imported pool, found by its host:port
+	z.object({ kind: z.literal('pool'), key: z.string().min(1) }),
 ]);
 export type ProxySetting = z.infer<typeof proxySettingSchema>;
 
@@ -61,11 +70,16 @@ export type WebshareAccount = z.infer<typeof webshareAccountSchema>;
 
 export const adminConfigSchema = z.object({
 	webshare: webshareAccountSchema.optional(),
+	/** The proxies that were imported from a file. */
+	proxyPool: z.array(poolEntrySchema).default([]),
 	dbService: dbServiceSettingSchema.default({ port: 4100 }),
 	crawlers: z.array(crawlerSettingSchema).default([]),
 }).refine(
 	config => new Set(config.crawlers.map(crawler => crawler.name.toLowerCase())).size === config.crawlers.length,
 	{ message: 'crawler names must be unique', path: ['crawlers'] },
+).refine(
+	config => new Set(config.proxyPool.map(poolKeyOf)).size === config.proxyPool.length,
+	{ message: 'proxy pool entries must be unique by host:port', path: ['proxyPool'] },
 );
 export type AdminConfig = z.infer<typeof adminConfigSchema>;
 
@@ -75,11 +89,13 @@ export const defaultAdminConfig = (): AdminConfig => adminConfigSchema.parse({})
 export const proxyUrlOfEntry = ({ host, port, username, password }: WebshareEntry): string =>
 	`http://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${host}:${port}`;
 
-/** The proxy URL a crawler gets, or undefined for the local IP. A webshare-list setting must be resolved first. */
+/** The proxy URL a crawler gets, or undefined for the local IP. A webshare-list or pool setting must be resolved first. */
 export const proxyUrlOf = (proxy: ProxySetting): string | undefined => {
 	switch (proxy.kind) {
 		case 'webshare-list':
 			throw new Error('A Webshare list proxy must be resolved with the list first');
+		case 'pool':
+			throw new Error('A pool proxy must be resolved with the pool first');
 		case 'none':
 			return undefined;
 		case 'url':

@@ -37,6 +37,22 @@
 		connection.textContent = 'reconnecting...';
 	};
 
+	// A chosen proxy file is read in the browser and put in the text box, so no upload is needed
+	document.body.addEventListener('change', function (event) {
+		var target = event.target;
+		if (!target || target.id !== 'proxy-file' || !target.files || !target.files[0]) {
+			return;
+		}
+		var reader = new FileReader();
+		reader.onload = function () {
+			var box = document.getElementById('proxy-text');
+			if (box) {
+				box.value = String(reader.result);
+			}
+		};
+		reader.readAsText(target.files[0]);
+	});
+
 	// Show the end of the log when it is opened
 	document.body.addEventListener('htmx:afterSwap', function () {
 		var view = document.getElementById('log-view');

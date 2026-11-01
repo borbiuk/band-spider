@@ -92,6 +92,40 @@ Add one crawler per IP. Each crawler has one of these proxy settings:
   proxy `{"kind":"webshare-list","index":0}` or `{"kind":"webshare-list","id":"..."}`. At each crawler start the admin
   loads the proxy list from the Webshare API, takes that proxy and sends its URL to the crawler.
 
+- **pool**: a proxy from the proxy pool that you imported from a file (see below). The crawler setting is
+  `{"kind":"pool","key":"host:port"}`. At each crawler start the admin builds `http://user:pass@host:port` from the pool.
+  If the key is not in the pool, the start fails with a clear message.
+
+#### Import a proxy list file
+
+Webshare can export the proxies as a `.txt` file, one proxy per line, `host:port:username:password`
+(Windows or Unix line endings). Lines in the form `http://username:password@host:port` also work. Empty lines and
+lines that start with `#` are ignored. Same `host:port` twice in one file: the first line is kept.
+
+1. Open the admin page and find the **Proxies** section.
+2. Choose the file (it is read in your browser) or paste the list into the text box.
+3. Pick the mode and press **Import**:
+   - `append` (default): new `host:port` entries are added, an existing one gets the new user name and password;
+   - `replace`: the list becomes the whole pool. It is refused if it would remove a proxy that a crawler uses.
+4. The page shows "N added, M updated, K skipped" and the numbers of the bad lines (the text of a bad line is never
+   shown, because it has a password).
+5. In **Add crawler** or **Edit**, set Proxy to `pool` and choose a `host:port`. The list shows "used by ..." for
+   entries that another crawler already uses. Using one entry in two crawlers is only a warning, but the rule is one
+   crawler per IP.
+6. The pool list shows each proxy and the crawlers that use it. A proxy that a crawler uses cannot be deleted.
+
+The same from a script (same token and Origin rules as the other routes; passwords are never returned):
+
+```
+curl -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "$(jq -Rs '{text: ., mode: "append"}' proxies.txt)" http://127.0.0.1:4200/proxies/import
+# {"added":2,"updated":0,"skipped":0,"errors":[],"duplicateLines":[]}
+```
+
+`GET /proxies` lists the pool (key, host, port, username, usedBy), `DELETE /proxies/:key` deletes one entry (the key is
+`host:port`, URL-encoded). The pool is saved in the admin config as `proxyPool`, and `GET /config` shows its passwords
+as `********`.
+
 The proxy is used only for page requests, never for the DB service. A crawler keeps one fixed proxy, and the pool is
 not rotated after a 429.
 

@@ -3,9 +3,10 @@ import path from 'node:path';
 import { errorMessage } from '@band-spider/core';
 import { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { AdminConfig, adminConfigSchema, crawlerSettingSchema, CrawlerSetting } from './config';
+import { AdminConfig, adminConfigSchema, crawlerSettingSchema, CrawlerSetting, poolKeyOf } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError, conflict, notFound } from './errors';
+import { ImportMode, poolUsage, ProxyPoolService } from './proxy-pool';
 import { maskConfig, restoreSecrets } from './secrets';
 import { Supervisor } from './supervisor';
 import {
@@ -14,13 +15,17 @@ import {
 	FormValues,
 	renderCrawlerForm,
 	renderLogs,
+	renderProxyImport,
+	renderProxyList,
 	renderStatus,
+	sharedPoolWarning,
 	stripAnsi,
 } from './ui-render';
 
 export interface UiOptions {
 	supervisor: Supervisor;
 	configStore: ConfigStore;
+	proxyPool: ProxyPoolService;
 }
 
 // The page files are in packages/admin/ui, next to dist. They need no build step.
@@ -56,6 +61,12 @@ const formSchema = z.object({
 	wsPassword: z.string().default(''),
 	listIndex: z.string().default(''),
 	listId: z.string().default(''),
+	poolKey: z.string().default(''),
+});
+
+const importFormSchema = z.object({
+	text: z.string().default(''),
+	mode: z.enum(['append', 'replace']).default('append'),
 });
 
 const optionalNumber = (value: string): number | undefined => value.trim() === '' ? undefined : Number(value);
@@ -72,6 +83,8 @@ const settingFromForm = (form: FormValues): unknown => {
 		};
 	} else if (form.proxyKind === 'webshare-list') {
 		proxy = { kind: 'webshare-list', index: optionalNumber(form.listIndex), id: form.listId.trim() || undefined };
+	} else if (form.proxyKind === 'pool') {
+		proxy = { kind: 'pool', key: form.poolKey };
 	}
 	return {
 		name: form.name.trim(),
@@ -101,7 +114,7 @@ const html = (reply: FastifyReply, body: string): FastifyReply =>
 	reply.type('text/html; charset=utf-8').header('cache-control', 'no-store').send(body);
 
 /** The page, the htmx fragments and the SSE stream. All routes pass the security hook of the app. */
-export const registerUi = (app: FastifyInstance, { supervisor, configStore }: UiOptions): void => {
+export const registerUi = (app: FastifyInstance, { supervisor, configStore, proxyPool }: UiOptions): void => {
 	const index = readUiFile('index.html');
 	const files: Array<[string, string, Buffer]> = [
 		['/assets/htmx.min.js', 'text/javascript; charset=utf-8', fs.readFileSync(HTMX_FILE)],
@@ -127,18 +140,22 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore }: Ui
 	}
 
 	// The current status with an optional error message
-	const statusHtml = async (error?: string): Promise<string> =>
-		renderStatus(await supervisor.status(), await configStore.load(), error);
+	const statusHtml = async (error?: string, warning?: string): Promise<string> =>
+		renderStatus(await supervisor.status(), await configStore.load(), error, warning);
+
+	// The pool list changes when a crawler is added, changed or removed, so those responses refresh it too
+	const poolListOob = async (): Promise<string> =>
+		`<div id="proxy-list" hx-swap-oob="innerHTML">${renderProxyList(await proxyPool.list())}</div>`;
 
 	// A control button never fails the request, because htmx does not swap error responses. The error is shown on the page.
-	const control = async (reply: FastifyReply, job: () => Promise<void>): Promise<FastifyReply> => {
+	const control = async (reply: FastifyReply, job: () => Promise<void>, refreshPool = false): Promise<FastifyReply> => {
 		let error: string | undefined;
 		try {
 			await job();
 		} catch (caught) {
 			error = caught instanceof AdminError ? caught.message : errorMessage(caught);
 		}
-		return html(reply, await statusHtml(error));
+		return html(reply, await statusHtml(error) + (refreshPool ? await poolListOob() : ''));
 	};
 
 	app.get('/fragments/status', async (_request, reply) => html(reply, await statusHtml()));
@@ -173,20 +190,20 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore }: Ui
 				throw conflict(`Stop crawler ${name} first`);
 			}
 			await configStore.save({ ...config, crawlers: config.crawlers.filter(crawler => crawler.name !== name) });
-		});
+		}, true);
 	});
 
 	app.get('/fragments/crawler-form', async (request, reply) => {
 		const { name } = z.object({ name: z.string().optional() }).parse(request.query);
 		if (name === undefined) {
-			return html(reply, renderCrawlerForm(emptyForm()));
+			return html(reply, renderCrawlerForm(emptyForm(), await proxyPool.list()));
 		}
 		// secrets are masked in the form, saving it keeps the saved ones
 		const setting = maskConfig(await configStore.load()).crawlers.find(crawler => crawler.name === name);
 		if (!setting) {
-			return html(reply, renderCrawlerForm(emptyForm(), `No crawler ${name} in the config`));
+			return html(reply, renderCrawlerForm(emptyForm(), await proxyPool.list(), `No crawler ${name} in the config`));
 		}
-		return html(reply, renderCrawlerForm(formFromSetting(setting)));
+		return html(reply, renderCrawlerForm(formFromSetting(setting), await proxyPool.list()));
 	});
 
 	app.get('/fragments/crawler-form-close', async (_request, reply) => html(reply, ''));
@@ -199,38 +216,78 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore }: Ui
 			// the name of an existing crawler does not change
 			form.name = form.original;
 		}
-		const fail = (message: string) => html(reply, renderCrawlerForm(form, message));
+		const fail = async (message: string) => html(reply, renderCrawlerForm(form, await proxyPool.list(), message));
 
 		const setting = crawlerSettingSchema.safeParse(settingFromForm(form));
 		if (!setting.success) {
-			return fail(issuesText(setting.error));
+			return await fail(issuesText(setting.error));
 		}
 
 		const saved = await configStore.load();
 		const crawlers: CrawlerSetting[] = [...saved.crawlers];
 		const at = form.original ? crawlers.findIndex(crawler => crawler.name === form.original) : -1;
 		if (form.original && at < 0) {
-			return fail(`No crawler ${form.original} in the config`);
+			return await fail(`No crawler ${form.original} in the config`);
 		}
 		if (at >= 0) {
 			crawlers[at] = setting.data;
 		} else {
 			crawlers.push(setting.data);
 		}
-		const candidate = adminConfigSchema.safeParse({ dbService: saved.dbService, crawlers });
+		if (setting.data.proxy.kind === 'pool') {
+			const { key } = setting.data.proxy;
+			if (!saved.proxyPool.some(entry => poolKeyOf(entry) === key)) {
+				return await fail(`Proxy ${key} is not in the proxy pool`);
+			}
+		}
+		const candidate = adminConfigSchema.safeParse({ webshare: saved.webshare, proxyPool: saved.proxyPool, dbService: saved.dbService, crawlers });
 		if (!candidate.success) {
-			return fail(issuesText(candidate.error));
+			return await fail(issuesText(candidate.error));
 		}
 
 		let config: AdminConfig;
 		try {
 			config = restoreSecrets(candidate.data, saved);
 		} catch (error) {
-			return fail(errorMessage(error));
+			return await fail(errorMessage(error));
 		}
 		await configStore.save(config);
-		// the form closes and the status is updated in the same response
-		return html(reply, `<div id="status" hx-swap-oob="innerHTML">${await statusHtml()}</div>`);
+		// one crawler per IP is the rule, so a shared pool proxy is a warning and not an error
+		const proxy = setting.data.proxy;
+		const warning = proxy.kind === 'pool'
+			? sharedPoolWarning(proxy.key, poolUsage(config).get(proxy.key) ?? [], setting.data.name)
+			: undefined;
+		// the form closes, and the status and the pool list are updated in the same response
+		return html(reply, `<div id="status" hx-swap-oob="innerHTML">${await statusHtml(undefined, warning)}</div>${await poolListOob()}`);
+	});
+
+	app.get('/fragments/proxy-import', async (_request, reply) => html(reply, renderProxyImport()));
+
+	app.get('/fragments/proxy-list', async (_request, reply) => html(reply, renderProxyList(await proxyPool.list())));
+
+	// A refused import shows its message on the page. The pasted text is not sent back, it holds passwords.
+	app.post('/fragments/proxy-import', async (request, reply) => {
+		const form = importFormSchema.safeParse(request.body ?? {});
+		if (!form.success || form.data.text.trim() === '') {
+			return html(reply, renderProxyImport({ error: 'Choose a file or paste a list first' }));
+		}
+		try {
+			const result = await proxyPool.importList(form.data.text, form.data.mode as ImportMode);
+			return html(reply, renderProxyImport({ result }) + await poolListOob());
+		} catch (error) {
+			return html(reply, renderProxyImport({ error: error instanceof AdminError ? error.message : errorMessage(error) }));
+		}
+	});
+
+	app.delete('/fragments/proxy-list/:key', async (request, reply) => {
+		const { key } = z.object({ key: z.string().min(1) }).parse(request.params);
+		let error: string | undefined;
+		try {
+			await proxyPool.remove(key);
+		} catch (caught) {
+			error = caught instanceof AdminError ? caught.message : errorMessage(caught);
+		}
+		return html(reply, renderProxyList(await proxyPool.list(), error));
 	});
 
 	app.get('/fragments/logs', async (request, reply) => {
