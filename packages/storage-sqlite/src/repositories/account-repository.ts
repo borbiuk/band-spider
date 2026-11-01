@@ -28,6 +28,13 @@ export class AccountRepository {
 		});
 	}
 
+	/** How many accounts are left to process. The filter is the one of `getNotProcessed`. */
+	public async countNotProcessed(): Promise<number> {
+		return await this.manager.getRepository(AccountEntity).count({
+			where: { lastProcessingDate: Or(LessThan(new Date('2024-09-10')), IsNull()), isBusy: false },
+		});
+	}
+
 	public async getAccountRelated(accountId: number): Promise<AccountEntity[]> {
 		const itemIdsQuery = this.manager.getRepository(ItemToAccountEntity)
 			.createQueryBuilder('itemToAccount')

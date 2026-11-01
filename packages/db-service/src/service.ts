@@ -1,4 +1,4 @@
-import { CrawlStore, logger, logMessage, LogSource } from '@band-spider/core';
+import { logger, logMessage, LogSource } from '@band-spider/core';
 import { BandDatabase, LocalCrawlStore } from '@band-spider/storage-sqlite';
 import { buildApp } from './app';
 import { DbServiceConfig } from './config';
@@ -21,10 +21,10 @@ export const startDbService = async (config: DbServiceConfig): Promise<RunningDb
 	let stopping: Promise<void> | undefined;
 
 	try {
-		const store: CrawlStore = new LocalCrawlStore(database, config.leaseMs);
+		const store = new LocalCrawlStore(database, config.leaseMs);
 		await store.resetBusy();
 
-		const app = buildApp({ store, stats: new ServiceStats(), token: config.token });
+		const app = buildApp({ store, stats: new ServiceStats(), queueLeft: () => store.queueLeft(), token: config.token });
 		await app.listen({ host: config.host, port: config.port });
 
 		const address = app.server.address();

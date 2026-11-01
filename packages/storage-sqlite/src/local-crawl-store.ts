@@ -44,6 +44,14 @@ export class LocalCrawlStore implements CrawlStore {
 		return this.writes.run(() => this.claimNow(type, count, newestFirst));
 	}
 
+	/** How many URLs of each type wait to be claimed. Busy rows are not counted. */
+	public queueLeft(): Promise<{ items: number, accounts: number }> {
+		return this.writes.run(async () => ({
+			items: await this.database.item.countNotProcessed(),
+			accounts: await this.database.account.countNotProcessed(),
+		}));
+	}
+
 	public async extendLease(task: CrawlTask): Promise<boolean> {
 		const key = this.leaseKey(task);
 		if (!this.leases.has(key)) {

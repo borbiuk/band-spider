@@ -59,6 +59,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 16px; }
 
 .meta { color: var(--muted); font-size: 13px; }
 .error { color: var(--bad); }
+.warn { color: var(--warn); font-size: 13px; }
 .banner { padding: 8px 12px; border: 1px solid var(--bad); border-radius: 6px; }
 
 .buttons { display: flex; flex-wrap: wrap; gap: 6px; }

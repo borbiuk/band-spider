@@ -56,6 +56,8 @@ export class HttpClient {
 
 	/** Earliest start of the next request. */
 	private nextRequestAt = 0;
+	private requests = 0;
+	private rateLimited = 0;
 
 	constructor(
 		private readonly gate: RateLimitGate,
@@ -69,6 +71,21 @@ export class HttpClient {
 		this.sleep = options.sleep ?? (ms => sleep(ms));
 		this.random = options.random ?? Math.random;
 		this.now = options.now ?? Date.now;
+	}
+
+	/** How many requests were sent. */
+	public get requestCount(): number {
+		return this.requests;
+	}
+
+	/** How many answers were HTTP 429. */
+	public get rateLimitedCount(): number {
+		return this.rateLimited;
+	}
+
+	/** How long the pause after a 429 still lasts in ms, 0 when there is none. */
+	public get pauseLeftMs(): number {
+		return this.gate.pauseLeftMs;
 	}
 
 	public get(url: string): Promise<HttpResponse> {
@@ -98,10 +115,12 @@ export class HttpClient {
 			}
 		}
 
+		this.requests++;
 		try {
 			const response = await this.fetchFn(url, { ...init, signal: AbortSignal.timeout(this.timeoutMs) });
 
 			if (response.status === 429) {
+				this.rateLimited++;
 				const retryAfter = response.headers.get('retry-after') ?? undefined;
 				await response.body?.cancel().catch(() => { });
 				this.onRateLimited(url, retryAfter);

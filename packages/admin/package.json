@@ -6,6 +6,7 @@
 	"types": "dist/index.d.ts",
 	"type": "commonjs",
 	"dependencies": {
+		"@band-spider/contracts": "1.0.0",
 		"@band-spider/core": "1.0.0",
 		"@band-spider/crawler": "1.0.0",
 		"@band-spider/db-service": "1.0.0",

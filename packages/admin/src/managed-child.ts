@@ -1,3 +1,4 @@
+import { CrawlerMetricsTracker, CrawlerStats } from './crawler-metrics';
 import { conflict } from './errors';
 import { ChildHandle, ExitInfo, LaunchSpec, ProcessLauncher } from './process-launcher';
 import { LogRingBuffer } from './ring-buffer';
@@ -18,6 +19,8 @@ export interface ChildStatus {
 	/** The DB service URL from its ready message. */
 	url?: string;
 	counts?: CrawlerCounts;
+	/** Speeds and totals of a crawler. Missing before its first report. */
+	stats?: CrawlerStats;
 	error?: string;
 }
 
@@ -37,6 +40,8 @@ export class ManagedChild {
 	error?: string;
 	url?: string;
 	counts?: CrawlerCounts;
+	/** Set for a crawler. It keeps the metrics reports. */
+	metrics?: CrawlerMetricsTracker;
 	private currentState: ChildState = 'stopped';
 	private handle?: ChildHandle;
 	private exited = false;
@@ -80,6 +85,7 @@ export class ManagedChild {
 			pid: this.isActive ? this.handle?.pid : undefined,
 			url: this.url,
 			counts: this.counts,
+			stats: this.metrics?.summary(),
 			error: this.error,
 		};
 	}
@@ -93,6 +99,7 @@ export class ManagedChild {
 		this.error = undefined;
 		this.url = undefined;
 		this.counts = undefined;
+		this.metrics?.reset();
 		this.finished = false;
 		this.exited = false;
 		this.handle = undefined;

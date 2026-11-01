@@ -6,6 +6,7 @@
 		"tsBuildInfoFile": "./dist/.tsbuildinfo"
 	},
 	"references": [
+		{ "path": "../contracts" },
 		{ "path": "../core" },
 		{ "path": "../db-service" },
 		{ "path": "../crawler" }

@@ -19,18 +19,27 @@ export class ItemRepository {
 	 */
 	public async getNotProcessed(newestFirst: boolean = false): Promise<ItemEntity[]> {
 		return await this.manager.getRepository(ItemEntity).find({
-			where: {
-				lastProcessingDate: IsNull(),
-				isBusy: false,
-				failedCount: LessThan(1),
-				// url: Or(ILike('%/album/%'), ILike('%/track/%'))
-				// url: ILike('%/album/%'),
-				url: ILike('%/track/%'),
-			},
+			where: this.notProcessedWhere(),
 			order: newestFirst ? { id: 'DESC' } : undefined,
 			take: 400
 		});
 	};
+
+	/** How many items are left to process. The filter is the one of `getNotProcessed`. */
+	public async countNotProcessed(): Promise<number> {
+		return await this.manager.getRepository(ItemEntity).count({ where: this.notProcessedWhere() });
+	}
+
+	private notProcessedWhere() {
+		return {
+			lastProcessingDate: IsNull(),
+			isBusy: false,
+			failedCount: LessThan(1),
+			// url: Or(ILike('%/album/%'), ILike('%/track/%'))
+			// url: ILike('%/album/%'),
+			url: ILike('%/track/%'),
+		};
+	}
 
 	public async getUserItems(accountId: number): Promise<ItemEntity[]> {
 		return await this.manager.getRepository(ItemEntity).createQueryBuilder('item')

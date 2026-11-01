@@ -29,6 +29,7 @@ before(() => {
 		configStore,
 		entries: { dbService: DB_ENTRY, crawler: CRAWLER_ENTRY },
 		stopTimeoutMs: 50,
+		dbStatsIntervalMs: 0,
 	});
 	app = buildApp({ supervisor, configStore, security: { token: TOKEN, port: () => PORT } });
 });

@@ -72,6 +72,8 @@ export const statsResponseSchema = z.object({
 	accountsSaved: z.number().int(),
 	released: z.number().int(),
 	newUrls: z.number().int(),
+	/** How many URLs wait to be claimed. Missing when the service cannot count them. */
+	queueLeft: z.object({ items: z.number().int(), accounts: z.number().int() }).optional(),
 });
 export type StatsResponse = z.infer<typeof statsResponseSchema>;
 
