@@ -24,6 +24,8 @@ export const emptyCounts = (): CrawlerCounts => ({ claimed: 0, saved: 0, failed:
 /** Passes every call on and counts the results. */
 export class CountingCrawlStore implements CrawlStore {
 	public readonly counts: CrawlerCounts = emptyCounts();
+	/** New links between an item and an account that the saved pages added: the supporters of an item, the collection and the wishlist of an account. */
+	public newLinks = 0;
 
 	constructor(
 		private readonly inner: CrawlStore,
@@ -50,6 +52,7 @@ export class CountingCrawlStore implements CrawlStore {
 
 	public async saveItem(task: CrawlTask, data: ItemPageData): Promise<ItemPageStatistic> {
 		const statistic = await this.inner.saveItem(task, data);
+		this.newLinks += statistic.accounts.newRelations;
 		this.counts.saved++;
 		this.onChange({ ...this.counts });
 		return statistic;
@@ -57,6 +60,7 @@ export class CountingCrawlStore implements CrawlStore {
 
 	public async saveAccount(task: CrawlTask, data: AccountPageData): Promise<AccountPageStatistic> {
 		const statistic = await this.inner.saveAccount(task, data);
+		this.newLinks += statistic.collection.newRelations + statistic.wishlist.newRelations;
 		this.counts.saved++;
 		this.onChange({ ...this.counts });
 		return statistic;

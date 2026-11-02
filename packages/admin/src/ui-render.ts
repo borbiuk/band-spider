@@ -1,217 +1,36 @@
 import { DEFAULT_IDLE_MS, MAX_REQUEST_DELAY_MS, MIN_REQUEST_DELAY_MS } from '@band-spider/core';
 import { AdminConfig, CrawlerSetting, DEFAULT_REVERSE, DEFAULT_WORKERS } from './config';
-import { CrawlerStats, SERIES_BUCKETS } from './crawler-metrics';
-import { CrawlerCounts } from './managed-child';
+import { CrawlerStats } from './crawler-metrics';
 import { ImportResult, PoolItem } from './proxy-pool';
 import { CrawlerStatus, DbStatus, SupervisorStatus } from './supervisor';
+import { attentionItems } from './ui-attention';
+import { CrawlerSummary, overviewView, summarize, trafficView } from './ui-overview';
+import {
+	action,
+	button,
+	bytesText,
+	detailAttrs,
+	durationText,
+	esc,
+	formatNumber as number,
+	icon,
+	iconButton,
+	isActive,
+	level429,
+	logsAttrs,
+	postStatus,
+	proxyText,
+	rateText,
+	settingsText,
+	sparkline,
+	stateDot,
+	stripAnsi,
+} from './ui-parts';
 
-/** Escapes text for HTML, so a log line or a name cannot add markup. */
-export const esc = (value: unknown): string =>
-	String(value ?? '')
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
+// the small parts are shared with the other renderers and the tests
+export * from './ui-parts';
 
-// Child output has ANSI colors, the page shows plain text
-const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
-export const stripAnsi = (text: string): string => text.replace(ANSI, '');
-
-const stateBadge = (state: string): string => `<span class="state state-${esc(state)}">${esc(state)}</span>`;
-
-const countsText = (counts?: CrawlerCounts): string =>
-	counts ? `${counts.claimed} claimed, ${counts.saved} saved, ${counts.failed} failed, ${counts.rateLimited} rate limited` : '-';
-
-const number = (value: number): string => value.toLocaleString('en-US');
-export const formatNumber = number;
-
-/** A pause in ms as a short text, for example "1m 05s". */
-export const durationText = (ms: number): string => {
-	const seconds = Math.ceil(ms / 1000);
-	return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s` : `${seconds}s`;
-};
-
-/** HTTP 429 answers per hour: a few are normal, about one a minute is a problem. */
-const WARN_429_PER_HOUR = 1;
-const BAD_429_PER_HOUR = 60;
-
-const level429 = (perHour: number): string =>
-	perHour >= BAD_429_PER_HOUR ? 'bad' : perHour >= WARN_429_PER_HOUR ? 'warn' : 'ok';
-
-const stat = (value: string, label: string, level = ''): string =>
-	`<span class="stat${level ? ` stat-${level}` : ''}"><b>${esc(value)}</b> ${esc(label)}</span>`;
-
-/**
- * The speeds and totals of a crawler. The block always has the same lines, so a row keeps its height
- * when a crawler pauses, waits or has not reported yet.
- */
-export const statsText = (stats?: CrawlerStats): string => {
-	if (!stats) {
-		return `<div class="stats">${stat('-', 'requests/min')}${stat('-', 'URLs/min')}${stat('-', 'HTTP 429/hour')}</div>`
-			+ '<div class="meta clip">&nbsp;</div>'
-			+ '<div class="note meta">no report yet</div>';
-	}
-	const total = `total: ${number(stats.totals.requests)} requests, ${number(stats.totals.processed)} saved, `
-		+ `${number(stats.totals.failed)} failed, ${number(stats.totals.http429)} HTTP 429`;
-	const paused = stats.pauseMs > 0 ? `paused after HTTP 429, ${esc(durationText(stats.pauseMs))} left` : '';
-	const notes = [paused, stats.idle ? 'waiting for URLs' : ''].filter(Boolean).join(', ');
-	const note = `<div class="note ${paused ? 'warn' : 'meta'}">${notes || '&nbsp;'}</div>`;
-	return `<div class="stats">${stat(number(stats.requestsPerMin), 'requests/min')}${stat(number(stats.urlsPerMin), 'URLs/min')}`
-		+ `${stat(number(stats.http429PerHour), 'HTTP 429/hour', level429(stats.http429PerHour))}</div>`
-		+ `<div class="meta clip" title="${esc(total)}">${esc(total)}</div>${note}`;
-};
-
-/** A short text for the proxy column. It never has a user name or a password. */
-export const proxyText = (setting: CrawlerSetting): string => {
-	const { proxy } = setting;
-	switch (proxy.kind) {
-		case 'none':
-			return 'local IP';
-		case 'url':
-			try {
-				return `proxy ${new URL(proxy.url).host}`;
-			} catch {
-				return 'proxy';
-			}
-		case 'webshare':
-			return `webshare ${proxy.entry.host}:${proxy.entry.port}`;
-		case 'webshare-list':
-			return proxy.id !== undefined ? `webshare list, id ${proxy.id}` : `webshare list, #${proxy.index}`;
-		case 'pool':
-			return `pool ${proxy.key}`;
-	}
-};
-
-/** The settings of a crawler that differ from the defaults. Type and proxy are always there. */
-export const settingsText = (setting: CrawlerSetting): string => {
-	const parts: string[] = [setting.type];
-	if (setting.reverse !== DEFAULT_REVERSE) {
-		parts.push('reverse');
-	}
-	if (setting.workers !== DEFAULT_WORKERS) {
-		parts.push(`${setting.workers} workers`);
-	}
-	const { minDelayMs, maxDelayMs } = setting;
-	if (minDelayMs !== undefined && maxDelayMs !== undefined) {
-		parts.push(`delay ${minDelayMs}-${maxDelayMs} ms`);
-	} else if (minDelayMs !== undefined) {
-		parts.push(`min delay ${minDelayMs} ms`);
-	} else if (maxDelayMs !== undefined) {
-		parts.push(`max delay ${maxDelayMs} ms`);
-	}
-	if (setting.idleMs !== undefined) {
-		parts.push(setting.idleMs === 0 ? 'exits when no URLs' : `waits ${setting.idleMs} ms when no URLs`);
-	}
-	return parts.join(', ');
-};
-
-/**
- * A message that shows in the corner of the page and does not depend on the status block, so the next
- * live update cannot remove it. Errors stay until they are closed, the others go away alone.
- */
-export const toast = (kind: 'error' | 'warn' | 'ok', message: string): string =>
-	`<div id="toasts" hx-swap-oob="beforeend"><div class="toast toast-${kind}" role="${kind === 'error' ? 'alert' : 'status'}"`
-	+ `${kind === 'error' ? '' : ' data-ttl="5000"'}><span>${esc(message)}</span>`
-	+ '<button type="button" class="toast-close" aria-label="Dismiss">&times;</button></div></div>';
-
-export type Tone = 'primary' | 'ok' | 'warn' | 'danger' | 'ghost';
-
-export const button = (label: string, attrs: string, disabled = false, tone: Tone = 'ghost'): string =>
-	`<button type="button" class="btn-${tone}" ${attrs}${disabled ? ' disabled' : ''}>${esc(label)}</button>`;
-
-/** A button that posts to the server and shows the new status. The status is changed in place, so the page does not jump. */
-const action = (path: string, label: string, disabled = false, confirm?: string, tone: Tone = 'ghost'): string =>
-	button(label, `hx-post="${esc(path)}" hx-target="#status" hx-swap="morph"${confirm ? ` hx-confirm="${esc(confirm)}"` : ''}`, disabled, tone);
-
-const isActive = (state: string): boolean => state === 'starting' || state === 'running' || state === 'stopping';
-
-const SPARK_W = 100;
-const SPARK_H = 30;
-
-const sparkPoints = (values: number[], max: number, height: number, width: number): string =>
-	values.map((value, i) => {
-		const x = values.length > 1 ? (i / (values.length - 1)) * width : 0;
-		const y = height - 1 - (Math.max(value, 0) / max) * (height - 2);
-		return `${x.toFixed(1)},${y.toFixed(1)}`;
-	}).join(' ');
-
-/**
- * A tiny line chart as inline SVG. It uses attributes and classes only, because the page CSP has no inline styles.
- * Without values it draws a flat line of the same size, so the cell does not change its height.
- */
-export const sparkline = (values: number[] | undefined, tone: string, label: string): string => {
-	if (!values || values.length < 2) {
-		return `<svg class="spark spark-${tone} spark-empty" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}: no data">`
-			+ `<polyline class="line" fill="none" points="0,${SPARK_H - 1} ${SPARK_W},${SPARK_H - 1}"/></svg>`;
-	}
-	const max = Math.max(...values, 1);
-	const points = sparkPoints(values, max, SPARK_H, SPARK_W);
-	return `<svg class="spark spark-${tone}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">`
-		+ `<title>${esc(label)}</title>`
-		+ `<polygon class="area" points="0,${SPARK_H} ${points} ${SPARK_W},${SPARK_H}"/>`
-		+ `<polyline class="line" fill="none" points="${points}"/></svg>`;
-};
-
-export interface ChartLine {
-	label: string;
-	tone: string;
-	values: number[];
-}
-
-const CHART_W = 600;
-const CHART_H = 120;
-
-/** The chart of all crawlers together: one line for each value, a shared scale, three grid lines. */
-export const trendChart = (lines: ChartLine[], minutes: number, title = 'Requests and URLs per minute'): string => {
-	const max = Math.max(...lines.flatMap(line => line.values), 1);
-	const grid = [0.25, 0.5, 0.75].map(part => {
-		const y = (CHART_H * part).toFixed(1);
-		return `<line class="grid" x1="0" y1="${y}" x2="${CHART_W}" y2="${y}"/>`;
-	}).join('');
-	const drawn = lines.map(line => {
-		const points = sparkPoints(line.values, max, CHART_H, CHART_W);
-		return `<polygon class="area chart-${line.tone}" points="0,${CHART_H} ${points} ${CHART_W},${CHART_H}"/>`
-			+ `<polyline class="line chart-${line.tone}" fill="none" points="${points}"/>`;
-	}).join('');
-	const legend = lines.map(line =>
-		`<span class="legend"><i class="swatch chart-${line.tone}"></i>${esc(line.label)}, now <b>${number(line.values[line.values.length - 1] ?? 0)}</b></span>`).join('');
-	return `<div class="chart-legend">${legend}<span class="meta">peak ${number(max)} per minute</span></div>
-	<svg class="chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}, last ${minutes} minutes">${grid}${drawn}</svg>
-	<div class="chart-axis meta"><span>${minutes} min ago</span><span>now</span></div>`;
-};
-
-const sumSeries = (all: Array<number[] | undefined>, length: number): number[] => {
-	const total = new Array<number>(length).fill(0);
-	for (const values of all) {
-		values?.forEach((value, i) => total[i] += value);
-	}
-	return total;
-};
-
-export const kpi = (label: string, value: string, sub: string, tone: string, spark = ''): string =>
-	`<div class="kpi kpi-${tone}"><span class="kpi-label">${esc(label)}</span><span class="kpi-value">${esc(value)}</span>`
-	+ `<span class="kpi-sub clip">${sub}</span>${spark}</div>`;
-
-const kpiRow = (status: SupervisorStatus): string => {
-	const { crawlers, db } = status;
-	const running = crawlers.filter(crawler => crawler.state === 'running').length;
-	const failed = crawlers.filter(crawler => crawler.state === 'failed').length;
-	const sum = (pick: (crawler: CrawlerStatus) => number): number => crawlers.reduce((total, crawler) => total + pick(crawler), 0);
-	const per429 = sum(crawler => crawler.stats?.http429PerHour ?? 0);
-	const queue = db.dbStats?.queueLeft;
-	return `<div class="kpis">
-	${kpi('Crawlers', `${running} / ${crawlers.length}`, failed ? `${failed} failed` : 'running / total', failed ? 'bad' : running ? 'ok' : 'idle')}
-	${kpi('Requests/min', number(Math.round(sum(crawler => crawler.stats?.requestsPerMin ?? 0) * 10) / 10), 'all crawlers', 'req')}
-	${kpi('URLs/min', number(Math.round(sum(crawler => crawler.stats?.urlsPerMin ?? 0) * 10) / 10), 'saved and failed', 'urls')}
-	${kpi('HTTP 429/hour', number(per429), per429 >= BAD_429_PER_HOUR ? 'too many, slow down' : per429 ? 'rate limited' : 'none', level429(per429) === 'ok' ? 'idle' : level429(per429))}
-	${kpi('Queue left', queue ? number(queue.items) : '-', queue ? `${number(queue.accounts)} accounts` : 'unknown', 'queue', sparkline(db.queueHistory, 'queue', 'Queue left over time'))}
-</div>`;
-};
-
-/** Opens the Insights view: how well the crawl fills the DB. */
-const viewButton = (tone: Tone = 'ghost'): string => button('View', 'hx-get="/fragments/insights" hx-target="#insights" hx-swap="innerHTML"', false, tone);
-
+/** The DB service as a chip with a menu: its state, URL and counters, and the buttons. */
 const dbStatsLines = (db: DbStatus): string => {
 	if (db.dbStatsError) {
 		return `<p class="error">Statistics: ${esc(db.dbStatsError)}</p>`;
@@ -228,46 +47,169 @@ const dbStatsLines = (db: DbStatus): string => {
 		+ `${number(stats.accountsSaved)} accounts saved, ${number(stats.released)} released, ${number(stats.newUrls)} new URLs</p>`;
 };
 
-const dbPanel = (db: DbStatus): string => `
-<div class="panel panel-db db-${esc(db.state)}">
-	<h2>DB service ${stateBadge(db.state)}</h2>
-	<p class="meta">${db.url ? `URL ${esc(db.url)}` : 'not running'}${db.pid ? `, pid ${db.pid}` : ''}</p>
-	${db.error ? `<p class="error">${esc(db.error)}</p>` : ''}
-	${dbStatsLines(db)}
+const dbChip = (db: DbStatus): string => `
+<details class="menu db-chip db-${esc(db.state)}" data-key="db-chip">
+	<summary title="DB service: ${esc(db.state)}">${stateDot(db.state)}<span>DB service</span><b>${esc(db.state)}</b>${icon('chevron')}</summary>
+	<div class="menu-list popover">
+		<p class="meta">${db.url ? `URL ${esc(db.url)}` : 'not running'}${db.pid ? `, pid ${db.pid}` : ''}</p>
+		${db.error ? `<p class="error">${esc(db.error)}</p>` : ''}
+		${dbStatsLines(db)}
+		<div class="buttons">
+			${action('/fragments/db/start', 'Start', isActive(db.state), undefined, 'ok', 'play')}
+			${action('/fragments/db/stop', 'Stop', !isActive(db.state), 'Stop the DB service and all crawlers?', 'warn', 'stop')}
+			${action('/fragments/db/restart', 'Restart', false, undefined, 'ghost', 'restart')}
+			${button('Logs', logsAttrs('db'), false, 'ghost', 'logs')}
+			<a class="btn-ghost" href="#insights">${icon('insights')}Insights</a>
+		</div>
+	</div>
+</details>`;
+
+/** The bar on top of the live pages: the page name, the DB service and the buttons for all crawlers. */
+const controlBar = (db: DbStatus): string => `
+<div class="controlbar">
+	<h1 class="page-title"><span data-for="overview">Overview</span><span data-for="crawlers">Crawlers</span><span data-for="traffic">Traffic</span></h1>
+	${dbChip(db)}
 	<div class="buttons">
-		${action('/fragments/db/start', 'Start', isActive(db.state), undefined, 'ok')}
-		${action('/fragments/db/stop', 'Stop', !isActive(db.state), 'Stop the DB service and all crawlers?', 'warn')}
-		${action('/fragments/db/restart', 'Restart')}
-		${button('Logs', 'hx-get="/fragments/logs?source=db" hx-target="#logs" hx-swap="innerHTML"')}
-		${viewButton()}
+		${action('/fragments/all/start', 'Start all', false, undefined, 'ok', 'play')}
+		${action('/fragments/all/stop', 'Stop all', false, 'Stop the DB service and all crawlers?', 'warn', 'stop')}
+		${button('Add crawler', 'hx-get="/fragments/crawler-form" hx-target="#form-area" hx-swap="innerHTML"', false, 'primary', 'plus')}
 	</div>
 </div>`;
 
-const crawlerRow = (name: string, configured: boolean, status: CrawlerStatus, setting?: CrawlerSetting): string => {
+/** What the filter and the sort of the table read. The page script does the work, so a live update keeps the choice. */
+const rowData = (name: string, status: CrawlerStatus, setting: CrawlerSetting | undefined, index: number): string => {
+	const stats = status.stats;
+	const pairs: Array<[string, string | number]> = [
+		['index', index],
+		['name', name.toLowerCase()],
+		['state', status.state],
+		['type', setting?.type ?? ''],
+		['search', `${name} ${setting ? proxyText(setting) : ''}`.toLowerCase()],
+		['requests', stats?.requestsPerMin ?? 0],
+		['urls', stats?.urlsPerMin ?? 0],
+		['http429', stats?.http429PerHour ?? 0],
+		['saved', stats?.totals.processed ?? 0],
+		['bytes', stats?.totals.bytes ?? 0],
+		['links', stats?.totals.newLinks ?? 0],
+	];
+	return pairs.map(([key, value]) => `data-${key}="${esc(value)}"`).join(' ');
+};
+
+/** The sort keys of the table. The column headers and the select of narrow screens use them. */
+const SORT_KEYS: Array<[string, string]> = [
+	['index', 'config order'],
+	['name', 'name'],
+	['state', 'state'],
+	['requests', 'requests/min'],
+	['urls', 'URLs/min'],
+	['http429', 'HTTP 429/hour'],
+	['saved', 'saved total'],
+	['bytes', 'traffic'],
+	['links', 'new links'],
+];
+
+const chip = (group: string, value: string, label: string, count?: number): string =>
+	`<button type="button" class="chip" data-chip="${group}" data-value="${value}" aria-pressed="false">${esc(label)}${count === undefined ? '' : ` <b>${count}</b>`}</button>`;
+
+/** The search, the filter chips and the sort above the crawler table. Empty values mean "no filter" and "order of the config". */
+const tableTools = (summary: CrawlerSummary): string => `
+<div class="toolbar" data-tools>
+	<label class="search">${icon('search')}<input type="search" data-filter="search" placeholder="Search name or proxy" aria-label="Search crawlers" autocomplete="off"></label>
+	<div class="chips" role="group" aria-label="State">
+		${chip('state', '', 'All', summary.total)}${chip('state', 'active', 'Running', summary.active)}${chip('state', 'failed', 'Failed', summary.failed)}${chip('state', 'stopped', 'Stopped', summary.stopped)}
+	</div>
+	<div class="chips" role="group" aria-label="Type">
+		${chip('type', '', 'All types')}${chip('type', 'item', 'Items', summary.items)}${chip('type', 'account', 'Accounts', summary.accounts)}
+	</div>
+	<label class="sort-pick">Sort by<select data-sort-key>
+		${SORT_KEYS.map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}
+	</select></label>
+	<label class="check sort-pick"><input type="checkbox" data-sort-desc> Descending</label>
+	<span class="grow"></span>
+	<span class="meta" data-shown data-total="${summary.total}">${summary.total} of ${summary.total} shown</span>
+	<button type="button" class="btn-ghost btn-small" data-tools-reset>Reset</button>
+</div>`;
+
+/** A number cell: the value and a small line under it. */
+const numCell = (label: string, value: string, sub: string, extra = '', title = ''): string =>
+	`<td class="num" data-label="${esc(label)}"${title ? ` title="${esc(title)}"` : ''}><b${extra ? ` class="${extra}"` : ''}>${esc(value)}</b><span class="sub">${esc(sub)}</span></td>`;
+
+/** The total line of a crawler. It is the tooltip of the speed and a line of the details. */
+export const totalText = (stats: CrawlerStats): string =>
+	`total: ${number(stats.totals.requests)} requests, ${number(stats.totals.processed)} saved, `
+	+ `${number(stats.totals.failed)} failed, ${number(stats.totals.http429)} HTTP 429`;
+
+/** Small labels after the name: paused, waiting, failed or removed. They sit on the name line, so the row keeps its height. */
+const rowPill = (status: CrawlerStatus): string => {
+	if (!status.configured) {
+		return '<span class="pill pill-warn">removed from config</span>';
+	}
+	if (status.state === 'failed') {
+		return `<span class="pill pill-bad" title="${esc(status.error ?? 'failed')}">${esc(status.error ? 'error' : 'failed')}</span>`;
+	}
+	// the last report of a stopped crawler can still say "paused", that is old news
+	const stats = status.state === 'running' ? status.stats : undefined;
+	const paused = stats && stats.pauseMs > 0
+		? `<span class="pill pill-warn" title="paused after HTTP 429, ${esc(durationText(stats.pauseMs))} left">paused ${esc(durationText(stats.pauseMs))}</span>`
+		: '';
+	const silent = isActive(status.state) && !status.stats ? '<span class="pill">no report yet</span>' : '';
+	return silent + paused + (stats?.idle ? '<span class="pill">waiting for URLs</span>' : '');
+};
+
+/** The cells of the numbers. Every cell has the same two lines, so a row keeps its height before the first report. */
+const metricCells = (stats: CrawlerStats | undefined, setting: CrawlerSetting | undefined): string => {
+	if (!stats) {
+		return numCell('Requests/min', '-', '') + numCell('URLs/min', '-', '')
+			+ numCell('HTTP 429/hour', '-', '') + numCell('New links', '-', '')
+			+ numCell('Traffic', '-', setting?.proxy.kind === 'none' ? 'local IP, not counted' : '');
+	}
+	const level = level429(stats.http429PerHour);
+	return numCell('Requests/min', rateText(stats.requestsPerMin), `${number(stats.totals.requests)} total`, '', totalText(stats))
+		+ numCell('URLs/min', rateText(stats.urlsPerMin), `${number(stats.totals.processed)} saved`)
+		+ numCell('HTTP 429/hour', number(stats.http429PerHour), `${number(stats.totals.http429)} total`, level === 'ok' ? '' : `lvl-${level}`)
+		+ numCell('New links', number(stats.totals.newLinks), `${rateText(stats.linksPerMin)}/min`)
+		+ (setting?.proxy.kind === 'none'
+			? numCell('Traffic', '-', 'local IP, not counted')
+			: numCell('Traffic', bytesText(stats.totals.bytes), `${bytesText(stats.bytesPerHour)}/hour`));
+};
+
+/** The start or stop button of a crawler, as an icon. */
+export const toggleButton = (base: string, status: CrawlerStatus, configured: boolean, withText = false): string => {
+	const active = isActive(status.state);
+	if (withText) {
+		return active
+			? action(`${base}/stop`, 'Stop', status.state === 'stopping', undefined, 'warn', 'stop')
+			: action(`${base}/start`, 'Start', !configured, undefined, 'ok', 'play');
+	}
+	return active
+		? iconButton('stop', 'Stop', postStatus(`${base}/stop`), status.state === 'stopping', 'warn')
+		: iconButton('play', 'Start', postStatus(`${base}/start`), !configured, 'ok');
+};
+
+const crawlerRow = (name: string, configured: boolean, status: CrawlerStatus, setting: CrawlerSetting | undefined, index: number): string => {
 	const base = `/fragments/crawlers/${encodeURIComponent(name)}`;
 	const active = isActive(status.state);
-	const logsUrl = `/fragments/logs?source=${encodeURIComponent(`crawler:${name}`)}`;
-	const counts = countsText(status.counts);
-	const toggle = active
-		? action(`${base}/stop`, 'Stop', status.state === 'stopping', undefined, 'warn')
-		: action(`${base}/start`, 'Start', !configured, undefined, 'ok');
+	const about = setting ? `${settingsText(setting)} · ${proxyText(setting)}` : 'removed from config';
 	return `
-<tr class="row-${esc(status.state)}" data-key="crawler:${esc(name)}">
-	<td data-label="Name"><b class="clip" title="${esc(name)}">${esc(name)}</b>${configured ? '' : '<span class="meta clip">removed from config</span>'}</td>
-	<td data-label="Settings">${setting ? `<span class="clip" title="${esc(settingsText(setting))}">${esc(settingsText(setting))}</span><span class="meta clip">${esc(proxyText(setting))}</span>` : '-'}</td>
-	<td data-label="State">${stateBadge(status.state)}${status.error ? `<span class="error clip" title="${esc(status.error)}">${esc(status.error)}</span>` : ''}</td>
-	<td data-label="Speed and totals">${statsText(status.stats)}<div class="meta clip" title="${esc(counts)}">${esc(counts)}</div></td>
-	<td data-label="Requests/min, 30 min">${sparkline(status.series?.requests, 'req', `${name}: requests per minute, last 30 minutes`)}</td>
-	<td class="actions" data-label="">
-		<div class="btn-row">
-			${toggle}
-			${button('Logs', `hx-get="${esc(logsUrl)}" hx-target="#logs" hx-swap="innerHTML"`)}
+<tr class="row-${esc(status.state)}" data-key="crawler:${esc(name)}" ${rowData(name, status, setting, index)}>
+	<td class="pick"><input type="checkbox" name="names" value="${esc(name)}" form="bulk-form" aria-label="Choose ${esc(name)}"></td>
+	<td class="name-cell" data-label="Crawler">
+		<div class="name-line">${stateDot(status.state)}<button type="button" class="link name" title="Details of ${esc(name)}" ${detailAttrs(name)}>${esc(name)}</button>${rowPill(status)}</div>
+		<span class="sub clip" title="${esc(about)}">${esc(about)}</span>
+	</td>
+	${metricCells(status.stats, setting)}
+	<td class="spark-cell" data-label="Last 30 min">${sparkline(status.series?.requests, 'req', `${name}: requests per minute, last 30 minutes`)}</td>
+	<td class="actions">
+		<div class="row-actions">
+			${toggleButton(base, status, configured)}
+			${iconButton('logs', 'Logs', logsAttrs(`crawler:${name}`))}
 			<details class="menu">
-				<summary aria-label="More actions for ${esc(name)}">&#8943;</summary>
+				<summary class="btn-icon" title="More" aria-label="More actions for ${esc(name)}">${icon('more')}</summary>
 				<div class="menu-list">
-					${action(`${base}/restart`, 'Restart', !configured)}
-					${button('Edit', `hx-get="/fragments/crawler-form?name=${esc(encodeURIComponent(name))}" hx-target="#form-area" hx-swap="innerHTML"`, !configured)}
-					${button('Remove', `hx-delete="${esc(base)}" hx-target="#status" hx-swap="morph" hx-confirm="Remove crawler ${esc(name)}?"`, active || !configured, 'danger')}
+					${button('Details', detailAttrs(name), false, 'ghost', 'panel')}
+					${action(`${base}/restart`, 'Restart', !configured, undefined, 'ghost', 'restart')}
+					${button('Edit', `hx-get="/fragments/crawler-form?name=${esc(encodeURIComponent(name))}" hx-target="#form-area" hx-swap="innerHTML"`, !configured, 'ghost', 'edit')}
+					${button('Remove', `hx-delete="${esc(base)}" hx-target="#status" hx-swap="morph" hx-confirm="Remove crawler ${esc(name)}?"`, active || !configured, 'danger', 'trash')}
 				</div>
 			</details>
 		</div>
@@ -275,41 +217,50 @@ const crawlerRow = (name: string, configured: boolean, status: CrawlerStatus, se
 </tr>`;
 };
 
-/** The content of the #status block: the numbers on top, the DB service, the chart and the crawler table. */
-export const renderStatus = (status: SupervisorStatus, config: AdminConfig): string => {
-	const settings = new Map(config.crawlers.map(crawler => [crawler.name, crawler]));
-	const rows = status.crawlers.map(crawler => crawlerRow(crawler.name, crawler.configured, crawler, settings.get(crawler.name)));
-	const series = status.crawlers.map(crawler => crawler.series);
-	const chart = series.some(Boolean)
-		? trendChart([
-			{ label: 'requests/min', tone: 'req', values: sumSeries(series.map(item => item?.requests), SERIES_BUCKETS) },
-			{ label: 'URLs/min', tone: 'urls', values: sumSeries(series.map(item => item?.urls), SERIES_BUCKETS) },
-			{ label: 'HTTP 429/min', tone: 'r429', values: sumSeries(series.map(item => item?.http429), SERIES_BUCKETS) },
-		], SERIES_BUCKETS)
-		: '<p class="meta">The chart shows up when a crawler sends its first report.</p>';
-	return `
-${kpiRow(status)}
-${dbPanel(status.db)}
-<div class="panel panel-chart">
-	<h2>Speed, all crawlers</h2>
-	${chart}
-</div>
-<div class="panel">
-	<div class="panel-head">
-		<h2>Crawlers</h2>
-		<div class="buttons">
-			${action('/fragments/all/start', 'Start all', false, undefined, 'ok')}
-			${action('/fragments/all/stop', 'Stop all', false, 'Stop the DB service and all crawlers?', 'warn')}
-			${viewButton('primary')}
-			${button('Add crawler', 'hx-get="/fragments/crawler-form" hx-target="#form-area" hx-swap="innerHTML"')}
-		</div>
+const sortHead = (key: string, label: string, title = label): string =>
+	`<th data-sort-col="${key}"><button type="button" class="th-sort" data-sort="${key}" title="Sort by ${esc(title)}">${esc(label)}${icon('sort')}</button></th>`;
+
+const crawlersView = (status: SupervisorStatus, settings: Map<string, CrawlerSetting>, summary: CrawlerSummary): string => {
+	const rows = status.crawlers.map((crawler, index) => crawlerRow(crawler.name, crawler.configured, crawler, settings.get(crawler.name), index));
+	if (rows.length === 0) {
+		return `
+<div class="view" data-view="crawlers">
+	<div class="panel empty empty-big">${icon('crawlers')}<h2>No crawlers yet.</h2>
+		<p class="meta">A crawler is one process with one proxy. Add one by hand, or import proxies and create one crawler for each.</p>
+		<div class="buttons">${button('Add crawler', 'hx-get="/fragments/crawler-form" hx-target="#form-area" hx-swap="innerHTML"', false, 'primary', 'plus')}<a class="btn-ghost" href="#proxies">${icon('proxies')}Open proxies</a></div>
 	</div>
-	${rows.length === 0 ? '<p class="meta">No crawlers yet.</p>' : `
-	<table class="crawlers">
-		<thead><tr><th>Name</th><th>Settings</th><th>State</th><th>Speed and totals</th><th>Last 30 min</th><th></th></tr></thead>
-		<tbody>${rows.join('')}</tbody>
-	</table>`}
 </div>`;
+	}
+	return `
+<div class="view" data-view="crawlers">
+	<div class="panel panel-table">
+		${tableTools(summary)}
+		<div class="table-wrap">
+		<table class="crawlers">
+			<thead><tr><th class="pick"><input type="checkbox" data-pick-all aria-label="Choose all shown crawlers"></th>${sortHead('name', 'Crawler')}${sortHead('requests', 'Req/min', 'requests per minute')}${sortHead('urls', 'URLs/min', 'URLs per minute')}${sortHead('http429', '429/hour', 'HTTP 429 answers per hour')}${sortHead('links', 'Links', 'new item-account links')}${sortHead('bytes', 'Traffic', 'traffic through the proxy')}<th>Last 30 min</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+			<tbody>${rows.join('')}</tbody>
+		</table>
+		</div>
+		<div class="empty" data-no-match hidden>${icon('search')}<p>No crawler matches the filter.</p><button type="button" class="btn-ghost" data-tools-reset>Reset the filter</button></div>
+	</div>
+</div>`;
+};
+
+/** Numbers for the badges of the menu. The page script copies them, the menu itself is not part of a live update. */
+const navSummary = (summary: CrawlerSummary, attention: number): string =>
+	`<div hidden data-nav-summary data-running="${summary.running}" data-total="${summary.total}" data-failed="${summary.failed}" data-attention="${attention}"></div>`;
+
+/** The content of the #status block: the bar on top and the live pages Overview, Crawlers and Traffic. */
+export const renderStatus = (status: SupervisorStatus, config: AdminConfig, now = Date.now()): string => {
+	const settings = new Map(config.crawlers.map(crawler => [crawler.name, crawler]));
+	const summary = summarize(status, settings);
+	const attention = attentionItems(status, config, now);
+	return `
+${controlBar(status.db)}
+${navSummary(summary, attention.filter(item => item.tone !== 'info').length)}
+${overviewView(status, attention, summary)}
+${crawlersView(status, settings, summary)}
+${trafficView(status, settings)}`;
 };
 
 export interface FormValues {
@@ -377,7 +328,8 @@ export const hasCustomSettings = (form: FormValues): boolean =>
 	|| (form.maxDelayMs.trim() !== '' && Number(form.maxDelayMs) !== MAX_REQUEST_DELAY_MS)
 	|| form.idleMs.trim() !== '';
 
-const field = (label: string, control: string): string => `<label>${esc(label)}${control}</label>`;
+const field = (label: string, control: string, kind = ''): string =>
+	`<label${kind ? ` data-for-kind="${kind}"` : ''}>${esc(label)}${control}</label>`;
 const input = (name: string, value: string, extra = ''): string =>
 	`<input name="${name}" value="${esc(value)}" ${extra}>`;
 const select = (name: string, value: string, options: string[]): string =>
@@ -415,14 +367,14 @@ export const renderCrawlerForm = (form: FormValues, pool: PoolItem[], error?: st
 	<h3>Proxy</h3>
 	<div class="grid">
 		${field('Proxy', select('proxyKind', form.proxyKind, ['none', 'url', 'webshare', 'webshare-list', 'pool']))}
-		${field('Pool proxy (for "pool")', poolSelect(form, pool))}
-		${field('Proxy URL (for "url")', input('proxyUrl', form.proxyUrl, 'placeholder="http://user:pass@host:port"'))}
-		${field('Webshare host', input('wsHost', form.wsHost))}
-		${field('Webshare port', input('wsPort', form.wsPort, 'type="number" min="1" max="65535"'))}
-		${field('Webshare user name', input('wsUser', form.wsUser))}
-		${field('Webshare password', input('wsPassword', form.wsPassword, 'type="password" autocomplete="off"'))}
-		${field('Webshare list: proxy number (from 0)', input('listIndex', form.listIndex, 'type="number" min="0"'))}
-		${field('Webshare list: proxy id (instead of the number)', input('listId', form.listId))}
+		${field('Pool proxy', poolSelect(form, pool), 'pool')}
+		${field('Proxy URL', input('proxyUrl', form.proxyUrl, 'placeholder="http://user:pass@host:port"'), 'url')}
+		${field('Webshare host', input('wsHost', form.wsHost), 'webshare')}
+		${field('Webshare port', input('wsPort', form.wsPort, 'type="number" min="1" max="65535"'), 'webshare')}
+		${field('Webshare user name', input('wsUser', form.wsUser), 'webshare')}
+		${field('Webshare password', input('wsPassword', form.wsPassword, 'type="password" autocomplete="off"'), 'webshare')}
+		${field('Webshare list: proxy number (from 0)', input('listIndex', form.listIndex, 'type="number" min="0"'), 'webshare-list')}
+		${field('Webshare list: proxy id (instead of the number)', input('listId', form.listId), 'webshare-list')}
 	</div>
 	<details class="more"${hasCustomSettings(form) ? ' open' : ''}>
 		<summary>More settings</summary>
@@ -451,15 +403,18 @@ const importSummary = (result: ImportResult): string => {
 	const duplicates = result.duplicateLines.length
 		? `<p class="meta">Same host:port as an earlier line, skipped: line ${result.duplicateLines.join(', ')}</p>`
 		: '';
-	return `<p>${result.added} added, ${result.updated} updated, ${result.skipped} skipped</p>`
+	return `<div class="notice-ok">${icon('check')}<p>${result.added} added, ${result.updated} updated, ${result.skipped} skipped</p></div>`
 		+ (bad ? `<p class="warn">Bad lines:</p><ul class="warn">${bad}</ul>` : '')
 		+ duplicates;
 };
 
-/** The import form, with the result or the error of the last import. The pasted text is never shown again. */
+/** The import form, with the result or the error of the last import. The pasted text is never shown again. It lives in a dialog. */
 export const renderProxyImport = (outcome?: { result?: ImportResult; error?: string }): string => `
-<form class="panel" hx-post="/fragments/proxy-import" hx-target="#proxy-import" hx-swap="innerHTML">
-	<h2>Proxies</h2>
+<form class="dialog-card" hx-post="/fragments/proxy-import" hx-target="#proxy-import" hx-swap="innerHTML">
+	<div class="drawer-head">
+		<h2 id="import-title">Import proxies</h2>
+		${iconButton('close', 'Close', 'data-dialog-close')}
+	</div>
 	${outcome?.error ? `<p class="error banner">${esc(outcome.error)}</p>` : ''}
 	${outcome?.result ? importSummary(outcome.result) : ''}
 	<p class="meta">One proxy per line: host:port:username:password (the Webshare file) or http://username:password@host:port.</p>
@@ -470,49 +425,129 @@ export const renderProxyImport = (outcome?: { result?: ImportResult; error?: str
 			<option value="replace">replace (the list becomes the pool)</option>
 		</select></label>
 	</div>
-	<label>Or paste the list<textarea name="text" id="proxy-text" rows="5" autocomplete="off" spellcheck="false"></textarea></label>
-	<div class="buttons">
-		<button type="submit" class="btn-primary">Import</button>
+	<label>Or paste the list<textarea name="text" id="proxy-text" rows="6" autocomplete="off" spellcheck="false"></textarea></label>
+	<div class="buttons buttons-end">
+		<button type="button" class="btn-ghost" data-dialog-close>Close</button>
+		<button type="submit" class="btn-primary">${icon('upload')}Import</button>
 	</div>
 </form>`;
 
-/** The control that adds one crawler for each free proxy, with the type of the new crawlers. */
-const addCrawlersForm = (): string => `
-<form class="buttons buttons-center" hx-post="/fragments/proxies/free-crawlers" hx-target="#proxy-list" hx-swap="morph">
-	<label>Type of new crawlers ${select('type', 'item', ['item', 'account', 'split'])}</label>
-	<button type="submit" class="btn-primary">Add crawlers for free proxies</button>
-	<span class="meta">split: items and accounts in turn, items first. The crawlers are not started.</span>
+/** The control that adds one crawler for each free proxy, with the type of the new crawlers. It sits in a menu. */
+const addCrawlersForm = (free: number): string => `
+<details class="menu" data-key="free-menu">
+	<summary class="btn-ghost">${icon('plus')}Add crawlers for free proxies${icon('chevron')}</summary>
+	<div class="menu-list popover popover-right">
+		<form class="stack" hx-post="/fragments/proxies/free-crawlers" hx-target="#proxy-list" hx-swap="morph">
+			<label>Type of new crawlers ${`<select name="type">${['item', 'account', 'split'].map(option => `<option value="${option}"${option === 'item' ? ' selected' : ''}>${option}</option>`).join('')}</select>`}</label>
+			<p class="meta">One crawler for each of the ${free} free proxies. split: items and accounts in turn, items first. The crawlers are not started.</p>
+			<button type="submit" class="btn-primary"${free === 0 ? ' disabled' : ''}>Add crawlers for free proxies</button>
+		</form>
+	</div>
+</details>`;
+
+/**
+ * The bar that adds one crawler for each chosen proxy (the checkboxes of the list belong to this form),
+ * with the type of the new crawlers and the choice to start them. It shows only while a proxy is chosen.
+ */
+const chosenCrawlersForm = (): string => `
+<form id="chosen-form" class="actionbar" hx-post="/fragments/proxies/chosen-crawlers" hx-target="#proxy-list" hx-swap="morph" aria-label="Create crawlers for the chosen proxies">
+	<span class="actionbar-count"><b data-selected-count>0</b> chosen</span>
+	<div class="seg" role="radiogroup" aria-label="Type of new crawlers">
+		<label><input type="radio" name="type" value="item" checked><span>item</span></label>
+		<label><input type="radio" name="type" value="account"><span>account</span></label>
+	</div>
+	<label class="check"><input type="checkbox" name="start" value="1" checked> Start right away</label>
+	<span class="grow"></span>
+	<button type="button" class="btn-ghost" data-select="none">Clear</button>
+	<button type="submit" class="btn-primary">${icon('plus')}Create crawlers for chosen proxies</button>
 </form>`;
 
-/** The pool list. It shows host:port and the crawlers that use it, never a password. */
-export const renderProxyList = (items: PoolItem[]): string => {
-	const rows = items.map(item => `
-<tr data-key="proxy:${esc(item.key)}" class="${item.usedBy.length > 1 ? 'row-shared' : ''}">
-	<td data-label="Proxy">${esc(item.key)}</td>
-	<td data-label="Used by">${item.usedBy.length ? esc(item.usedBy.join(', ')) : '<span class="meta">not used</span>'}${item.usedBy.length > 1 ? '<br><span class="warn">Many crawlers use this IP. Use one crawler per IP.</span>' : ''}</td>
-	<td class="actions" data-label="">${button('Delete', `hx-delete="/fragments/proxy-list/${esc(encodeURIComponent(item.key))}" hx-target="#proxy-list" hx-swap="morph" hx-confirm="Delete proxy ${esc(item.key)}?"`, false, 'danger')}</td>
-</tr>`);
+/** The crawlers of a proxy with a state dot each. A click opens the details. */
+const usedByCell = (item: PoolItem, states: Map<string, CrawlerStatus>): string => {
+	if (item.usedBy.length === 0) {
+		return '<span class="meta">not used</span>';
+	}
+	const names = item.usedBy.map(name =>
+		`<button type="button" class="link used-by" ${detailAttrs(name)}>${stateDot(states.get(name)?.state ?? 'stopped')}${esc(name)}</button>`).join('');
+	return names + (item.usedBy.length > 1 ? '<span class="warn block">Many crawlers use this IP. Use one crawler per IP.</span>' : '');
+};
+
+/**
+ * The pool list. It shows host:port, the crawlers that use it with their state and their traffic, never a password.
+ * Without the status of the crawlers the states show as stopped.
+ */
+export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = []): string => {
+	const states = new Map(crawlers.map(crawler => [crawler.name, crawler]));
+	const rows = items.map((item, index) => {
+		const kind = item.usedBy.length === 0 ? 'free' : item.usedBy.length > 1 ? 'shared' : 'used';
+		const bytes = item.usedBy.reduce((sum, name) => sum + (states.get(name)?.stats?.totals.bytes ?? 0), 0);
+		const perHour = item.usedBy.reduce((sum, name) => sum + (states.get(name)?.stats?.bytesPerHour ?? 0), 0);
+		return `
+	<tr data-key="proxy:${esc(item.key)}" data-pstate="${kind}" class="${kind === 'shared' ? 'row-shared' : ''}">
+		<td class="pick"><input type="checkbox" form="chosen-form" name="keys" value="${esc(item.key)}" aria-label="Choose ${esc(item.key)}"${item.usedBy.length ? ' disabled' : ' data-free'}></td>
+		<td class="num-col" data-label="No.">${index + 1}</td>
+		<td data-label="Proxy"><b class="mono">${esc(item.key)}</b></td>
+		<td data-label="Used by">${usedByCell(item, states)}</td>
+		<td class="num" data-label="Traffic">${item.usedBy.length ? `<b>${esc(bytesText(bytes))}</b><span class="sub">${esc(bytesText(perHour))}/hour</span>` : '<span class="meta">-</span>'}</td>
+		<td class="actions">${iconButton('trash', `Delete ${item.key}`, `hx-delete="/fragments/proxy-list/${esc(encodeURIComponent(item.key))}" hx-target="#proxy-list" hx-swap="morph" hx-confirm="Delete proxy ${esc(item.key)}?"`, item.usedBy.length > 0, 'danger')}</td>
+	</tr>`;
+	});
 	const used = items.filter(item => item.usedBy.length > 0).length;
-	return `
-<div class="panel">
-	<h2>Proxy pool (${items.length}) <span class="meta">${used} used, ${items.length - used} free</span></h2>
-	${items.length === 0 ? '' : addCrawlersForm()}
-	${rows.length === 0 ? '<p class="meta">No proxies yet.</p>' : `
-	<div class="scroll">
+	const shared = items.filter(item => item.usedBy.length > 1).length;
+	const free = items.length - used;
+	const head = `
+<div class="controlbar">
+	<h1 class="page-title">Proxies</h1>
+	<div class="buttons">
+		<button type="button" class="${items.length ? 'btn-ghost' : 'btn-primary'}" data-open-dialog="import-dialog">${icon('upload')}Import list</button>
+		${items.length === 0 ? '' : addCrawlersForm(free)}
+	</div>
+</div>`;
+	if (rows.length === 0) {
+		return `${head}
+<div class="panel empty empty-big">${icon('proxies')}<h2>No proxies yet.</h2>
+	<p class="meta">Import the proxy list file of Webshare, or paste a list. Then create one crawler for each proxy.</p>
+	<button type="button" class="btn-primary" data-open-dialog="import-dialog">${icon('upload')}Import list</button>
+</div>`;
+	}
+	const chip = (value: string, label: string, count: number): string =>
+		`<button type="button" class="chip" data-proxy-chip="${value}" aria-pressed="false">${esc(label)} <b>${count}</b></button>`;
+	return `${head}
+<div class="kpis kpis-small">
+	<div class="kpi kpi-idle"><span class="kpi-label">Proxies</span><span class="kpi-value">${items.length}</span><span class="kpi-sub">in the pool</span></div>
+	<div class="kpi kpi-ok"><span class="kpi-label">Used</span><span class="kpi-value">${used}</span><span class="kpi-sub">by a crawler</span></div>
+	<div class="kpi kpi-queue"><span class="kpi-label">Free</span><span class="kpi-value">${free}</span><span class="kpi-sub">ready for a crawler</span></div>
+	<div class="kpi ${shared ? 'kpi-warn' : 'kpi-idle'}"><span class="kpi-label">Shared</span><span class="kpi-value">${shared}</span><span class="kpi-sub">more than one crawler</span></div>
+</div>
+<div class="panel panel-table">
+	<div class="toolbar">
+		<div class="chips" role="group" aria-label="Show">
+			${chip('', 'All', items.length)}${chip('free', 'Free', free)}${chip('used', 'Used', used)}${chip('shared', 'Shared', shared)}
+		</div>
+		<span class="grow"></span>
+		<span class="meta hint">Shift+click chooses a range</span>
+		<button type="button" class="btn-ghost btn-small" data-select="free">${icon('check')}Select free</button>
+		<button type="button" class="btn-ghost btn-small" data-select="none">Clear</button>
+	</div>
+	<div class="table-wrap">
 		<table class="pool">
-			<thead><tr><th>Proxy</th><th>Used by</th><th></th></tr></thead>
+			<thead><tr><th class="pick"><span class="sr-only">Choose</span></th><th class="num-col">No.</th><th>Proxy</th><th>Used by</th><th class="num">Traffic</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
 			<tbody>${rows.join('')}</tbody>
 		</table>
-	</div>`}
-</div>`;
+	</div>
+</div>
+${chosenCrawlersForm()}`;
 };
 
 /** The log drawer. It sits on the right side of the window, so opening it does not move the page. */
 export const renderLogs = (source: string, lines: string[]): string => `
-<aside class="drawer" role="dialog" aria-label="Logs: ${esc(source)}">
+<aside class="drawer drawer-logs" role="dialog" aria-label="Logs: ${esc(source)}">
 	<div class="drawer-head">
-		<h2>Logs: ${esc(source)}</h2>
-		<button type="button" class="btn-ghost" data-close hx-get="/fragments/logs-close" hx-target="#logs" hx-swap="innerHTML">Close</button>
+		<h2>${icon('logs')}Logs: ${esc(source)}</h2>
+		<div class="buttons">
+			<label class="check meta"><input type="checkbox" data-log-follow checked> Follow</label>
+			${iconButton('close', 'Close', 'data-close hx-get="/fragments/logs-close" hx-target="#logs" hx-swap="innerHTML"')}
+		</div>
 	</div>
 	<pre id="log-view" data-source="${esc(source)}">${esc(stripAnsi(lines.join('\n')))}</pre>
 </aside>`;

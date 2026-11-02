@@ -65,8 +65,8 @@ describe('computeInsights', () => {
 	const crawler = (name: string, requests: number, processed: number, failed: number): CrawlerStatus => ({
 		name, configured: true, state: 'running',
 		stats: {
-			requestsPerMin: 1, urlsPerMin: 1, http429PerHour: 2,
-			totals: { requests, processed, failed, http429: 1 }, pauseMs: 0, idle: false,
+			requestsPerMin: 1, urlsPerMin: 1, http429PerHour: 2, bytesPerHour: 0, linksPerMin: 0,
+			totals: { requests, processed, failed, http429: 1, bytes: 0, newLinks: 0 }, pauseMs: 0, idle: false,
 		},
 	});
 
@@ -163,7 +163,9 @@ describe('renderInsights', () => {
 		assert.match(html, /collection <b>1,500<\/b> · wishlist <b>500<\/b> \(25%\)/);
 		// the blue part is the collection: 1500 of 2000 links in the DB
 		assert.match(html, /<rect class="bar-coll" width="75"/);
-		assert.match(html, /hx-get="\/fragments\/insights-close"/);
+		// a page of its own now, not a dialog over the page
+		assert.doesNotMatch(html, /class="modal"/);
+		assert.match(html, /<h1 class="page-title">Database insights<\/h1>/);
 		assert.doesNotMatch(html, /\sstyle=/);
 	});
 
@@ -175,6 +177,8 @@ describe('renderInsights', () => {
 	it('says that there is nothing to show while the DB service is stopped', () => {
 		const html = renderInsights(snapshot({ db: { state: 'stopped' } }), NOW);
 		assert.match(html, /DB service is not running/);
-		assert.doesNotMatch(html, /<svg/);
+		assert.doesNotMatch(html, /<svg class="chart"/);
+		// the empty page has the button that starts the DB service
+		assert.match(html, /hx-post="\/fragments\/db\/start"/);
 	});
 });

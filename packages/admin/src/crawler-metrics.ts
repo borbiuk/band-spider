@@ -8,6 +8,11 @@ export interface MetricsReport {
 	pauseMs: number;
 	/** True while the crawler waits for new URLs. */
 	idle?: boolean;
+	/** Bytes sent and received through the proxy, still compressed. A crawler without a proxy or an old one reports none. */
+	bytesSent?: number;
+	bytesReceived?: number;
+	/** New links between an item and an account. */
+	newLinks?: number;
 }
 
 /** The numbers the admin shows for one crawler. */
@@ -16,7 +21,11 @@ export interface CrawlerStats {
 	urlsPerMin: number;
 	/** HTTP 429 answers in the last hour. */
 	http429PerHour: number;
-	totals: { requests: number; processed: number; failed: number; http429: number };
+	/** Bytes through the proxy per hour, from the speed over the last minutes. 0 without a proxy. */
+	bytesPerHour: number;
+	/** New item-account links per minute. */
+	linksPerMin: number;
+	totals: { requests: number; processed: number; failed: number; http429: number; bytes: number; newLinks: number };
 	pauseMs: number;
 	idle: boolean;
 	/** Time of the last report, in ms since 1970. Undefined before the first report. */
@@ -28,6 +37,10 @@ export interface MetricSeries {
 	requests: number[];
 	urls: number[];
 	http429: number[];
+	/** New item-account links. */
+	links: number[];
+	/** Bytes through the proxy. */
+	bytes: number[];
 }
 
 /** The chart shows this many buckets of one minute. */
@@ -41,6 +54,9 @@ export const HOUR_MS = 60 * 60_000;
 interface Sample extends MetricsReport {
 	at: number;
 }
+
+/** Bytes sent and received together. */
+const bytesOf = (report: MetricsReport): number => (report.bytesSent ?? 0) + (report.bytesReceived ?? 0);
 
 const ZERO: MetricsReport = { requests: 0, http429: 0, processed: 0, failed: 0, pauseMs: 0 };
 
@@ -86,14 +102,23 @@ export class CrawlerMetricsTracker {
 			requestsPerMin: round((last.requests - speedBase.requests) / minutes),
 			urlsPerMin: round((last.processed + last.failed - speedBase.processed - speedBase.failed) / minutes),
 			http429PerHour: last.http429 - hourBase.http429,
-			totals: { requests: last.requests, processed: last.processed, failed: last.failed, http429: last.http429 },
+			bytesPerHour: Math.round((bytesOf(last) - bytesOf(speedBase)) / minutes * 60),
+			linksPerMin: round(((last.newLinks ?? 0) - (speedBase.newLinks ?? 0)) / minutes),
+			totals: {
+				requests: last.requests,
+				processed: last.processed,
+				failed: last.failed,
+				http429: last.http429,
+				bytes: bytesOf(last),
+				newLinks: last.newLinks ?? 0,
+			},
 			pauseMs: last.pauseMs,
 			idle: last.idle === true,
 			reportedAt: last.at,
 		};
 	}
 
-	/** Requests, URLs and HTTP 429 answers for each of the last minutes. Undefined before the first report. */
+	/** Requests, URLs, HTTP 429 answers, new links and bytes for each of the last minutes. Undefined before the first report. */
 	series(): MetricSeries | undefined {
 		if (this.samples.length < 2) {
 			return undefined;
@@ -102,6 +127,8 @@ export class CrawlerMetricsTracker {
 		const requests: number[] = [];
 		const urls: number[] = [];
 		const http429: number[] = [];
+		const links: number[] = [];
+		const bytes: number[] = [];
 		for (let i = 0; i < SERIES_BUCKETS; i++) {
 			const end = now - (SERIES_BUCKETS - 1 - i) * SERIES_BUCKET_MS;
 			const from = this.baseFor(end - SERIES_BUCKET_MS);
@@ -109,8 +136,10 @@ export class CrawlerMetricsTracker {
 			requests.push(Math.max(to.requests - from.requests, 0));
 			urls.push(Math.max(to.processed + to.failed - from.processed - from.failed, 0));
 			http429.push(Math.max(to.http429 - from.http429, 0));
+			links.push(Math.max((to.newLinks ?? 0) - (from.newLinks ?? 0), 0));
+			bytes.push(Math.max(bytesOf(to) - bytesOf(from), 0));
 		}
-		return { requests, urls, http429 };
+		return { requests, urls, http429, links, bytes };
 	}
 
 	/** The newest sample that is not newer than the given time, or the oldest one. */

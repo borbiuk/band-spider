@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import net, { type AddressInfo } from 'node:net';
+import zlib from 'node:zlib';
 import { after, before, describe, it } from 'node:test';
 import { HttpClient } from '../common/http-client';
 import { NoProxy, StaticProxy } from '../common/proxy-source';
@@ -107,6 +108,9 @@ describe('request pacing', () => {
 	});
 });
 
+const PLAIN = 'band spider '.repeat(20_000);
+const GZIPPED = zlib.gzipSync(PLAIN);
+
 describe('proxy sources', () => {
 	let proxy: http.Server;
 	let proxyHost: string;
@@ -132,6 +136,11 @@ describe('proxy sources', () => {
 		});
 		target = http.createServer((req, res) => {
 			targetSeen.push(req.url);
+			if (req.url === '/gzip') {
+				res.writeHead(200, { 'content-encoding': 'gzip' });
+				res.end(GZIPPED);
+				return;
+			}
 			res.end('direct');
 		});
 		proxyHost = await listen(proxy);
@@ -158,6 +167,34 @@ describe('proxy sources', () => {
 
 		assert.deepEqual(proxySeen, [targetHost], 'the proxy was asked to connect to the target');
 		assert.deepEqual(targetSeen, ['/page'], 'the target answered through the tunnel');
+	});
+
+	it('StaticProxy counts the compressed bytes, as the proxy bills them', async () => {
+		const source = new StaticProxy(`http://${proxyHost}`);
+		const client = new HttpClient(new RateLimitGate(), { proxySource: source, minDelayMs: 0, maxDelayMs: 0 });
+
+		try {
+			assert.equal(client.trafficBytes.received, 0);
+			const response = await client.get(`http://${targetHost}/gzip`);
+			assert.equal(response.body, PLAIN, 'the page is still decompressed');
+			const first = client.trafficBytes;
+			assert.ok(first.received >= GZIPPED.length, `received ${first.received}`);
+			assert.ok(first.received < GZIPPED.length + 500, 'the headers are small next to the body');
+			assert.ok(first.received < PLAIN.length / 10, 'not the decompressed size');
+			assert.ok(first.sent > 0 && first.sent < 1000, `sent ${first.sent}`);
+
+			await client.get(`http://${targetHost}/gzip`);
+			assert.ok(client.trafficBytes.received >= 2 * GZIPPED.length);
+			assert.ok(client.trafficBytes.sent > first.sent);
+		} finally {
+			await source.close();
+		}
+	});
+
+	it('a source that cannot count gives 0 bytes', async () => {
+		const client = new HttpClient(new RateLimitGate(), { proxySource: new NoProxy(), minDelayMs: 0, maxDelayMs: 0 });
+		await client.get(`http://${targetHost}/page`);
+		assert.deepEqual(client.trafficBytes, { sent: 0, received: 0 });
 	});
 
 	it('NoProxy goes to the target and not to a proxy', async () => {

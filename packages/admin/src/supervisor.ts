@@ -90,6 +90,10 @@ const metricsSchema = z.object({
 	failed: z.number(),
 	pauseMs: z.number(),
 	idle: z.boolean().optional(),
+	// older crawlers do not send these
+	bytesSent: z.number().optional(),
+	bytesReceived: z.number().optional(),
+	newLinks: z.number().optional(),
 });
 
 /** What a DB service sends over IPC. */

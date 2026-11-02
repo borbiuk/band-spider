@@ -86,7 +86,7 @@ export const runCrawler = async (config: CrawlerConfig, deps: CrawlerDeps = {}):
 		return (deps.createReader ?? (client => new FetchPageReader(client)))(http);
 	};
 	const spider = new BandSpider(store, createReader);
-	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics([...clients], store.counts, spider.isIdle) });
+	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics([...clients], store.counts, spider.isIdle, store.newLinks) });
 	const metricsTimer = setInterval(sendMetrics, metricsIntervalMs);
 	// the timer must not keep the process alive
 	metricsTimer.unref();

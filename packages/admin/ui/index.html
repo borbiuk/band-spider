@@ -7,40 +7,105 @@
 	<meta name="htmx-config" content='{"includeIndicatorStyles":false}'>
 	<title>Band Spider admin</title>
 	<link rel="stylesheet" href="/assets/app.css">
+	<!-- sets the chosen theme before the page is drawn, so it does not flash -->
+	<script src="/assets/theme.js"></script>
 	<script src="/assets/htmx.min.js"></script>
 	<script src="/assets/app.js" defer></script>
 </head>
-<body hx-ext="morph">
-	<header>
-		<h1>Band Spider <span>admin</span></h1>
-		<nav role="tablist" aria-label="Pages">
-			<button type="button" role="tab" data-tab="overview" aria-selected="true">Crawlers</button>
-			<button type="button" role="tab" data-tab="proxies" aria-selected="false">Proxies</button>
-		</nav>
-		<span id="connection" class="conn" data-state="connecting" role="status">
-			<i class="dot"></i><span id="connection-text">connecting...</span>
-		</span>
-	</header>
-	<main>
-		<div data-view="overview">
-			<section id="status" class="status-box" hx-get="/fragments/status" hx-trigger="load" hx-swap="morph">
-				<p class="meta">Loading...</p>
+<body hx-ext="morph" data-page="overview">
+	<!-- the icons: the page uses them with <use href="#i-name">, colors come from currentColor -->
+	<svg class="sprite" aria-hidden="true" focusable="false">
+		<symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+		<symbol id="i-crawlers" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M9.5 10.5 5 7M9 12H3.5M9.5 13.5 5 17M14.5 10.5 19 7M15 12h5.5M14.5 13.5 19 17M12 9V5M12 15v4"/></symbol>
+		<symbol id="i-proxies" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9M12 3c-2.5 2.7-3.8 5.7-3.8 9s1.3 6.3 3.8 9"/></symbol>
+		<symbol id="i-traffic" viewBox="0 0 24 24"><path d="M7 20V4M3.5 7.5 7 4l3.5 3.5M17 4v16M13.5 16.5 17 20l3.5-3.5"/></symbol>
+		<symbol id="i-insights" viewBox="0 0 24 24"><ellipse cx="12" cy="5.5" rx="8" ry="2.5"/><path d="M4 5.5v13c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5v-13M4 12c0 1.4 3.6 2.5 8 2.5s8-1.1 8-2.5"/></symbol>
+		<symbol id="i-play" viewBox="0 0 24 24"><path class="solid" d="M8 5.5v13l10.5-6.5z"/></symbol>
+		<symbol id="i-stop" viewBox="0 0 24 24"><rect class="solid" x="6.5" y="6.5" width="11" height="11" rx="1.5"/></symbol>
+		<symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+		<symbol id="i-restart" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5"/></symbol>
+		<symbol id="i-logs" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3M13 15h4"/></symbol>
+		<symbol id="i-more" viewBox="0 0 24 24"><circle class="solid" cx="5.5" cy="12" r="1.6"/><circle class="solid" cx="12" cy="12" r="1.6"/><circle class="solid" cx="18.5" cy="12" r="1.6"/></symbol>
+		<symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4"/></symbol>
+		<symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6 7l1 13h10l1-13M10 11v5M14 11v5"/></symbol>
+		<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+		<symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/></symbol>
+		<symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></symbol>
+		<symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+		<symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19zM12 10v4.5M12 17.2v.3"/></symbol>
+		<symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+		<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.7v.3"/></symbol>
+		<symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></symbol>
+		<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></symbol>
+		<symbol id="i-sort" viewBox="0 0 24 24"><path d="m8 10 4-4 4 4M8 14l4 4 4-4"/></symbol>
+		<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></symbol>
+		<symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4 8.5 8.5 0 1 0 20 14.5z"/></symbol>
+		<symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path class="solid" d="M12 3.5a8.5 8.5 0 0 1 0 17z"/></symbol>
+	</svg>
+
+	<div class="shell">
+		<aside class="sidebar">
+			<div class="brand"><svg class="icon brand-icon" aria-hidden="true"><use href="#i-crawlers"/></svg><span>Band Spider <span>admin</span></span></div>
+			<nav aria-label="Pages">
+				<a href="#overview" data-tab="overview" title="Overview (1)"><svg class="icon" aria-hidden="true"><use href="#i-overview"/></svg><span>Overview</span><b class="nav-badge" data-badge="attention" hidden></b></a>
+				<a href="#crawlers" data-tab="crawlers" title="Crawlers (2)"><svg class="icon" aria-hidden="true"><use href="#i-crawlers"/></svg><span>Crawlers</span><b class="nav-badge" data-badge="crawlers" hidden></b></a>
+				<a href="#proxies" data-tab="proxies" title="Proxies (3)"><svg class="icon" aria-hidden="true"><use href="#i-proxies"/></svg><span>Proxies</span></a>
+				<a href="#traffic" data-tab="traffic" title="Traffic (4)"><svg class="icon" aria-hidden="true"><use href="#i-traffic"/></svg><span>Traffic</span></a>
+				<a href="#insights" data-tab="insights" title="Insights (5)"><svg class="icon" aria-hidden="true"><use href="#i-insights"/></svg><span>Insights</span></a>
+			</nav>
+			<div class="sidebar-foot">
+				<span id="connection" class="conn" data-state="connecting" role="status">
+					<i class="dot"></i><span id="connection-text">connecting...</span>
+				</span>
+				<button type="button" id="theme-toggle" class="btn-icon btn-ghost" title="Theme: auto" aria-label="Theme: auto">
+					<svg class="icon" aria-hidden="true"><use href="#i-auto"/></svg>
+				</button>
+			</div>
+		</aside>
+
+		<main>
+			<!-- the live pages Overview, Crawlers and Traffic: one block that each live update changes in place -->
+			<section id="status" hx-get="/fragments/status" hx-trigger="load" hx-swap="morph">
+				<div class="loading"><span class="spinner"></span>Loading...</div>
 			</section>
-		</div>
-		<div data-view="proxies" hidden>
-			<section id="proxy-import" hx-get="/fragments/proxy-import" hx-trigger="load" hx-swap="innerHTML"></section>
-			<section id="proxy-list" hx-get="/fragments/proxy-list" hx-trigger="load" hx-swap="morph"></section>
-		</div>
-	</main>
-	<!-- the form, the logs and the messages float over the page, so they do not move it -->
+			<div class="view" data-view="proxies">
+				<section id="proxy-list" hx-get="/fragments/proxy-list" hx-trigger="load" hx-swap="morph">
+					<div class="loading"><span class="spinner"></span>Loading...</div>
+				</section>
+			</div>
+			<!-- the page script loads Insights while the page is open, so the DB size is only counted then -->
+			<div class="view" data-view="insights">
+				<section id="insights">
+					<div class="loading"><span class="spinner"></span>Loading...</div>
+				</section>
+			</div>
+		</main>
+	</div>
+
+	<!-- shows while crawlers of the table are chosen; the checkboxes of the table belong to this form -->
+	<form id="bulk-form" class="actionbar bulkbar" aria-label="Actions for the chosen crawlers">
+		<span class="actionbar-count"><b data-bulk-count>0</b> chosen</span>
+		<span class="grow"></span>
+		<button type="button" class="btn-ok" hx-post="/fragments/bulk/start" hx-target="#status" hx-swap="morph"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg>Start</button>
+		<button type="button" class="btn-warn" hx-post="/fragments/bulk/stop" hx-target="#status" hx-swap="morph" hx-confirm="Stop the chosen crawlers?"><svg class="icon" aria-hidden="true"><use href="#i-stop"/></svg>Stop</button>
+		<button type="button" class="btn-ghost" hx-post="/fragments/bulk/restart" hx-target="#status" hx-swap="morph" hx-confirm="Restart the chosen crawlers?"><svg class="icon" aria-hidden="true"><use href="#i-restart"/></svg>Restart</button>
+		<button type="button" class="btn-danger" hx-post="/fragments/bulk/remove" hx-target="#status" hx-swap="morph" hx-confirm="Remove the chosen crawlers from the config? Running ones are skipped."><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Remove</button>
+		<button type="button" class="btn-ghost" data-bulk-clear>Clear</button>
+	</form>
+
+	<dialog id="import-dialog" aria-labelledby="import-title">
+		<section id="proxy-import" hx-get="/fragments/proxy-import" hx-trigger="load" hx-swap="innerHTML"></section>
+	</dialog>
+
+	<!-- the form, the details, the logs and the messages float over the page, so they do not move it -->
 	<section id="form-area"></section>
+	<section id="detail"></section>
 	<section id="logs"></section>
-	<section id="insights"></section>
 	<div id="toasts" aria-live="polite"></div>
 	<dialog id="confirm-dialog">
 		<form method="dialog">
 			<p id="confirm-text"></p>
-			<div class="buttons">
+			<div class="buttons buttons-end">
 				<button type="submit" value="cancel" class="btn-ghost">Cancel</button>
 				<button type="submit" value="ok" class="btn-danger">Confirm</button>
 			</div>

@@ -11,7 +11,7 @@ import { JsonFileConfigStore } from '../config-store';
 import { SESSION_COOKIE } from '../security';
 import { Supervisor } from '../supervisor';
 import { CRAWLER_ENTRY, DB_ENTRY, readyDbLauncher } from './fakes';
-import { emptyForm, formFromSetting, hasCustomSettings, renderCrawlerForm, settingsText } from '../ui-render';
+import { emptyForm, formFromSetting, hasCustomSettings, bytesText, renderCrawlerForm, renderStatus, settingsText } from '../ui-render';
 
 const TOKEN = 'test-token';
 const PORT = 4202;
@@ -178,6 +178,112 @@ describe('add crawlers for free proxies (page)', () => {
 	});
 });
 
+describe('create crawlers for chosen proxies (page)', () => {
+	const postKeys = (keys: string[], extra: Record<string, string> = {}) =>
+		app.inject({
+			method: 'POST',
+			url: '/fragments/proxies/chosen-crawlers',
+			headers: { ...headers, origin, 'content-type': 'application/x-www-form-urlencoded' },
+			payload: [...keys.map(key => ['keys', key]), ...Object.entries(extra)]
+				.map(([name, value]) => `${name}=${encodeURIComponent(value)}`).join('&'),
+		});
+
+	it('draws a checkbox for each free proxy and a disabled one for a used proxy', async () => {
+		await configStore.save(configOf(2, [pooled('a', '10.0.0.1:80')]));
+		const list = await app.inject({ method: 'GET', url: '/fragments/proxy-list', headers });
+		assert.match(list.body, /name="keys" value="10\.0\.0\.1:80"[^>]* disabled>/);
+		assert.match(list.body, /name="keys" value="10\.0\.0\.2:80"[^>]* data-free>/);
+		assert.match(list.body, /Create crawlers for chosen proxies/);
+	});
+
+	it('adds a crawler only for the chosen free proxies, with the chosen type', async () => {
+		await configStore.save(configOf(4, [pooled('a', '10.0.0.1:80')]));
+		const response = await postKeys(['10.0.0.1:80', '10.0.0.3:80', '10.0.0.4:80', 'nope:1'], { type: 'account' });
+		assert.match(response.body, /2 crawlers added: accounts-1, accounts-2/);
+		const crawlers = saved().crawlers;
+		assert.deepEqual(crawlers.map((item: CrawlerSetting) => [item.name, item.type, item.proxy]), [
+			['a', 'item', { kind: 'pool', key: '10.0.0.1:80' }],
+			['accounts-1', 'account', { kind: 'pool', key: '10.0.0.3:80' }],
+			['accounts-2', 'account', { kind: 'pool', key: '10.0.0.4:80' }],
+		]);
+		assert.ok((await supervisor.status()).crawlers.every(item => item.state === 'stopped'));
+	});
+
+	it('starts the new crawlers when asked', async () => {
+		await configStore.save(configOf(2));
+		const response = await postKeys(['10.0.0.1:80', '10.0.0.2:80'], { type: 'item', start: '1' });
+		assert.match(response.body, /2 crawlers started/);
+		const states = (await supervisor.status()).crawlers.map(item => item.state);
+		assert.equal(states.length, 2);
+		assert.ok(states.every(state => state === 'starting' || state === 'running'));
+		await supervisor.stopAll();
+	});
+
+	it('asks for a choice when nothing is chosen and changes nothing', async () => {
+		await configStore.save(configOf(2));
+		const response = await postKeys([], { type: 'item' });
+		assert.match(response.body, /Choose at least one proxy first/);
+		assert.equal(saved().crawlers.length, 0);
+	});
+
+	it('refuses a type that is not item or account', async () => {
+		await configStore.save(configOf(2));
+		const response = await postKeys(['10.0.0.1:80'], { type: 'split' });
+		assert.match(response.body, /type/);
+		assert.equal(saved().crawlers.length, 0);
+	});
+});
+
+describe('filter and sort of the crawler table', () => {
+	it('gives each row the values the page script reads', async () => {
+		await configStore.save(configOf(1, [{ name: 'a', type: 'account', proxy: { kind: 'pool', key: '10.0.0.1:80' } }]));
+		const page = await app.inject({ method: 'GET', url: '/fragments/status', headers });
+		assert.match(page.body, /data-tools/);
+		assert.match(page.body, /data-index="0" data-name="a" data-state="stopped" data-type="account" data-search="a pool 10\.0\.0\.1:80"/);
+		assert.match(page.body, /<option value="requests">requests\/min<\/option>/);
+	});
+
+	it('has no controls when there is no crawler', async () => {
+		const page = renderStatus({ ...(await supervisor.status()), crawlers: [] }, configOf(0));
+		assert.doesNotMatch(page, /data-tools/);
+	});
+});
+
+describe('traffic and new links in the crawler table', () => {
+	it('formats sizes', () => {
+		assert.equal(bytesText(0), '0 B');
+		assert.equal(bytesText(999), '999 B');
+		assert.equal(bytesText(12_400_000), '12.4 MB');
+		assert.equal(bytesText(1_500_000_000), '1.5 GB');
+		assert.equal(bytesText(250_000_000_000), '250 GB');
+	});
+
+	it('shows the traffic and the links of a crawler, and the month estimate on top', async () => {
+		const config = configOf(1, [pooled('a', '10.0.0.1:80'), { name: 'local', type: 'item', proxy: { kind: 'none' } }]);
+		const status = await supervisor.status();
+		const stats = {
+			requestsPerMin: 1, urlsPerMin: 1, http429PerHour: 0, bytesPerHour: 36_000_000, linksPerMin: 4.5,
+			totals: { requests: 1, processed: 1, failed: 0, http429: 0, bytes: 1_500_000_000, newLinks: 321 }, pauseMs: 0, idle: false,
+		};
+		const page = renderStatus({
+			...status,
+			crawlers: [
+				{ name: 'a', configured: true, state: 'running', stats },
+				{ name: 'local', configured: true, state: 'running', stats: { ...stats, bytesPerHour: 0, totals: { ...stats.totals, bytes: 0 } } },
+			],
+		}, config);
+		assert.match(page, /data-sort="links" title="Sort by new item-account links">Links/);
+		assert.match(page, /data-sort="bytes" title="Sort by traffic through the proxy">Traffic/);
+		assert.match(page, /data-label="Traffic"><b>1\.5 GB<\/b><span class="sub">36\.0 MB\/hour<\/span>/);
+		assert.match(page, /data-label="New links"><b>321<\/b><span class="sub">4\.5\/min<\/span>/);
+		assert.match(page, /local IP, not counted/);
+		// one crawler is billed: 36 MB an hour for 720 hours
+		assert.match(page, /~25\.9 GB\/month/);
+		assert.match(page, /data-bytes="1500000000" data-links="321"/);
+		assert.match(page, /<option value="bytes">traffic<\/option><option value="links">new links<\/option>|<option value="bytes">traffic<\/option>\s*<option value="links">new links<\/option>/);
+	});
+});
+
 const crawler = (extra: Record<string, unknown> = {}): CrawlerSetting =>
 	({ name: 'c', type: 'item', reverse: false, workers: 1, proxy: { kind: 'none' }, ...extra }) as CrawlerSetting;
 
@@ -200,7 +306,7 @@ describe('crawler settings text', () => {
 	it('shows the type and the proxy in the table row', async () => {
 		await configStore.save(configOf(1, [pooled('only', '10.0.0.1:80')]));
 		const page = await app.inject({ method: 'GET', url: '/fragments/status', headers });
-		assert.match(page.body, /title="item">item<\/span><span class="meta clip">pool 10\.0\.0\.1:80<\/span>/);
+		assert.match(page.body, /title="item · pool 10\.0\.0\.1:80">item · pool 10\.0\.0\.1:80<\/span>/);
 		assert.doesNotMatch(page.body, /workers/);
 	});
 });

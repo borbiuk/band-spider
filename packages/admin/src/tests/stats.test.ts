@@ -276,8 +276,8 @@ describe('statistics on the page', () => {
 			name: 'items', configured: true, state: 'running' as const,
 			counts: { claimed: 5, saved: 4, failed: 1, rateLimited: 0, notFound: 0 },
 			stats: {
-				requestsPerMin: 120.5, urlsPerMin: 60, http429PerHour: 3,
-				totals: { requests: 12345, processed: 800, failed: 12, http429: 4 }, pauseMs: 65_000, idle: false,
+				requestsPerMin: 120.5, urlsPerMin: 60, http429PerHour: 3, bytesPerHour: 36_000_000, linksPerMin: 4.5,
+				totals: { requests: 12345, processed: 800, failed: 12, http429: 4, bytes: 1_500_000_000, newLinks: 321 }, pauseMs: 65_000, idle: false,
 			},
 		}],
 	};
@@ -287,11 +287,10 @@ describe('statistics on the page', () => {
 
 		assert.match(html, /queue left: 1,500 items, 42 accounts/);
 		assert.match(html, /12 claimed, 9 items saved, 1 accounts saved/);
-		assert.match(html, /<b>120\.5<\/b> requests\/min/);
-		assert.match(html, /<b>60<\/b> URLs\/min/);
-		assert.match(html, /stat-warn"><b>3<\/b> HTTP 429\/hour/);
-		assert.match(html, /12,345 requests, 800 saved, 12 failed, 4 HTTP 429/);
-		assert.match(html, /paused after HTTP 429, 1m 05s left/);
+		assert.match(html, /data-label="Requests\/min" title="total: 12,345 requests, 800 saved, 12 failed, 4 HTTP 429"><b>120\.5<\/b>/);
+		assert.match(html, /data-label="URLs\/min"><b>60<\/b><span class="sub">800 saved<\/span>/);
+		assert.match(html, /data-label="HTTP 429\/hour"><b class="lvl-warn">3<\/b><span class="sub">4 total<\/span>/);
+		assert.match(html, /title="paused after HTTP 429, 1m 05s left">paused 1m 05s</);
 	});
 
 	it('shows when a crawler waits for URLs', () => {
@@ -327,7 +326,7 @@ describe('statistics on the page', () => {
 		const values = Array.from({ length: 30 }, (_, i) => i * 2);
 		const html = renderStatus({
 			db: { ...baseStatus.db, queueHistory: [9, 7, 5] },
-			crawlers: [{ ...crawler, series: { requests: values, urls: values, http429: values } }],
+			crawlers: [{ ...crawler, series: { requests: values, urls: values, http429: values, links: values, bytes: values } }],
 		}, config);
 
 		assert.match(html, /<svg class="chart"/);
@@ -338,7 +337,8 @@ describe('statistics on the page', () => {
 
 	it('keeps the same lines in a crawler row with and without a pause', () => {
 		const [crawler] = baseStatus.crawlers;
-		const lines = (html: string) => html.match(/class="(?:note|stats|meta clip)/g)?.length;
+		// only the crawler table: the other pages show more when there is a report
+		const lines = (html: string) => /<table class="crawlers">[\s\S]*<\/table>/.exec(html)?.[0].match(/class="sub/g)?.length;
 		const calm = { ...baseStatus, crawlers: [{ ...crawler, stats: { ...crawler.stats, pauseMs: 0 } }] };
 		const empty = { ...baseStatus, crawlers: [{ name: crawler.name, configured: true, state: 'running' as const }] };
 

@@ -54,6 +54,7 @@ export class HttpClient {
 	private readonly timeoutMs: number;
 	private readonly onRateLimited: (url: string, retryAfter?: string) => void;
 	private readonly fetchFn: typeof fetch;
+	private readonly proxySource: ProxySource;
 	private readonly sleep: (ms: number) => Promise<void>;
 	private readonly random: () => number;
 	private readonly now: () => number;
@@ -73,7 +74,8 @@ export class HttpClient {
 		this.maxDelayMs = options.maxDelayMs ?? MAX_REQUEST_DELAY_MS;
 		this.timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
 		this.onRateLimited = options.onRateLimited ?? ((_url, retryAfter) => { this.gate.trip(retryAfter); });
-		this.fetchFn = options.fetchFn ?? (options.proxySource ?? new NoProxy()).fetchFn;
+		this.proxySource = options.proxySource ?? new NoProxy();
+		this.fetchFn = options.fetchFn ?? this.proxySource.fetchFn;
 		this.sleep = options.sleep ?? (ms => sleep(ms));
 		this.random = options.random ?? Math.random;
 		this.now = options.now ?? Date.now;
@@ -87,6 +89,12 @@ export class HttpClient {
 	/** How many answers were HTTP 429. */
 	public get rateLimitedCount(): number {
 		return this.rateLimited;
+	}
+
+	/** Bytes sent and received through the proxy. Both are 0 when the source cannot count them, like the local IP. */
+	public get trafficBytes(): { sent: number; received: number } {
+		const { sent = 0, received = 0 } = this.proxySource.traffic ?? {};
+		return { sent, received };
 	}
 
 	/** How long the pause after a 429 still lasts in ms, 0 when there is none. */

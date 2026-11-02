@@ -9,24 +9,53 @@ import { describe, it } from 'node:test';
 import { HttpClient, ItemPageData, PageReader } from '@band-spider/core';
 import { startDbService } from '@band-spider/db-service';
 import { BandDatabase } from '@band-spider/storage-sqlite';
-import { collectMetrics, CrawlerEvent, emptyCounts, runCrawler } from '../index';
+import { collectMetrics, CountingCrawlStore, CrawlerEvent, emptyCounts, runCrawler } from '../index';
 
 describe('collectMetrics', () => {
 	it('adds up the clients and takes the longest pause', () => {
 		const metrics = collectMetrics(
 			[
-				{ requestCount: 5, rateLimitedCount: 1, pauseLeftMs: 0 },
-				{ requestCount: 7, rateLimitedCount: 2, pauseLeftMs: 12_000 },
+				{ requestCount: 5, rateLimitedCount: 1, pauseLeftMs: 0, trafficBytes: { sent: 1000, received: 50_000 } },
+				{ requestCount: 7, rateLimitedCount: 2, pauseLeftMs: 12_000, trafficBytes: { sent: 2000, received: 70_000 } },
 				{ requestCount: 1, rateLimitedCount: 0, pauseLeftMs: 3_000 },
 			],
 			{ ...emptyCounts(), claimed: 9, saved: 6, failed: 2, notFound: 1, rateLimited: 3 },
+			false,
+			42,
 		);
 
-		assert.deepEqual(metrics, { requests: 13, http429: 3, processed: 6, failed: 3, pauseMs: 12_000, idle: false });
+		assert.deepEqual(metrics, {
+			requests: 13, http429: 3, processed: 6, failed: 3, pauseMs: 12_000, idle: false,
+			// a client without a traffic meter (the local IP) adds nothing
+			bytesSent: 3000, bytesReceived: 120_000, newLinks: 42,
+		});
 	});
 
 	it('is all zero without workers', () => {
-		assert.deepEqual(collectMetrics([], emptyCounts()), { requests: 0, http429: 0, processed: 0, failed: 0, pauseMs: 0, idle: false });
+		assert.deepEqual(collectMetrics([], emptyCounts()), {
+			requests: 0, http429: 0, processed: 0, failed: 0, pauseMs: 0, idle: false, bytesSent: 0, bytesReceived: 0, newLinks: 0,
+		});
+	});
+});
+
+describe('new item-account links', () => {
+	const tab = (newRelations: number) => ({ total: 0, newRecords: 0, newRelations });
+	const inner = {
+		saveItem: async () => ({ accounts: tab(4), tags: tab(9), releaseDate: tab(0), album: tab(0), tracks: tab(0), newUrls: [] as string[] }),
+		saveAccount: async () => ({
+			collection: { ...tab(10), allScraped: true, newUrls: [] as string[] },
+			wishlist: { ...tab(3), allScraped: true, newUrls: [] as string[] },
+			followers: { ...tab(50), allScraped: true, newUrls: [] as string[] },
+			following: { ...tab(60), allScraped: true, newUrls: [] as string[] },
+		}),
+	};
+
+	it('counts the supporters of an item and the collection and wishlist of an account, not tags or follows', async () => {
+		const store = new CountingCrawlStore(inner as never);
+		const task = {} as never;
+		await store.saveItem(task, {} as never);
+		await store.saveAccount(task, {} as never);
+		assert.equal(store.newLinks, 4 + 10 + 3);
 	});
 });
 
@@ -72,7 +101,7 @@ describe('crawler metrics event', () => {
 			assert.equal(metrics.length, 1);
 			assert.deepEqual(metrics[0], {
 				type: 'metrics',
-				metrics: { requests: 3, http429: 0, processed: 3, failed: 0, pauseMs: 0, idle: false },
+				metrics: { requests: 3, http429: 0, processed: 3, failed: 0, pauseMs: 0, idle: false, bytesSent: 0, bytesReceived: 0, newLinks: 0 },
 			});
 			assert.equal(events.at(-1)?.type, 'stopped');
 			assert.equal(events.at(-2)?.type, 'metrics');

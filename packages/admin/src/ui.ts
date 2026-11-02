@@ -10,6 +10,8 @@ import { AdminError, conflict, notFound } from './errors';
 import { ImportMode, poolUsage, ProxyPoolService } from './proxy-pool';
 import { maskConfig, restoreSecrets } from './secrets';
 import { Supervisor } from './supervisor';
+import { bulkText } from './ui-bulk';
+import { renderCrawlerDetail } from './ui-detail';
 import { renderInsights } from './ui-insights';
 import {
 	emptyForm,
@@ -47,6 +49,7 @@ const PAGE_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; conne
 const controlParams = z.object({ action: z.enum(['start', 'stop', 'restart']) });
 const crawlerParams = z.object({ name: z.string().min(1), action: z.enum(['start', 'stop', 'restart']) });
 const allParams = z.object({ action: z.enum(['start', 'stop']) });
+const bulkParams = z.object({ action: z.enum(['start', 'stop', 'restart', 'remove']) });
 
 const formSchema = z.object({
 	original: z.string().default(''),
@@ -68,7 +71,18 @@ const formSchema = z.object({
 	poolKey: z.string().default(''),
 });
 
+/** The crawlers chosen in the table. A single checkbox sends a string, many send an array. */
+const bulkFormSchema = z.object({
+	names: z.union([z.string(), z.array(z.string())]).default([]).transform(value => Array.isArray(value) ? value : [value]),
+});
+
 const freeCrawlersFormSchema = z.object({ type: autoCrawlerKindSchema.default('item') });
+
+const chosenCrawlersFormSchema = z.object({
+	keys: z.union([z.string(), z.array(z.string())]).default([]).transform(value => Array.isArray(value) ? value : [value]),
+	type: z.enum(['item', 'account']).default('item'),
+	start: z.string().optional(),
+});
 
 const importFormSchema = z.object({
 	text: z.string().default(''),
@@ -126,11 +140,19 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 		['/assets/htmx.min.js', 'text/javascript; charset=utf-8', fs.readFileSync(HTMX_FILE)],
 		['/assets/app.js', 'text/javascript; charset=utf-8', readUiFile('app.js')],
 		['/assets/app.css', 'text/css; charset=utf-8', readUiFile('app.css')],
+		// a tiny script in the head sets the chosen theme before the page is drawn
+		['/assets/theme.js', 'text/javascript; charset=utf-8', readUiFile('theme.js')],
 	];
 
 	// htmx sends forms as urlencoded
 	app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (_request, body, done) => {
-		done(null, Object.fromEntries(new URLSearchParams(body as string)));
+		// a field that repeats (the checkboxes of the proxy list) becomes an array
+		const fields: Record<string, string | string[]> = {};
+		for (const [key, value] of new URLSearchParams(body as string)) {
+			const old = fields[key];
+			fields[key] = old === undefined ? value : Array.isArray(old) ? [...old, value] : [old, value];
+		}
+		done(null, fields);
 	});
 
 	app.get('/', async (_request, reply) =>
@@ -147,14 +169,18 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 
 	// The current status. The blocks of the page are changed in place ("morph"), so the page does not jump.
 	const statusHtml = async (): Promise<string> =>
-		renderStatus(await supervisor.status(), await configStore.load());
+		renderStatus(await supervisor.status(), await configStore.load(), Date.now());
+
+	// The pool list shows the state and the traffic of the crawlers that use a proxy
+	const proxyListHtml = async (): Promise<string> =>
+		renderProxyList(await proxyPool.list(), (await supervisor.status()).crawlers);
 
 	const statusOob = async (): Promise<string> =>
 		`<div id="status" hx-swap-oob="morph">${await statusHtml()}</div>`;
 
 	// The pool list changes when a crawler is added, changed or removed, so those responses refresh it too
 	const poolListOob = async (): Promise<string> =>
-		`<div id="proxy-list" hx-swap-oob="morph">${renderProxyList(await proxyPool.list())}</div>`;
+		`<div id="proxy-list" hx-swap-oob="morph">${await proxyListHtml()}</div>`;
 
 	const errorText = (error: unknown): string => error instanceof AdminError ? error.message : errorMessage(error);
 
@@ -224,7 +250,61 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 	// The Insights view. It asks the supervisor for the DB size, and a status event refreshes the view when the count is done.
 	app.get('/fragments/insights', async (_request, reply) => html(reply, renderInsights(await supervisor.insights(), Date.now())));
 
-	app.get('/fragments/insights-close', async (_request, reply) => html(reply, ''));
+	// The detail drawer of one crawler. The page script asks again on each live update while it is open.
+	app.get('/fragments/crawler-detail', async (request, reply) => {
+		const { name } = z.object({ name: z.string().min(1) }).parse(request.query);
+		const status = (await supervisor.status()).crawlers.find(crawler => crawler.name === name);
+		const setting = (await configStore.load()).crawlers.find(crawler => crawler.name === name);
+		return html(reply, renderCrawlerDetail(name, status, setting, Date.now()));
+	});
+
+	app.get('/fragments/detail-close', async (_request, reply) => html(reply, ''));
+
+	// Start, stop, restart or remove the crawlers chosen in the table. Each crawler is tried, the message says what did not work.
+	app.post('/fragments/bulk/:action', async (request, reply) => {
+		const { action } = parseParams(bulkParams, request.params);
+		const { names } = bulkFormSchema.parse(request.body ?? {});
+		if (names.length === 0) {
+			return html(reply, await statusHtml() + toast('warn', 'Choose at least one crawler first'));
+		}
+		const status = await supervisor.status();
+		const states = new Map(status.crawlers.map(crawler => [crawler.name, crawler]));
+		const failed: string[] = [];
+		let done: string[] = [];
+		let skipped: string[] = [];
+		if (action === 'remove') {
+			const config = await configStore.load();
+			const removable = new Set(names.filter(name => {
+				const state = states.get(name)?.state ?? 'stopped';
+				return config.crawlers.some(crawler => crawler.name === name) && (state === 'stopped' || state === 'failed');
+			}));
+			skipped = names.filter(name => !removable.has(name));
+			done = [...removable];
+			if (done.length > 0) {
+				await configStore.save({ ...config, crawlers: config.crawlers.filter(crawler => !removable.has(crawler.name)) });
+			}
+		} else {
+			const active = (name: string): boolean => ['starting', 'running', 'stopping'].includes(states.get(name)?.state ?? 'stopped');
+			const targets = action === 'start' ? names.filter(name => !active(name)) : action === 'stop' ? names.filter(active) : names;
+			skipped = names.filter(name => !targets.includes(name));
+			if (action !== 'stop' && targets.length > 0 && (status.db.state === 'stopped' || status.db.state === 'failed')) {
+				// like "Start all": the DB service comes first, so the crawlers do not start it at the same time
+				try {
+					await supervisor.startDb();
+				} catch (error) {
+					return html(reply, await statusHtml() + toast('error', `The DB service did not start: ${errorText(error)}`));
+				}
+			}
+			const job = (name: string): Promise<void> =>
+				action === 'start' ? supervisor.startCrawler(name) : action === 'stop' ? supervisor.stopCrawler(name) : supervisor.restartCrawler(name);
+			const outcomes = await Promise.allSettled(targets.map(job));
+			outcomes.forEach((outcome, i) => outcome.status === 'fulfilled' ? done.push(targets[i]) : failed.push(`${targets[i]}: ${errorText(outcome.reason)}`));
+		}
+		const text = bulkText(action, done.length, skipped.length, failed);
+		return html(reply, await statusHtml()
+			+ toast(failed.length ? 'error' : done.length === 0 ? 'warn' : 'ok', text)
+			+ (action === 'remove' ? await poolListOob() : ''));
+	});
 
 	app.get('/fragments/logs-close', async (_request, reply) => html(reply, ''));
 
@@ -285,7 +365,7 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 
 	app.get('/fragments/proxy-import', async (_request, reply) => html(reply, renderProxyImport()));
 
-	app.get('/fragments/proxy-list', async (_request, reply) => html(reply, renderProxyList(await proxyPool.list())));
+	app.get('/fragments/proxy-list', async (_request, reply) => html(reply, await proxyListHtml()));
 
 	// A refused import shows its message on the page. The pasted text is not sent back, it holds passwords.
 	app.post('/fragments/proxy-import', async (request, reply) => {
@@ -305,11 +385,44 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 	app.post('/fragments/proxies/free-crawlers', async (request, reply) => {
 		const form = freeCrawlersFormSchema.safeParse(request.body ?? {});
 		if (!form.success) {
-			return html(reply, renderProxyList(await proxyPool.list()) + toast('error', issuesText(form.error)));
+			return html(reply, await proxyListHtml() + toast('error', issuesText(form.error)));
 		}
 		const result = await autoCrawlers.addForFreeProxies(form.data.type);
-		return html(reply, renderProxyList(await proxyPool.list()) + await statusOob()
+		return html(reply, await proxyListHtml() + await statusOob()
 			+ toast(result.added === 0 ? 'warn' : 'ok', autoAddText(result)));
+	});
+
+	// Adds one crawler for each chosen proxy, and starts them when asked. A crawler that does not start stays in the config.
+	app.post('/fragments/proxies/chosen-crawlers', async (request, reply) => {
+		const form = chosenCrawlersFormSchema.safeParse(request.body ?? {});
+		if (!form.success) {
+			return html(reply, await proxyListHtml() + toast('error', issuesText(form.error)));
+		}
+		if (form.data.keys.length === 0) {
+			return html(reply, await proxyListHtml() + toast('warn', 'Choose at least one proxy first'));
+		}
+		const result = await autoCrawlers.addForProxies(form.data.keys, form.data.type);
+		let message = toast(result.added === 0 ? 'warn' : 'ok', result.added === 0
+			? 'No crawler added: the chosen proxies are used or not in the pool'
+			: autoAddText(result));
+		if (form.data.start !== undefined && result.added > 0) {
+			// like "Start all": the DB service comes first, so the crawlers do not start it at the same time
+			const dbState = (await supervisor.status()).db.state;
+			if (dbState === 'stopped' || dbState === 'failed') {
+				try {
+					await supervisor.startDb();
+				} catch (error) {
+					return html(reply, await proxyListHtml() + await statusOob() + message
+						+ toast('error', `Crawlers were added but not started: ${errorText(error)}`));
+				}
+			}
+			const outcomes = await Promise.allSettled(result.names.map(name => supervisor.startCrawler(name)));
+			const failed = outcomes.flatMap((outcome, i) => outcome.status === 'rejected' ? [`${result.names[i]}: ${errorText(outcome.reason)}`] : []);
+			message += failed.length
+				? toast('error', `${failed.length} of ${result.added} crawlers did not start. ${failed.slice(0, 3).join('; ')}`)
+				: toast('ok', `${result.added} ${result.added === 1 ? 'crawler' : 'crawlers'} started`);
+		}
+		return html(reply, await proxyListHtml() + await statusOob() + message);
 	});
 
 	app.delete('/fragments/proxy-list/:key', async (request, reply) => {
@@ -320,7 +433,7 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 		} catch (caught) {
 			error = errorText(caught);
 		}
-		return html(reply, renderProxyList(await proxyPool.list()) + (error ? toast('error', error) : ''));
+		return html(reply, await proxyListHtml() + (error ? toast('error', error) : ''));
 	});
 
 	app.get('/fragments/logs', async (request, reply) => {

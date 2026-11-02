@@ -14,7 +14,11 @@ export * from './service';
 export * from './supervisor';
 export * from './insights';
 export * from './ui';
+export * from './ui-attention';
+export * from './ui-bulk';
+export * from './ui-detail';
 export * from './ui-insights';
+export * from './ui-overview';
 export * from './ui-render';
 export * from './webshare';
 

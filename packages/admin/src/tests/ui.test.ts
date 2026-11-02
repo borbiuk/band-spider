@@ -147,7 +147,11 @@ describe('admin page', () => {
 		child.emit({ type: 'progress', counts: { claimed: 7, saved: 5, failed: 1, rateLimited: 0, notFound: 0 } });
 		const running = (await get('/fragments/status')).body;
 		assert.match(running, /state-running/);
-		assert.match(running, /7 claimed, 5 saved/);
+		// the counts are in the detail drawer of the crawler
+		const detail = (await get('/fragments/crawler-detail?name=items')).body;
+		assert.match(detail, /data-detail="items"/);
+		assert.match(detail, /Claimed<\/span><b>7<\/b>/);
+		assert.match(detail, /Saved<\/span><b>5<\/b>/);
 
 		const removed = await del('/fragments/crawlers/items');
 		assert.equal(removed.statusCode, 200);
@@ -166,15 +170,14 @@ describe('admin page', () => {
 		assert.equal((await post('/fragments/crawlers/items/explode')).statusCode, 404);
 	});
 
-	it('has a View button and an Insights view that works while the DB service is stopped', async () => {
+	it('links to the Insights page, which works while the DB service is stopped', async () => {
 		const status = (await get('/fragments/status')).body;
-		assert.match(status, /hx-get="\/fragments\/insights"[^>]*>View</);
+		assert.match(status, /href="#insights"/);
 
 		const view = await get('/fragments/insights');
 		assert.equal(view.statusCode, 200);
 		assert.match(view.body, /Database insights/);
 		assert.match(view.body, /DB service is not running/);
-		assert.equal((await get('/fragments/insights-close')).body, '');
 		assert.equal((await get('/')).body.includes('id="insights"'), true);
 	});
 

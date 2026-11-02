@@ -32,11 +32,29 @@ describe('CrawlerMetricsTracker', () => {
 			requestsPerMin: 120,
 			urlsPerMin: 60,
 			http429PerHour: 2,
-			totals: { requests: 120, processed: 40, failed: 20, http429: 2 },
+			bytesPerHour: 0,
+			linksPerMin: 0,
+			totals: { requests: 120, processed: 40, failed: 20, http429: 2, bytes: 0, newLinks: 0 },
 			pauseMs: 5000,
 			idle: false,
 			reportedAt: clock.now,
 		});
+	});
+
+	it('gives the traffic and the new links per hour and per minute', () => {
+		const { clock, tracker } = setup();
+
+		clock.now += MIN;
+		tracker.record(report({ bytesSent: 10_000, bytesReceived: 590_000, newLinks: 30 }));
+		clock.now += MIN;
+		tracker.record(report({ bytesSent: 20_000, bytesReceived: 1_180_000, newLinks: 90 }));
+
+		const stats = tracker.summary()!;
+		// 1.2 MB in two minutes
+		assert.equal(stats.bytesPerHour, 36_000_000);
+		assert.equal(stats.linksPerMin, 45);
+		assert.equal(stats.totals.bytes, 1_200_000);
+		assert.equal(stats.totals.newLinks, 90);
 	});
 
 	it('counts the speed over the last five minutes only', () => {
@@ -103,9 +121,9 @@ describe('CrawlerMetricsTracker', () => {
 		assert.equal(tracker.series(), undefined);
 
 		clock.now += MIN;
-		tracker.record(report({ requests: 60, processed: 20, failed: 10, http429: 1 }));
+		tracker.record(report({ requests: 60, processed: 20, failed: 10, http429: 1, newLinks: 5, bytesSent: 100, bytesReceived: 900 }));
 		clock.now += MIN;
-		tracker.record(report({ requests: 180, processed: 50, failed: 10, http429: 1 }));
+		tracker.record(report({ requests: 180, processed: 50, failed: 10, http429: 1, newLinks: 25, bytesSent: 200, bytesReceived: 2800 }));
 
 		const series = tracker.series();
 		assert.equal(series?.requests.length, 30);
@@ -113,6 +131,8 @@ describe('CrawlerMetricsTracker', () => {
 		assert.deepEqual(series?.requests.slice(-3), [0, 60, 120]);
 		assert.deepEqual(series?.urls.slice(-3), [0, 30, 30]);
 		assert.deepEqual(series?.http429.slice(-3), [0, 1, 0]);
+		assert.deepEqual(series?.links.slice(-3), [0, 5, 20]);
+		assert.deepEqual(series?.bytes.slice(-3), [0, 1000, 2000]);
 		assert.equal(series?.requests.slice(0, 27).every(value => value === 0), true);
 	});
 });

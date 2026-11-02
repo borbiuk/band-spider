@@ -8,7 +8,7 @@ import {
 	Takeaway,
 } from './insights';
 import { InsightsSnapshot } from './supervisor';
-import { button, esc, formatNumber as number, kpi, trendChart } from './ui-render';
+import { action, esc, formatNumber as number, icon, kpi, trendChart } from './ui-render';
 
 const perMinuteText = (value?: number): string => value === undefined ? 'speed unknown yet' : `${number(Math.round(value * 10) / 10)} / min`;
 
@@ -88,7 +88,7 @@ const sizeBlock = (insights: Insights, snapshot: InsightsSnapshot): string => {
 	if (!db) {
 		return snapshot.totalsError
 			? `<p class="error">DB size: ${esc(snapshot.totalsError)}</p>`
-			: '<p class="meta">Counting the rows of the DB. A big DB needs some time, this view updates when it is done.</p>';
+			: '<p class="meta">Counting the rows of the DB. A big DB needs some time, this page updates when it is done.</p>';
 	}
 	return `<ul class="rows plain">
 		${line('Items', number(db.totals.items))}
@@ -98,7 +98,7 @@ const sizeBlock = (insights: Insights, snapshot: InsightsSnapshot): string => {
 		${line('Links per account', decimal(db.linksPerAccount))}
 		${line('Links per item', decimal(db.linksPerItem))}
 	</ul>
-	<p class="meta">Counted ${esc(db.totals.countedAt.toISOString().slice(0, 19).replace('T', ' '))} UTC, and again every few minutes while this view is open.</p>`;
+	<p class="meta">Counted ${esc(db.totals.countedAt.toISOString().slice(0, 19).replace('T', ' '))} UTC, and again every few minutes while this page is open.</p>`;
 };
 
 const crawlerTable = (insights: Insights): string => insights.crawlers.length === 0
@@ -110,17 +110,19 @@ const crawlerTable = (insights: Insights): string => insights.crawlers.length ==
 		<td>${number(row.failed)} <span class="meta">${percent(row.failedPercent)}</span></td><td>${number(row.http429PerHour)}</td></tr>`).join('')}
 	</tbody></table>`;
 
-/** The Insights view: how well the crawl fills the DB. It floats over the page, like the form. */
+/** The Insights page: how well the crawl fills the DB. The page script loads it while the page is open. */
 export const renderInsights = (snapshot: InsightsSnapshot, now: number): string => {
 	const stats = snapshot.db.dbStats;
 	const head = `
-	<div class="drawer-head">
-		<h2>Database insights</h2>
-		${button('Close', 'data-close hx-get="/fragments/insights-close" hx-target="#insights" hx-swap="innerHTML"')}
+	<div class="controlbar">
+		<h1 class="page-title">Database insights</h1>
 	</div>`;
 	if (!stats) {
-		return `<div class="modal"><div class="panel modal-card modal-wide insights" role="dialog" aria-modal="true" aria-label="Database insights">${head}
-		<p class="meta">The DB service is not running, so there is nothing to show. Start it and the numbers appear here.</p></div></div>`;
+		return `<div class="insights">${head}
+		<div class="panel empty empty-big">${icon('insights')}<h2>No numbers yet.</h2>
+			<p class="meta">The DB service is not running, so there is nothing to show. Start it and the numbers appear here.</p>
+			<div class="buttons">${action('/fragments/db/start', 'Start the DB service', snapshot.db.state === 'starting', undefined, 'primary', 'play')}</div>
+		</div></div>`;
 	}
 
 	const insights = computeInsights({ stats, totals: snapshot.totals, history: snapshot.history, crawlers: snapshot.crawlers, now });
@@ -135,9 +137,9 @@ export const renderInsights = (snapshot: InsightsSnapshot, now: number): string 
 	const since = insights.sinceMs === undefined ? '' : `, ${longDurationText(insights.sinceMs)} ago`;
 	const pageSplit = `${number(insights.pages.items)} item pages, ${number(insights.pages.accounts)} account pages`;
 
-	return `<div class="modal"><div class="panel modal-card modal-wide insights" role="dialog" aria-modal="true" aria-label="Database insights">
+	return `<div class="insights">
 	${head}
-	<p class="meta">Counters of the DB service since it started${esc(since)}. They start from zero when it restarts.</p>
+	<p class="meta page-sub">Counters of the DB service since it started${esc(since)}. They start from zero when it restarts.</p>
 	<div class="kpis">
 		${kpi('New items', number(insights.added.items), esc(perMinuteText(insights.perMinute.items)), 'req')}
 		${kpi('New accounts', number(insights.added.accounts), esc(perMinuteText(insights.perMinute.accounts)), 'urls')}
@@ -174,5 +176,5 @@ export const renderInsights = (snapshot: InsightsSnapshot, now: number): string 
 		<h3>Crawler efficiency</h3>
 		${crawlerTable(insights)}
 	</div>
-</div></div>`;
+</div>`;
 };
