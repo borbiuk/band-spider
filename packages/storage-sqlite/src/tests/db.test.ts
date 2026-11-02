@@ -55,6 +55,7 @@ describe('database setup', () => {
 		assert.equal(await pragma('cache_size'), -512 * 1024);
 		assert.equal(await pragma('temp_store'), 2, 'MEMORY');
 		assert.equal(await pragma('busy_timeout'), 5000);
+		assert.equal(await pragma('wal_autocheckpoint'), 10_000);
 		assert.equal(await pragma('mmap_size'), 2147418112, '8 GB asked, SQLite clamps it to its MAX_MMAP_SIZE (about 2 GB)');
 		assert.equal(await pragma('foreign_keys'), 1);
 	});
@@ -462,5 +463,110 @@ describe('saveAccountPageData', () => {
 			followers: { total: 1, allScraped: true, newRecords: 0, newRelations: 0, newUrls: [] },
 			following: { total: 2, allScraped: false, newRecords: 0, newRelations: 0, newUrls: [] },
 		});
+	});
+});
+
+describe('batched saves', () => {
+	const owner = 'https://bandcamp.com/batch-owner';
+	const fan = (n: number) => `https://bandcamp.com/batch-fan-${n}`;
+
+	const itemData = (url: string, accounts: string[], tags: string[]): ItemPageData => ({
+		url,
+		accounts: { data: accounts },
+		tags: { data: tags },
+		releaseDate: { data: null },
+		album: { data: null },
+		tracks: { data: null },
+		imageUrl: { data: null },
+		errors: [],
+	} as unknown as ItemPageData);
+
+	it('saves more supporters than one batch holds, and a second save finds nothing new', async () => {
+		const url = 'https://batch.bandcamp.com/track/many';
+		const { entity: item } = await db.item.insert(url);
+		// a duplicate in the list is one account and one link
+		const supporters = [...Array.from({ length: 1200 }, (_, i) => fan(i)), fan(0)];
+
+		const first = await saveItemPageData(item.id, itemData(url, supporters, []), db);
+		assert.equal(first.accounts.total, 1201);
+		assert.equal(first.accounts.newRecords, 1200);
+		assert.equal(first.accounts.newRelations, 1200);
+		assert.equal(first.newUrls.length, 1200);
+		assert.equal((await query('SELECT COUNT(*) AS n FROM "items-to-accounts" WHERE itemId = ?', [item.id]))[0].n, 1200);
+
+		const second = await saveItemPageData(item.id, itemData(url, supporters, []), db);
+		assert.deepEqual(second.accounts, { total: 1201, newRecords: 0, newRelations: 0 });
+		assert.deepEqual(second.newUrls, []);
+	});
+
+	it('clears the wishlist flag of a link that now comes from the item page, without counting it as new', async () => {
+		const url = 'https://batch.bandcamp.com/track/wishlist';
+		const { entity: item } = await db.item.insert(url);
+		const { entity: account } = await db.account.insert(fan(5000));
+		await db.account.addItem(account.id, item.id, true);
+
+		const stat = await saveItemPageData(item.id, itemData(url, [fan(5000)], []), db);
+
+		assert.equal(stat.accounts.newRecords, 0);
+		assert.equal(stat.accounts.newRelations, 0);
+		const link = (await query('SELECT wishlist FROM "items-to-accounts" WHERE itemId = ? AND accountId = ?', [item.id, account.id]))[0];
+		assert.equal(Boolean(link.wishlist), false);
+	});
+
+	it('lower-cases tags and counts a tag that comes twice once', async () => {
+		const url = 'https://batch.bandcamp.com/track/tags';
+		const { entity: item } = await db.item.insert(url);
+
+		const stat = await saveItemPageData(item.id, itemData(url, [], ['Batch-Rock', 'batch-rock', 'Batch-Jazz']), db);
+
+		assert.deepEqual(stat.tags, { total: 3, newRecords: 2, newRelations: 2 });
+		assert.equal((await query('SELECT COUNT(*) AS n FROM tags WHERE name IN (?, ?)', ['batch-rock', 'batch-jazz']))[0].n, 2);
+		assert.equal((await query('SELECT COUNT(*) AS n FROM "items-to-tags" WHERE itemId = ?', [item.id]))[0].n, 2);
+
+		const again = await saveItemPageData(item.id, itemData(url, [], ['batch-rock', 'Batch-Jazz']), db);
+		assert.deepEqual(again.tags, { total: 2, newRecords: 0, newRelations: 0 });
+	});
+
+	it('saves an item page in one transaction: a failure leaves nothing of the page', async () => {
+		const url = 'https://batch.bandcamp.com/track/rollback';
+		const { entity: item } = await db.item.insert(url);
+		const accountsBefore = await count('accounts');
+		const data = itemData(url, [fan(7001), fan(7002)], ['batch-rollback']);
+		// a value SQLite cannot bind: the save fails at its last statements, after the accounts and tags were written
+		data.imageUrl = { data: {} as unknown as string };
+
+		await assert.rejects(saveItemPageData(item.id, data, db));
+
+		assert.equal(await count('accounts'), accountsBefore);
+		assert.equal((await query('SELECT COUNT(*) AS n FROM tags WHERE name = ?', ['batch-rollback']))[0].n, 0);
+		assert.equal((await query('SELECT COUNT(*) AS n FROM "items-to-accounts" WHERE itemId = ?', [item.id]))[0].n, 0);
+		assert.equal((await itemByUrl(url)).lastProcessingDate, null);
+	});
+
+	it('saves followers and following in the right direction and counts a repeated account once', async () => {
+		const { entity: account } = await db.account.insert(owner);
+		const data: AccountPageData = {
+			url: owner,
+			collection: { total: 0, urls: [], complete: true },
+			wishlist: { total: 0, urls: [], complete: true },
+			followers: { total: 3, urls: [fan(9001), fan(9002), fan(9001)], complete: true },
+			following: { total: 1, urls: [fan(9003)], complete: true },
+			errors: [],
+		};
+
+		const stat = await saveAccountPageData(account.id, data, db);
+
+		assert.deepEqual(stat.followers, { total: 3, allScraped: true, newRecords: 2, newRelations: 2, newUrls: [fan(9001), fan(9002)] });
+		assert.deepEqual(stat.following, { total: 1, allScraped: true, newRecords: 1, newRelations: 1, newUrls: [fan(9003)] });
+		const id = async (url: string) => (await query('SELECT id FROM accounts WHERE url = ?', [url]))[0].id;
+		const pairs = (await query('SELECT followerId, followedId FROM followers WHERE followerId = ? OR followedId = ? ORDER BY followerId, followedId', [account.id, account.id]))
+			.map(x => `${x.followerId}>${x.followedId}`).sort();
+		const expected = [`${await id(fan(9001))}>${account.id}`, `${await id(fan(9002))}>${account.id}`, `${account.id}>${await id(fan(9003))}`].sort();
+		assert.deepEqual(pairs, expected);
+
+		const again = await saveAccountPageData(account.id, data, db);
+		assert.equal(again.followers.newRelations, 0);
+		assert.equal(again.following.newRelations, 0);
+		assert.deepEqual(again.followers.newUrls, []);
 	});
 });

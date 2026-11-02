@@ -20,6 +20,9 @@ const SQLITE_BUSY_TIMEOUT_MS = 5000;
 const SQLITE_CACHE_SIZE_KB = 512 * 1024;
 // SQLite clamps this to its compile-time MAX_MMAP_SIZE, which is about 2 GB in better-sqlite3.
 const SQLITE_MMAP_SIZE_BYTES = 8 * 1024 * 1024 * 1024;
+// A checkpoint of the WAL file runs inside the COMMIT that reaches this size, and with the default of 1000
+// pages it was most of the time of a big save. A bigger size means fewer checkpoints; the WAL stays under about 40 MB.
+const SQLITE_WAL_AUTOCHECKPOINT_PAGES = 10_000;
 
 export interface DatabaseConfig {
 	/** Path of the SQLite file. */
@@ -52,6 +55,7 @@ const prepareDatabase = (connection: SqliteConnection): void => {
 	connection.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KB}`);
 	connection.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);
 	connection.pragma('temp_store = MEMORY');
+	connection.pragma(`wal_autocheckpoint = ${SQLITE_WAL_AUTOCHECKPOINT_PAGES}`);
 };
 
 const createDataSource = ({ file, synchronize }: DatabaseConfig): DataSource => new DataSource({

@@ -1,5 +1,5 @@
-import { FindOptionsWhere, ObjectLiteral, Repository } from 'typeorm';
-import { isNullOrUndefined } from '@band-spider/core';
+import { EntityManager, FindOptionsWhere, ObjectLiteral, Repository } from 'typeorm';
+import { chunk, isNullOrUndefined } from '@band-spider/core';
 import { InsertResult } from '../models/insert-result';
 
 /**
@@ -70,4 +70,43 @@ export async function insertRelation<T extends ObjectLiteral>(
 		}
 		throw error;
 	}
+}
+
+/** How many rows or values one batched statement holds. It keeps the statement under the limit of SQLite parameters. */
+export const DB_BATCH_SIZE = 500;
+
+/**
+ * Batch version of `insertUnique` for a table with a unique `url` column: resolves many URLs to ids with a few queries.
+ * A new row only has its `url`, the rest are column defaults, as `insertUnique` leaves it.
+ *
+ * @returns ids in the same order as `urls` (duplicates give the same id) and the URLs that did not exist before.
+ */
+export async function insertManyByUrl(
+	manager: EntityManager,
+	table: 'items' | 'accounts',
+	urls: string[],
+): Promise<{ ids: number[], newUrls: string[] }> {
+	const idByUrl = new Map<string, number>();
+	const newUrls: string[] = [];
+
+	for (const part of chunk([...new Set(urls)], DB_BATCH_SIZE)) {
+		const existing: { id: number, url: string }[] = await manager.query(
+			`SELECT id, url FROM ${table} WHERE url IN (${part.map(() => '?').join(',')})`, part
+		);
+		existing.forEach(x => idByUrl.set(x.url, x.id));
+
+		const missing = part.filter(x => !idByUrl.has(x));
+		if (missing.length === 0) {
+			continue;
+		}
+
+		await manager.query(`INSERT OR IGNORE INTO ${table}(url) VALUES ${missing.map(() => '(?)').join(',')}`, missing);
+		const inserted: { id: number, url: string }[] = await manager.query(
+			`SELECT id, url FROM ${table} WHERE url IN (${missing.map(() => '?').join(',')})`, missing
+		);
+		inserted.forEach(x => idByUrl.set(x.url, x.id));
+		newUrls.push(...missing);
+	}
+
+	return { ids: urls.map(x => idByUrl.get(x)), newUrls };
 }

@@ -5,9 +5,7 @@ import { AccountEntity } from '../entities/account-entity';
 import { AccountScanEntity } from '../entities/account-scan-entity';
 import { FollowerEntity } from '../entities/follower-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
-import { insertRelation, insertUnique } from './insert-helpers';
-
-const DB_BATCH_SIZE = 500;
+import { DB_BATCH_SIZE, insertManyByUrl, insertRelation, insertUnique } from './insert-helpers';
 
 /** An account processed before this date is processed again. */
 const REPROCESS_BEFORE = new Date('2024-09-10');
@@ -142,6 +140,82 @@ export class AccountRepository {
 		}
 
 		return newRelations;
+	}
+
+	/**
+	 * Batch version of `insert` for many account URLs. Each URL ends up as `insert(url)` would leave it.
+	 *
+	 * @returns ids in the same order as `urls` (duplicates give the same id) and the URLs that did not exist before.
+	 */
+	public async insertMany(urls: string[]): Promise<{ ids: number[], newUrls: string[] }> {
+		return await insertManyByUrl(this.manager, 'accounts', urls);
+	}
+
+	/**
+	 * Batch version of `addItem` for one item and many accounts that support it (never a wishlist link).
+	 * Same rules as `addItem`: an existing link is not counted as new, but a wishlist flag on it is cleared.
+	 *
+	 * @returns number of links that did not exist before.
+	 */
+	public async addSupporters(itemId: number, accountIds: number[]): Promise<number> {
+		let added = 0;
+
+		for (const part of chunk([...new Set(accountIds)], DB_BATCH_SIZE)) {
+			const existing: { accountId: number, wishlist: number }[] = await this.manager.query(
+				`SELECT accountId, wishlist FROM "items-to-accounts" WHERE itemId = ? AND accountId IN (${part.map(() => '?').join(',')})`,
+				[itemId, ...part]
+			);
+			const existingIds = new Set(existing.map(x => x.accountId));
+
+			const toUpdate = existing.filter(x => Boolean(x.wishlist)).map(x => x.accountId);
+			if (toUpdate.length !== 0) {
+				await this.manager.query(
+					`UPDATE "items-to-accounts" SET wishlist = 0 WHERE itemId = ? AND accountId IN (${toUpdate.map(() => '?').join(',')})`,
+					[itemId, ...toUpdate]
+				);
+			}
+
+			const toInsert = part.filter(x => !existingIds.has(x));
+			if (toInsert.length !== 0) {
+				await this.manager.query(
+					`INSERT OR IGNORE INTO "items-to-accounts"(itemId, accountId, wishlist) VALUES ${toInsert.map(() => '(?,?,0)').join(',')}`,
+					toInsert.flatMap(x => [itemId, x])
+				);
+				added += toInsert.length;
+			}
+		}
+
+		return added;
+	}
+
+	/**
+	 * Batch version of `addFollower` for many follow pairs.
+	 *
+	 * @returns number of pairs that did not exist before.
+	 */
+	public async addFollowers(pairs: { followerId: number, followedId: number }[]): Promise<number> {
+		const keyOf = (pair: { followerId: number, followedId: number }): string => `${pair.followerId}:${pair.followedId}`;
+		const unique = [...new Map(pairs.map(pair => [keyOf(pair), pair])).values()];
+		let added = 0;
+
+		for (const part of chunk(unique, DB_BATCH_SIZE)) {
+			const existing: { followerId: number, followedId: number }[] = await this.manager.query(
+				`SELECT followerId, followedId FROM followers WHERE (followerId, followedId) IN (VALUES ${part.map(() => '(?,?)').join(',')})`,
+				part.flatMap(x => [x.followerId, x.followedId])
+			);
+			const existingKeys = new Set(existing.map(keyOf));
+
+			const toInsert = part.filter(x => !existingKeys.has(keyOf(x)));
+			if (toInsert.length !== 0) {
+				await this.manager.query(
+					`INSERT OR IGNORE INTO followers(followerId, followedId) VALUES ${toInsert.map(() => '(?,?)').join(',')}`,
+					toInsert.flatMap(x => [x.followerId, x.followedId])
+				);
+				added += toInsert.length;
+			}
+		}
+
+		return added;
 	}
 
 	public async addFollower(followedId: number, followerId: number): Promise<boolean> {

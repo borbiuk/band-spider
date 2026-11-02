@@ -1,11 +1,9 @@
 import { EntityManager, ILike, IsNull, LessThan, Not } from 'typeorm';
-import { chunk, isNullOrUndefined } from '@band-spider/core';
+import { isNullOrUndefined } from '@band-spider/core';
 import { InsertResult } from '../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
-import { insertUnique } from './insert-helpers';
-
-const DB_BATCH_SIZE = 500;
+import { insertManyByUrl, insertUnique } from './insert-helpers';
 
 export class ItemRepository {
 	constructor(
@@ -82,33 +80,7 @@ export class ItemRepository {
 	 * @returns ids in the same order as `urls` (duplicates give the same id) and the URLs that did not exist before.
 	 */
 	public async insertMany(urls: string[]): Promise<{ ids: number[], newUrls: string[] }> {
-		const idByUrl = new Map<string, number>();
-		const newUrls: string[] = [];
-
-		for (const part of chunk([...new Set(urls)], DB_BATCH_SIZE)) {
-			const placeholders = part.map(() => '?').join(',');
-
-			const existing: { id: number, url: string }[] = await this.manager.query(
-				`SELECT id, url FROM items WHERE url IN (${placeholders})`, part
-			);
-			existing.forEach(x => idByUrl.set(x.url, x.id));
-
-			const missing = part.filter(x => !idByUrl.has(x));
-			if (missing.length === 0) {
-				continue;
-			}
-
-			await this.manager.query(
-				`INSERT OR IGNORE INTO items(url) VALUES ${missing.map(() => '(?)').join(',')}`, missing
-			);
-			const inserted: { id: number, url: string }[] = await this.manager.query(
-				`SELECT id, url FROM items WHERE url IN (${missing.map(() => '?').join(',')})`, missing
-			);
-			inserted.forEach(x => idByUrl.set(x.url, x.id));
-			newUrls.push(...missing);
-		}
-
-		return { ids: urls.map(x => idByUrl.get(x)), newUrls };
+		return await insertManyByUrl(this.manager, 'items', urls);
 	}
 
 	public async updateReleaseDate(itemId: number, date: Date): Promise<boolean> {

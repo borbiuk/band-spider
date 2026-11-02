@@ -13,7 +13,15 @@ export async function saveItemPageData(
 	data: ItemPageData,
 	database: BandDatabase
 ): Promise<ItemPageStatistic> {
+	// One transaction per item page: one commit instead of one per row, and no half-saved page after an error.
+	return await database.transaction(transaction => saveItemPage(itemId, data, transaction));
+}
 
+async function saveItemPage(
+	itemId: number,
+	data: ItemPageData,
+	database: BandDatabase
+): Promise<ItemPageStatistic> {
 	const newUrls: string[] = [];
 
 	const accounts = await saveAccountsData(
@@ -74,26 +82,14 @@ async function saveAccountsData(
 		return defaultItemTabStatistic;
 	}
 
-	let newAccountCount: number = 0;
-	let newRelationsCount: number = 0;
-
-	// save Accounts and relations
-	for (const accountUrl of data) {
-		const { entity: { id }, isInserted } = await database.account.insert(accountUrl);
-		if (isInserted) {
-			newAccountCount++;
-			newUrls.push(accountUrl);
-		}
-
-		const added = await database.account.addItem(id, itemId);
-		if (added) {
-			newRelationsCount++;
-		}
-	}
+	// save Accounts and relations with batched queries
+	const inserted = await database.account.insertMany(data);
+	newUrls.push(...inserted.newUrls);
+	const newRelationsCount = await database.account.addSupporters(itemId, inserted.ids);
 
 	return {
 		total: data.length,
-		newRecords: newAccountCount,
+		newRecords: inserted.newUrls.length,
 		newRelations: newRelationsCount,
 	}
 }
@@ -107,25 +103,13 @@ async function saveTagsData(
 		return defaultItemTabStatistic;
 	}
 
-	let newTagsCount: number = 0;
-	let newRelationsCount: number = 0;
-
-	// save Tags and relations
-	for (const tag of data) {
-		const { entity: { id }, isInserted } = await database.tag.insert(tag);
-		if (isInserted) {
-			newTagsCount++;
-		}
-
-		const added = await database.tag.addItem(id, itemId);
-		if (added) {
-			newRelationsCount++;
-		}
-	}
+	// save Tags and relations with batched queries
+	const { ids, newCount } = await database.tag.insertMany(data);
+	const newRelationsCount = await database.tag.addItems(itemId, ids);
 
 	return {
 		total: data.length,
-		newRecords: newTagsCount,
+		newRecords: newCount,
 		newRelations: newRelationsCount,
 	}
 }

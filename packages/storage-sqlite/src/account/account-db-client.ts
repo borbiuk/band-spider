@@ -1,5 +1,4 @@
 import { BandDatabase } from '../db';
-import { InsertResult } from '../models/insert-result';
 import { AccountPageData, AccountPageStatistic, AccountTabData, AccountTabStatistic } from '@band-spider/core';
 
 export async function saveAccountPageData(
@@ -12,19 +11,8 @@ export async function saveAccountPageData(
 		const collection = await saveAccountItems(accountId, data.collection, false, transaction);
 		const wishlist = await saveAccountItems(accountId, data.wishlist, true, transaction);
 
-		const followers = await readAndSaveAccountData(
-			accountId,
-			data.followers,
-			(accountUrl: string) => transaction.account.insert(accountUrl),
-			(accountId, entityId) => transaction.account.addFollower(accountId, entityId)
-		);
-
-		const following = await readAndSaveAccountData(
-			accountId,
-			data.following,
-			(accountUrl: string) => transaction.account.insert(accountUrl),
-			(accountId, entityId) => transaction.account.addFollower(entityId, accountId)
-		);
+		const followers = await saveFollowTab(accountId, data.followers, true, transaction);
+		const following = await saveFollowTab(accountId, data.following, false, transaction);
 
 		// Save that account was processed now
 		await transaction.account.updateProcessingDate(accountId);
@@ -77,49 +65,29 @@ async function saveAccountItems(
 }
 
 /**
- * Generic method to read data from a tab and save it in the database.
- *
- * @param accountId - Account ID.
- * @param pageReadResult - Account data scraped from the page.
- * @param insertFn - The method to save new data (either add item or add account).
- * @param saveRelationFn - The method to save relation between entities (link item or follower to account).
- * @returns An object containing the total and new counts of items or followers.
+ * Saves a followers or following tab with batched queries. The tab is of this account: `followers` are accounts
+ * that follow it, the others are accounts it follows.
  */
-async function readAndSaveAccountData(
+async function saveFollowTab(
 	accountId: number,
 	pageReadResult: AccountTabData,
-	insertFn: (url: string) => Promise<InsertResult<{ id: number }>>,
-	saveRelationFn: (accountId: number, entityId: number) => Promise<boolean>
+	followers: boolean,
+	database: BandDatabase
 ): Promise<AccountTabStatistic> {
-	const entityIds: number[] = [];
-
-	const newUrls: string[] = [];
-	let newCount: number = 0;
+	let newUrls: string[] = [];
 	let newRelationsCount: number = 0;
 
-	// save new URLs
-	for (const entityUrl of pageReadResult.urls) {
-		const { entity: { id }, isInserted } = await insertFn(entityUrl);
-		entityIds.push(id);
-
-		if (isInserted) {
-			newCount++;
-			newUrls.push(entityUrl);
-		}
-	}
-
-	// save relations
-	for (const entityId of entityIds) {
-		const isRelationSaved = await saveRelationFn(accountId, entityId);
-		if (isRelationSaved) {
-			newRelationsCount++;
-		}
+	if (pageReadResult.urls.length !== 0) {
+		const inserted = await database.account.insertMany(pageReadResult.urls);
+		newUrls = inserted.newUrls;
+		newRelationsCount = await database.account.addFollowers(inserted.ids.map(id =>
+			followers ? { followerId: id, followedId: accountId } : { followerId: accountId, followedId: id }));
 	}
 
 	return {
 		total: pageReadResult.total,
 		allScraped: pageReadResult.total === pageReadResult.urls.length,
-		newRecords: newCount,
+		newRecords: newUrls.length,
 		newRelations: newRelationsCount,
 		newUrls,
 	};
