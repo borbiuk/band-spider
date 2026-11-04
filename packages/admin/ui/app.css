@@ -548,6 +548,7 @@ body[data-chart="traffic"] [data-chart-pane="traffic"] { display: block; }
 .bar-bg { fill: var(--idle-soft); }
 .bar-fill { fill: var(--accent); }
 .bar-traffic .bar-fill { fill: var(--c-traffic); }
+.bar-bad .bar-fill { fill: var(--bad); }
 .bar-low .bar-fill { fill: var(--bad); }
 .bar-mid .bar-fill { fill: var(--warn); }
 .bar-high .bar-fill { fill: var(--ok); }
@@ -736,6 +737,8 @@ body[data-page="crawlers"]:has(input[name="names"]:checked) #toasts { bottom: 84
 .rows.plain li { display: flex; justify-content: space-between; gap: 12px; }
 .rows .split-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(80px, 1.4fr) minmax(48px, auto); }
 .row-label { font-size: 13px; }
+.failure-rows li { cursor: default; }
+.failure-rows .failure-example { grid-column: 1 / -1; }
 .row-value { text-align: right; font-variant-numeric: tabular-nums; }
 .line-row b { font-variant-numeric: tabular-nums; font-weight: 600; }
 

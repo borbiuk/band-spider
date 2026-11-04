@@ -1,4 +1,4 @@
-import { errorMessage } from '../common/errors';
+import { errorMessage, failureKey, FailureReport, FailureStage } from '../common/errors';
 import { accountColor, albumColor, dateColor, itemColor, logger, LogSource, tagColor } from '../common/logger';
 import { RateLimitedError } from '../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../common/utils';
@@ -13,7 +13,11 @@ export async function processItem(
 	store: CrawlStore,
 	reader: PageReader,
 	pageIndex: number,
+	/** Called for each error that makes the URL fail: a failed read or save, and each issue of a page that was saved. */
+	onFailure: (failure: FailureReport) => void = () => { },
 ): Promise<boolean> {
+	const fail = (error: unknown, stage: FailureStage = 'scrape'): void =>
+		onFailure({ key: failureKey(error, stage), message: errorMessage(error), url: task.url });
 	const { url } = task;
 
 	// read data from the page
@@ -24,6 +28,7 @@ export async function processItem(
 		if (e instanceof RateLimitedError) {
 			throw e;
 		}
+		fail(e);
 		logger.error(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] Scrapping failed: ${errorMessage(e)}`.padEnd(61), url));
 		return false;
 	}
@@ -33,6 +38,7 @@ export async function processItem(
 	try {
 		itemPageStatistic = await store.saveItem(task, itemPageData);
 	} catch (e) {
+		fail(e, 'save');
 		logger.error(e, logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] saving failed: ${errorMessage(e)}`.padEnd(61), url));
 		return false;
 	}
@@ -42,6 +48,7 @@ export async function processItem(
 	const result = itemPageData.errors.length === 0;
 	if (!result) {
 		itemPageData.errors.forEach((e: Error) => {
+			fail(e);
 			logger.warn(logMessage(LogSource.Item, `[${String(pageIndex).padEnd(2)}] Scrapping issue: ${e.message}`.padEnd(61), url));
 		});
 	}

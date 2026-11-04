@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { errorMessage, PageNotFoundError } from './common/errors';
+import { errorMessage, failureKey, FailureReport, PageNotFoundError } from './common/errors';
 import { HttpClient } from './common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from './common/logger';
 import { NoProxy, ProxySource, StaticProxy } from './common/proxy-source';
@@ -45,6 +45,8 @@ export class BandSpider {
 		private readonly store: CrawlStore,
 		/** Builds the reader of a worker from its HTTP client. A test passes a fake one. */
 		private readonly createReader: (http: HttpClient) => PageReader = http => new FetchPageReader(http),
+		/** Called for each error that makes a URL fail, with the reason. */
+		private readonly onFailure: (failure: FailureReport) => void = () => { },
 	) {
 	}
 
@@ -224,7 +226,7 @@ export class BandSpider {
 	): Promise<UrlResult> {
 		const { process, source: logSource } = this.handlerOf(task.type);
 		try {
-			const processed = await process(task, this.store, source.reader, pageIndex);
+			const processed = await process(task, this.store, source.reader, pageIndex, this.onFailure);
 			if (!processed) {
 				await this.store.release(task, 'failed');
 			}
@@ -239,6 +241,7 @@ export class BandSpider {
 
 			if (error instanceof PageNotFoundError) {
 				await this.store.release(task, 'notFound');
+				this.onFailure({ key: 'not-found', message: errorMessage(error), url: task.url });
 				logger.warn(
 					logMessage(logSource, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), task.url)
 				);
@@ -246,6 +249,7 @@ export class BandSpider {
 			}
 
 			await this.store.release(task, 'failed');
+			this.onFailure({ key: failureKey(error), message: errorMessage(error), url: task.url });
 
 			logger.error(
 				error,

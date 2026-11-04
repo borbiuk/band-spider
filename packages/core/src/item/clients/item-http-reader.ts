@@ -114,7 +114,7 @@ async function readSupporters($: cheerio.CheerioAPI, url: string, postJson: Post
 				count: SUPPORTERS_PAGE_SIZE,
 			});
 			if (answer.status !== 200) {
-				throw new ApiRefusedError(`Supporters API refused with status ${answer.status}: ${apiUrl}`);
+				throw new ApiRefusedError(`Supporters API refused with status ${answer.status}: ${apiUrl}`, answer.status);
 			}
 
 			const body = JSON.parse(answer.body);

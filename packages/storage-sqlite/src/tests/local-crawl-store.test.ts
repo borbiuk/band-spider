@@ -33,8 +33,9 @@ before(async () => {
 
 /** Makes every row processed, so a test sees only the rows it inserts. */
 const clean = async () => {
-	await db.query('UPDATE items SET lastProcessingDate = CURRENT_DATE WHERE lastProcessingDate IS NULL');
-	await db.query('UPDATE accounts SET lastProcessingDate = CURRENT_DATE WHERE lastProcessingDate IS NULL');
+	const open = "lastProcessingDate IS NULL OR lastProcessingDate < '2026-01-01'";
+	await db.query(`UPDATE items SET lastProcessingDate = CURRENT_DATE WHERE ${open}`);
+	await db.query(`UPDATE accounts SET lastProcessingDate = CURRENT_DATE WHERE ${open}`);
 	await store.resetBusy();
 };
 
@@ -181,6 +182,34 @@ describe('LocalCrawlStore lease', () => {
 });
 
 describe('LocalCrawlStore save', () => {
+	const itemData = (url: string, errors: Error[]): ItemPageData => ({
+		url,
+		accounts: { data: [] },
+		tags: { data: [] },
+		releaseDate: { data: null },
+		album: { data: null },
+		tracks: { data: [] },
+		imageUrl: { data: null },
+		errors,
+	});
+
+	it('a page saved without issues starts the failure count again, a page with issues keeps it', async () => {
+		await clean();
+		const clear = 'https://reset.bandcamp.com/track/clear';
+		const issues = 'https://reset.bandcamp.com/track/issues';
+		await db.item.insert(clear);
+		await db.item.insert(issues);
+		await db.query('UPDATE items SET failedCount = 2 WHERE url IN (?, ?)', [clear, issues]);
+		const tasks = await store.claim(UrlType.Item, 2, false);
+
+		for (const task of tasks) {
+			await store.saveItem(task, itemData(task.url, task.url === issues ? [new Error('missing title')] : []));
+		}
+
+		assert.equal((await itemRow(clear)).failedCount, 0);
+		assert.equal((await itemRow(issues)).failedCount, 2);
+	});
+
 	it('saveItem saves the page, gives the statistic and releases the task', async () => {
 		await clean();
 		const url = 'https://save-store.bandcamp.com/track/the-track';
@@ -336,13 +365,25 @@ describe('LocalCrawlStore release', () => {
 		assert.deepEqual(await itemRow(url), { processed: 0, failedCount: 1, isBusy: 0 });
 	});
 
-	it('notFound counts a failure and releases the task', async () => {
+	it('notFound marks the URL with 404 and releases the task', async () => {
 		await clean();
 		const url = 'https://bandcamp.com/release-gone';
 		await db.account.insert(url);
 		await store.release(await claimed(UrlType.Account), 'notFound');
 
-		assert.deepEqual(await accountRow(url), { processed: 0, failedCount: 1, isBusy: 0 });
+		assert.deepEqual(await accountRow(url), { processed: 0, failedCount: 404, isBusy: 0 });
+	});
+
+	it('notFound marks an item after earlier failures, and a later failure keeps the mark', async () => {
+		await clean();
+		const url = 'https://release.bandcamp.com/track/gone';
+		await db.item.insert(url);
+		await db.query('UPDATE items SET failedCount = 2 WHERE url = ?', [url]);
+		const task = await claimed(UrlType.Item);
+		await store.release(task, 'notFound');
+		await db.item.updateFailed(task.id);
+
+		assert.deepEqual(await itemRow(url), { processed: 0, failedCount: 404, isBusy: 0 });
 	});
 
 	it('rateLimited only releases the task', async () => {
@@ -352,6 +393,44 @@ describe('LocalCrawlStore release', () => {
 		await store.release(await claimed(UrlType.Item), 'rateLimited');
 
 		assert.deepEqual(await itemRow(url), { processed: 0, failedCount: 0, isBusy: 0 });
+	});
+});
+
+describe('LocalCrawlStore selection', () => {
+	// last processing date, failedCount, and whether the URL is claimed
+	const cases: Array<[string, string | null, number, boolean]> = [
+		['new', null, 0, true],
+		['new, failed twice', null, 2, true],
+		['new, failed three times', null, 3, false],
+		['old, failed twice', '2025-06-01', 2, true],
+		['old, failed three times', '2025-06-01', 3, false],
+		['processed this year', '2026-06-01', 0, false],
+		['new, not found', null, 404, false],
+		['old, not found', '2025-06-01', 404, false],
+	];
+
+	it('takes items and accounts by the same rule', async () => {
+		await clean();
+		const items: string[] = [];
+		const accounts: string[] = [];
+		for (const [index, [, date, failed]] of cases.entries()) {
+			const item = `https://select.bandcamp.com/track/${index}`;
+			const account = `https://bandcamp.com/select-fan-${index}`;
+			await db.item.insert(item);
+			await db.account.insert(account);
+			for (const [table, url] of [['items', item], ['accounts', account]]) {
+				await db.query(`UPDATE ${table} SET lastProcessingDate = ?, failedCount = ? WHERE url = ?`, [date, failed, url]);
+			}
+			items.push(item);
+			accounts.push(account);
+		}
+		const expected = (urls: string[]) => urls.filter((_, index) => cases[index][3]);
+
+		const claimedItems = (await db.item.getNotProcessed()).map(row => row.url).filter(url => items.includes(url));
+		const claimedAccounts = (await db.account.getNotProcessed()).map(row => row.url).filter(url => accounts.includes(url));
+
+		assert.deepEqual(claimedItems, expected(items));
+		assert.deepEqual(claimedAccounts, expected(accounts));
 	});
 });
 

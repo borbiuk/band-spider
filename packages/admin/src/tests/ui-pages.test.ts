@@ -12,6 +12,7 @@ import { Supervisor, SupervisorStatus } from '../supervisor';
 import { attentionItems, STALL_MS } from '../ui-attention';
 import { bulkText } from '../ui-bulk';
 import { renderCrawlerDetail } from '../ui-detail';
+import { failureLabel, mergeFailures } from '../ui-failures';
 import { emptyForm, ICONS, renderCrawlerForm, renderProxyList, renderStatus, trendChart } from '../ui-render';
 import { CRAWLER_ENTRY, DB_ENTRY, FakeLauncher, readyDbLauncher } from './fakes';
 
@@ -21,7 +22,7 @@ const PASS = 'pages-secret-pass';
 const stats = (extra: Partial<CrawlerStats> = {}): CrawlerStats => ({
 	requestsPerMin: 30, urlsPerMin: 20, http429PerHour: 0, bytesPerHour: 3_600_000, linksPerMin: 2,
 	totals: { requests: 300, processed: 200, failed: 3, http429: 0, bytes: 1_000_000, newLinks: 40 },
-	pauseMs: 0, idle: false, reportedAt: NOW - 30_000, ...extra,
+	pauseMs: 0, idle: false, failures: [], reportedAt: NOW - 30_000, ...extra,
 });
 
 const config = adminConfigSchema.parse({
@@ -344,5 +345,30 @@ describe('fragment routes of the pages', () => {
 		const list = await get('/fragments/proxy-list');
 		assert.match(list.body, /<span class="dot state-running"[^>]*><\/span>a<\/button>/);
 		assert.doesNotMatch(list.body, new RegExp(PASS));
+	});
+});
+
+describe('errors', () => {
+	const reasons = (...entries: Array<[string, number]>) => entries.map(([key, count]) => ({ key, count, last: `last ${key}` }));
+
+	it('names the failure keys', () => {
+		assert.equal(failureLabel('http:503'), 'HTTP 503 Service Unavailable');
+		assert.equal(failureLabel('http:418'), 'HTTP 418');
+		assert.equal(failureLabel('network:ECONNRESET'), 'Network error ECONNRESET');
+		assert.equal(failureLabel('timeout'), 'Request timeout');
+	});
+
+	it('adds the reasons of several crawlers, the biggest first', () => {
+		const merged = mergeFailures([reasons(['http:503', 2], ['timeout', 1]), reasons(['http:503', 5]), undefined]);
+		assert.deepEqual(merged.map(reason => [reason.key, reason.count]), [['http:503', 7], ['timeout', 1]]);
+	});
+
+	it('shows them on the overview and in the crawler detail', () => {
+		const crawlers = [{ name: 'a', state: 'running' as const, configured: true, stats: stats({ failures: reasons(['http:403', 4]) }) }];
+		const html = renderStatus(status(crawlers), config, NOW);
+		assert.match(html, /HTTP 403 Forbidden/);
+		const detail = renderCrawlerDetail('a', crawlers[0], config.crawlers[0], NOW);
+		assert.match(detail, /Errors since start/);
+		assert.match(detail, /last http:403/);
 	});
 });

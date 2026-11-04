@@ -13,6 +13,15 @@ export interface MetricsReport {
 	bytesReceived?: number;
 	/** New links between an item and an account. */
 	newLinks?: number;
+	/** Why URLs failed, by reason. The counts are from the start of the crawler. */
+	failures?: Record<string, FailureReason>;
+}
+
+/** One reason of failed URLs. The key is like `http:503`, `timeout` or `network:ECONNRESET`. */
+export interface FailureReason {
+	count: number;
+	/** The latest error message with its URL. */
+	last: string;
 }
 
 /** The numbers the admin shows for one crawler. */
@@ -28,6 +37,8 @@ export interface CrawlerStats {
 	totals: { requests: number; processed: number; failed: number; http429: number; bytes: number; newLinks: number };
 	pauseMs: number;
 	idle: boolean;
+	/** Why URLs failed since the start, the most frequent reason first. */
+	failures: Array<FailureReason & { key: string }>;
 	/** Time of the last report, in ms since 1970. Undefined before the first report. */
 	reportedAt?: number;
 }
@@ -114,6 +125,9 @@ export class CrawlerMetricsTracker {
 			},
 			pauseMs: last.pauseMs,
 			idle: last.idle === true,
+			failures: Object.entries(last.failures ?? {})
+				.map(([key, reason]) => ({ key, ...reason }))
+				.sort((a, b) => b.count - a.count || a.key.localeCompare(b.key)),
 			reportedAt: last.at,
 		};
 	}

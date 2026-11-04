@@ -2,6 +2,7 @@ import { CrawlerSetting } from './config';
 import { MetricSeries, SERIES_BUCKETS } from './crawler-metrics';
 import { SupervisorStatus } from './supervisor';
 import { AttentionItem } from './ui-attention';
+import { failuresPanel } from './ui-failures';
 import {
 	BAD_429_PER_HOUR,
 	bytesText,
@@ -179,6 +180,7 @@ export const overviewView = (status: SupervisorStatus, attention: AttentionItem[
 		${attentionPanel(attention)}
 		${statesPanel(summary)}
 	</div>
+	${failuresPanel(status)}
 </div>`;
 
 /** The traffic page: totals, the month estimate against the plan, a chart, and the share of each crawler. */

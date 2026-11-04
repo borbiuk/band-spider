@@ -27,13 +27,13 @@ describe('collectMetrics', () => {
 		assert.deepEqual(metrics, {
 			requests: 13, http429: 3, processed: 6, failed: 3, pauseMs: 12_000, idle: false,
 			// a client without a traffic meter (the local IP) adds nothing
-			bytesSent: 3000, bytesReceived: 120_000, newLinks: 42,
+			bytesSent: 3000, bytesReceived: 120_000, newLinks: 42, failures: {},
 		});
 	});
 
 	it('is all zero without workers', () => {
 		assert.deepEqual(collectMetrics([], emptyCounts()), {
-			requests: 0, http429: 0, processed: 0, failed: 0, pauseMs: 0, idle: false, bytesSent: 0, bytesReceived: 0, newLinks: 0,
+			requests: 0, http429: 0, processed: 0, failed: 0, pauseMs: 0, idle: false, bytesSent: 0, bytesReceived: 0, newLinks: 0, failures: {},
 		});
 	});
 });
@@ -101,7 +101,7 @@ describe('crawler metrics event', () => {
 			assert.equal(metrics.length, 1);
 			assert.deepEqual(metrics[0], {
 				type: 'metrics',
-				metrics: { requests: 3, http429: 0, processed: 3, failed: 0, pauseMs: 0, idle: false, bytesSent: 0, bytesReceived: 0, newLinks: 0 },
+				metrics: { requests: 3, http429: 0, processed: 3, failed: 0, pauseMs: 0, idle: false, bytesSent: 0, bytesReceived: 0, newLinks: 0, failures: {} },
 			});
 			assert.equal(events.at(-1)?.type, 'stopped');
 			assert.equal(events.at(-2)?.type, 'metrics');

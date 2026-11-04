@@ -156,9 +156,10 @@ describe('crawler against a real DB service', () => {
 			});
 			const counts = await runCrawler(config(service), { createReader: () => reader });
 
+			// a failed URL is tried three times, then it is not claimed again
 			assert.equal(counts.saved, 1);
-			assert.equal(counts.failed, 1);
-			assert.deepEqual(await row(seed, 'items', bad), { processed: 0, isBusy: 0, failedCount: 1 });
+			assert.equal(counts.failed, 3);
+			assert.deepEqual(await row(seed, 'items', bad), { processed: 0, isBusy: 0, failedCount: 3 });
 			assert.deepEqual(await row(seed, 'items', good), { processed: 1, isBusy: 0, failedCount: 0 });
 		} finally {
 			await close();

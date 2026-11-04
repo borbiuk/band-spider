@@ -2,6 +2,7 @@ import { DEFAULT_IDLE_MS, MAX_REQUEST_DELAY_MS, MIN_REQUEST_DELAY_MS } from '@ba
 import { CrawlerSetting } from './config';
 import { SERIES_BUCKETS } from './crawler-metrics';
 import { CrawlerStatus } from './supervisor';
+import { crawlerFailures } from './ui-failures';
 import {
 	action,
 	button,
@@ -100,6 +101,7 @@ export const renderCrawlerDetail = (name: string, status: CrawlerStatus | undefi
 	${pause}${idle}
 	${kpis}
 	${chart}
+	${stats ? crawlerFailures(stats.failures) : ''}
 	<div class="detail-grid">
 		${stats ? `<div class="panel panel-inner"><h3>Since start</h3><p class="meta">${esc(totalText(stats))}</p></div>` : ''}
 		${countLines ? `<div class="panel panel-inner"><h3>URL counts</h3><ul class="rows plain">${countLines}</ul></div>` : ''}

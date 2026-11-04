@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { CrawlerStats } from '../crawler-metrics';
 import http from 'node:http';
 import { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
@@ -277,7 +278,7 @@ describe('statistics on the page', () => {
 			counts: { claimed: 5, saved: 4, failed: 1, rateLimited: 0, notFound: 0 },
 			stats: {
 				requestsPerMin: 120.5, urlsPerMin: 60, http429PerHour: 3, bytesPerHour: 36_000_000, linksPerMin: 4.5,
-				totals: { requests: 12345, processed: 800, failed: 12, http429: 4, bytes: 1_500_000_000, newLinks: 321 }, pauseMs: 65_000, idle: false,
+				totals: { requests: 12345, processed: 800, failed: 12, http429: 4, bytes: 1_500_000_000, newLinks: 321 }, pauseMs: 65_000, idle: false, failures: [] as CrawlerStats['failures'],
 			},
 		}],
 	};

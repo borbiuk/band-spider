@@ -1,9 +1,10 @@
-import { EntityManager, ILike, IsNull, LessThan, Not } from 'typeorm';
+import { EntityManager, ILike } from 'typeorm';
 import { isNullOrUndefined } from '@band-spider/core';
 import { InsertResult } from '../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 import { insertManyByUrl, insertUnique } from './insert-helpers';
+import { NEXT_FAILED_COUNT_SQL, NOT_FOUND_MARK, notProcessedWhere, processedWhere } from './selection';
 
 export class ItemRepository {
 	constructor(
@@ -32,20 +33,14 @@ export class ItemRepository {
 		return await this.manager.getRepository(ItemEntity).count();
 	}
 
-	/** How many items were processed. A failed item is not processed. */
+	/** How many items were processed. It is the opposite of the date filter of `countNotProcessed`. */
 	public async countProcessed(): Promise<number> {
-		return await this.manager.getRepository(ItemEntity).count({ where: { lastProcessingDate: Not(IsNull()) } });
+		return await this.manager.getRepository(ItemEntity).count({ where: processedWhere() });
 	}
 
+	/** The shared filter of items and accounts, and only /track/ URLs. */
 	private notProcessedWhere() {
-		return {
-			lastProcessingDate: IsNull(),
-			isBusy: false,
-			failedCount: LessThan(1),
-			// url: Or(ILike('%/album/%'), ILike('%/track/%'))
-			// url: ILike('%/album/%'),
-			url: ILike('%/track/%'),
-		};
+		return { ...notProcessedWhere(), url: ILike('%/track/%') };
 	}
 
 	public async getUserItems(accountId: number): Promise<ItemEntity[]> {
@@ -102,9 +97,14 @@ export class ItemRepository {
 		await this.manager.getRepository(ItemEntity)
 			.createQueryBuilder()
 			.update()
-			.set({ failedCount: clear ? 0 : () => 'COALESCE(failedCount, 0) + 1' })
+			.set({ failedCount: clear ? 0 : () => NEXT_FAILED_COUNT_SQL })
 			.where('id = :itemId', { itemId })
 			.execute();
+	}
+
+	/** The page does not exist: the item is not claimed again. */
+	public async markNotFound(itemId: number): Promise<void> {
+		await this.manager.getRepository(ItemEntity).update({ id: itemId }, { failedCount: NOT_FOUND_MARK });
 	}
 
 	public async updateProcessingDate(itemId: number): Promise<void> {

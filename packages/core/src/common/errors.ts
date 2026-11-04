@@ -20,6 +20,16 @@ export class HttpStatusError extends Error {
  * error is not kept inside one field: it fails the whole page.
  */
 export class ApiRefusedError extends Error {
+	constructor(message: string, public readonly status?: number) {
+		super(message);
+	}
+}
+
+/** A request did not get an answer: the connection was refused, reset, and so on. `code` is the code of the reason, like `ECONNRESET`. */
+export class NetworkError extends Error {
+	constructor(message: string, public readonly code: string, options?: ErrorOptions) {
+		super(message, options);
+	}
 }
 
 /** The message of a caught value: `message` of an `Error`, the value as text otherwise. */
@@ -29,3 +39,34 @@ export const errorMessage = (error: unknown): string =>
 /** A caught value as an `Error`: an `Error` stays the same object, anything else is wrapped. */
 export const asError = (error: unknown): Error =>
 	error instanceof Error ? error : new Error(String(error));
+
+/** Why a URL failed: a short stable key and the message of the error. */
+export interface FailureReport {
+	/** `http:<status>`, `api:<status>`, `timeout`, `network:<code>`, `save`, `scrape`. */
+	key: string;
+	message: string;
+	url: string;
+}
+
+/** Where in the processing of a URL the error came from. */
+export type FailureStage = 'scrape' | 'save';
+
+/** The key of a failure. It names the HTTP status when there is one, so the admin can count the reasons. */
+export const failureKey = (error: unknown, stage: FailureStage = 'scrape'): string => {
+	if (stage === 'save') {
+		return 'save';
+	}
+	if (error instanceof HttpStatusError) {
+		return `http:${error.status}`;
+	}
+	if (error instanceof ApiRefusedError) {
+		return error.status === undefined ? 'api' : `api:${error.status}`;
+	}
+	if (error instanceof NetworkError) {
+		return `network:${error.code}`;
+	}
+	if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+		return 'timeout';
+	}
+	return 'scrape';
+};

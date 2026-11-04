@@ -190,7 +190,7 @@ async function readAccountTab(
 		}
 		// A truncated tab must not be saved as a complete one, so this fails the whole account.
 		if (!isNullOrUndefined(refused)) {
-			throw new ApiRefusedError(`Fan collection API refused "${source.endpoint}" with status ${refused.status}`);
+			throw new ApiRefusedError(`Fan collection API refused "${source.endpoint}" with status ${refused.status}`, refused.status);
 		}
 
 		const urls = [...embedded, ...fetched]

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { CrawlerStats } from '../crawler-metrics';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -263,7 +264,7 @@ describe('traffic and new links in the crawler table', () => {
 		const status = await supervisor.status();
 		const stats = {
 			requestsPerMin: 1, urlsPerMin: 1, http429PerHour: 0, bytesPerHour: 36_000_000, linksPerMin: 4.5,
-			totals: { requests: 1, processed: 1, failed: 0, http429: 0, bytes: 1_500_000_000, newLinks: 321 }, pauseMs: 0, idle: false,
+			totals: { requests: 1, processed: 1, failed: 0, http429: 0, bytes: 1_500_000_000, newLinks: 321 }, pauseMs: 0, idle: false, failures: [] as CrawlerStats['failures'],
 		};
 		const page = renderStatus({
 			...status,

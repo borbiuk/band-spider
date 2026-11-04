@@ -16,6 +16,7 @@ import { CrawlerConfig, DEFAULT_IDLE_MS } from './config';
 import { CountingCrawlStore, CrawlerCounts } from './counting-crawl-store';
 import { CrawlTransport, HttpCrawlTransport } from './crawl-transport';
 import { collectMetrics, CrawlerMetrics } from './metrics';
+import { FailureTally } from './failures';
 import { RemoteCrawlStore } from './remote-crawl-store';
 
 /** What a crawler tells its parent. */
@@ -85,8 +86,9 @@ export const runCrawler = async (config: CrawlerConfig, deps: CrawlerDeps = {}):
 		clients.add(http);
 		return (deps.createReader ?? (client => new FetchPageReader(client)))(http);
 	};
-	const spider = new BandSpider(store, createReader);
-	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics([...clients], store.counts, spider.isIdle, store.newLinks) });
+	const failures = new FailureTally();
+	const spider = new BandSpider(store, createReader, failure => failures.record(failure));
+	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics([...clients], store.counts, spider.isIdle, store.newLinks, failures.snapshot()) });
 	const metricsTimer = setInterval(sendMetrics, metricsIntervalMs);
 	// the timer must not keep the process alive
 	metricsTimer.unref();

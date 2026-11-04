@@ -125,6 +125,7 @@ export class LocalCrawlStore implements CrawlStore {
 	public async saveItem(task: CrawlTask, data: ItemPageData): Promise<ItemPageStatistic> {
 		return this.writes.run(async () => {
 			const statistic = await saveItemPageData(task.id, data, this.database);
+			await this.clearFailedWhenClean(this.database.item, task, data.errors);
 			await this.database.item.updateBusy(task.id, false);
 			this.leases.delete(this.leaseKey(task));
 			return statistic;
@@ -134,10 +135,18 @@ export class LocalCrawlStore implements CrawlStore {
 	public async saveAccount(task: CrawlTask, data: AccountPageData): Promise<AccountPageStatistic> {
 		return this.writes.run(async () => {
 			const statistic = await saveAccountPageData(task.id, data, this.database);
+			await this.clearFailedWhenClean(this.database.account, task, data.errors);
 			await this.database.account.updateBusy(task.id, false);
 			this.leases.delete(this.leaseKey(task));
 			return statistic;
 		});
+	}
+
+	/** A page saved without issues starts its failure count again. A page with issues is released as failed by the caller. */
+	private async clearFailedWhenClean(repository: { updateFailed(id: number, clear?: boolean): Promise<void> }, task: CrawlTask, errors: readonly Error[]): Promise<void> {
+		if (errors.length === 0) {
+			await repository.updateFailed(task.id, true);
+		}
 	}
 
 	public release(task: CrawlTask, reason: ReleaseReason): Promise<void> {
@@ -145,7 +154,10 @@ export class LocalCrawlStore implements CrawlStore {
 			const repository = this.repositoryOf(task.type);
 
 			// HTTP 429 is not a failure of the item: only release it, so it stays a candidate
-			if (reason !== 'rateLimited') {
+			if (reason === 'notFound') {
+				// the page is gone from Bandcamp: it is not claimed again
+				await repository.markNotFound(task.id);
+			} else if (reason === 'failed') {
 				await repository.updateFailed(task.id);
 			}
 			await repository.updateBusy(task.id, false);

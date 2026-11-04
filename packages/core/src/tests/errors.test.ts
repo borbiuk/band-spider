@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ApiRefusedError, asError, errorMessage, HttpStatusError, PageNotFoundError } from '../common/errors';
+import { ApiRefusedError, asError, errorMessage, failureKey, HttpStatusError, NetworkError, PageNotFoundError } from '../common/errors';
 import { getPageHtml, HttpClient } from '../common/http-client';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
 import { buildAccountPageData } from '../account/clients/account-page-common';
@@ -149,5 +149,21 @@ describe('errorMessage and asError', () => {
 
 		assert.equal(errorMessage(timeout), 'The operation timed out');
 		assert.equal(asError(timeout), timeout);
+	});
+});
+
+describe('failureKey', () => {
+	it('names the HTTP status, the network code and the timeout', () => {
+		assert.equal(failureKey(new HttpStatusError(503, url)), 'http:503');
+		assert.equal(failureKey(new ApiRefusedError('x', 403)), 'api:403');
+		assert.equal(failureKey(new ApiRefusedError('x')), 'api');
+		assert.equal(failureKey(new NetworkError('x', 'ECONNRESET')), 'network:ECONNRESET');
+		assert.equal(failureKey(new DOMException('timed out', 'TimeoutError')), 'timeout');
+	});
+
+	it('uses scrape for other errors and save for the save stage', () => {
+		assert.equal(failureKey(new Error('missing selector')), 'scrape');
+		assert.equal(failureKey('text'), 'scrape');
+		assert.equal(failureKey(new HttpStatusError(500, url), 'save'), 'save');
 	});
 });

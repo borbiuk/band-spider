@@ -1,4 +1,4 @@
-import { EntityManager, IsNull, LessThan, MoreThanOrEqual, Or } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { AccountScanMarks, chunk, isNullOrUndefined } from '@band-spider/core';
 import { InsertResult } from '../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
@@ -6,9 +6,7 @@ import { AccountScanEntity } from '../entities/account-scan-entity';
 import { FollowerEntity } from '../entities/follower-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 import { DB_BATCH_SIZE, insertManyByUrl, insertRelation, insertUnique } from './insert-helpers';
-
-/** An account processed before this date is processed again. */
-const REPROCESS_BEFORE = new Date('2024-09-10');
+import { NEXT_FAILED_COUNT_SQL, NOT_FOUND_MARK, notProcessedWhere, processedWhere } from './selection';
 
 export class AccountRepository {
 	constructor(
@@ -22,8 +20,7 @@ export class AccountRepository {
 	 */
 	public async getNotProcessed(newestFirst: boolean = false): Promise<AccountEntity[]> {
 		return await this.manager.getRepository(AccountEntity).find({
-			// where: { lastProcessingDate: IsNull(), isBusy: false },
-			where: { lastProcessingDate: Or(LessThan(REPROCESS_BEFORE), IsNull()), isBusy: false },
+			where: notProcessedWhere(),
 			order: newestFirst ? { id: 'DESC' } : undefined,
 			take: 400
 		});
@@ -32,7 +29,7 @@ export class AccountRepository {
 	/** How many accounts are left to process. The filter is the one of `getNotProcessed`. */
 	public async countNotProcessed(): Promise<number> {
 		return await this.manager.getRepository(AccountEntity).count({
-			where: { lastProcessingDate: Or(LessThan(REPROCESS_BEFORE), IsNull()), isBusy: false },
+			where: notProcessedWhere(),
 		});
 	}
 
@@ -40,9 +37,9 @@ export class AccountRepository {
 		return await this.manager.getRepository(AccountEntity).count();
 	}
 
-	/** How many accounts are processed. It is the opposite of the filter of `countNotProcessed`, without the busy flag. */
+	/** How many accounts are processed. It is the opposite of the date filter of `countNotProcessed`. */
 	public async countProcessed(): Promise<number> {
-		return await this.manager.getRepository(AccountEntity).count({ where: { lastProcessingDate: MoreThanOrEqual(REPROCESS_BEFORE) } });
+		return await this.manager.getRepository(AccountEntity).count({ where: processedWhere() });
 	}
 
 	/** How many links between an item and an account there are, and how many of them are a wishlist. */
@@ -262,9 +259,14 @@ export class AccountRepository {
 		await this.manager.getRepository(AccountEntity)
 			.createQueryBuilder()
 			.update()
-			.set({ failedCount: clear ? 0 : () => 'COALESCE(failedCount, 0) + 1' })
+			.set({ failedCount: clear ? 0 : () => NEXT_FAILED_COUNT_SQL })
 			.where('id = :accountId', { accountId })
 			.execute();
+	}
+
+	/** The page does not exist: the account is not claimed again. */
+	public async markNotFound(accountId: number): Promise<void> {
+		await this.manager.getRepository(AccountEntity).update({ id: accountId }, { failedCount: NOT_FOUND_MARK });
 	}
 
 	public async updateProcessingDate(accountId: number): Promise<void> {

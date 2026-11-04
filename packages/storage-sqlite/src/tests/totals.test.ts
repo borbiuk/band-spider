@@ -48,7 +48,7 @@ describe('totals', () => {
 		await db.query('UPDATE items SET lastProcessingDate = CURRENT_DATE WHERE id = ?', [itemIds[0]]);
 		// an account processed before the re-process date counts as not processed
 		await db.query("UPDATE accounts SET lastProcessingDate = '2024-01-01' WHERE id = ?", [first]);
-		await db.query("UPDATE accounts SET lastProcessingDate = '2025-01-01' WHERE id = ?", [second]);
+		await db.query("UPDATE accounts SET lastProcessingDate = '2026-06-01' WHERE id = ?", [second]);
 
 		later();
 		const totals = await store.totals();

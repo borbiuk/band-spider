@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { BandSpider } from '../band-spider';
+import { FailureReport, HttpStatusError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { RateLimitedError } from '../common/rate-limit-gate';
 import type { CrawlStore, CrawlTask } from '../crawl-store';
@@ -160,5 +161,48 @@ describe('workers of one BandSpider run', () => {
 
 		stop.abort();
 		await running;
+	});
+});
+
+describe('failure reports', () => {
+	it('names the HTTP status of a page that could not be read', async () => {
+		const store = new FakeStore();
+		// a failed URL is not queued again: a loop with no real I/O would starve the timers of the test
+		store.release = async (task, reason) => { store.released.push(`${reason}:${task.url}`); };
+		const url = 'https://a.bandcamp.com/track/1';
+		store.queue.push(url);
+		const failures: FailureReport[] = [];
+		const stop = new AbortController();
+		const spider = new BandSpider(store, () => reader(() => { throw new HttpStatusError(503, url); }), failure => failures.push(failure));
+		const running = spider.run(options({ idleWaitMs: 10 }), stop.signal);
+
+		await until(() => failures.length > 0);
+		stop.abort();
+		await running;
+
+		assert.deepEqual(failures[0], { key: 'http:503', message: `HTTP 503: ${url}`, url });
+		assert.equal(store.released[0], `failed:${url}`);
+	});
+
+	it('reports each scraping issue of a saved page', async () => {
+		const store = new FakeStore();
+		// a failed URL is not queued again: a loop with no real I/O would starve the timers of the test
+		store.release = async (task, reason) => { store.released.push(`${reason}:${task.url}`); };
+		store.queue.push('https://a.bandcamp.com/track/2');
+		const failures: FailureReport[] = [];
+		const stop = new AbortController();
+		const spider = new BandSpider(
+			store,
+			() => reader(url => ({ ...itemData(url), errors: [new Error('missing title')] })),
+			failure => failures.push(failure),
+		);
+		const running = spider.run(options({ idleWaitMs: 10 }), stop.signal);
+
+		await until(() => failures.length > 0);
+		stop.abort();
+		await running;
+
+		assert.equal(failures[0].key, 'scrape');
+		assert.equal(failures[0].message, 'missing title');
 	});
 });

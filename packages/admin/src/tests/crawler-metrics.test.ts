@@ -37,6 +37,7 @@ describe('CrawlerMetricsTracker', () => {
 			totals: { requests: 120, processed: 40, failed: 20, http429: 2, bytes: 0, newLinks: 0 },
 			pauseMs: 5000,
 			idle: false,
+			failures: [],
 			reportedAt: clock.now,
 		});
 	});
@@ -134,5 +135,17 @@ describe('CrawlerMetricsTracker', () => {
 		assert.deepEqual(series?.links.slice(-3), [0, 5, 20]);
 		assert.deepEqual(series?.bytes.slice(-3), [0, 1000, 2000]);
 		assert.equal(series?.requests.slice(0, 27).every(value => value === 0), true);
+	});
+
+	it('gives the failure reasons of the last report, the most frequent first', () => {
+		const { clock, tracker } = setup();
+		clock.now += MIN;
+		tracker.record(report({
+			failures: { timeout: { count: 2, last: 'a' }, 'http:503': { count: 9, last: 'b' } },
+		}));
+		assert.deepEqual(tracker.summary()?.failures, [
+			{ key: 'http:503', count: 9, last: 'b' },
+			{ key: 'timeout', count: 2, last: 'a' },
+		]);
 	});
 });

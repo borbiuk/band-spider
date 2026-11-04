@@ -1,5 +1,5 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { HttpStatusError, PageNotFoundError } from './errors';
+import { HttpStatusError, NetworkError, PageNotFoundError } from './errors';
 import { NoProxy, ProxySource } from './proxy-source';
 import { RateLimitedError, RateLimitGate } from './rate-limit-gate';
 import { SerialQueue } from './serial-queue';
@@ -173,7 +173,8 @@ function withNetworkCode(error: unknown, url: string): unknown {
 	}
 
 	const cause = error.cause as { code?: string, message?: string };
-	return new Error(`Request failed (${cause.code ?? cause.message ?? 'unknown'}): ${url}`, { cause: error });
+	const reason = cause.code ?? cause.message ?? 'unknown';
+	return new NetworkError(`Request failed (${reason}): ${url}`, cause.code ?? 'unknown', { cause: error });
 }
 
 /**

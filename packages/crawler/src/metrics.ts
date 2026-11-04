@@ -1,4 +1,5 @@
 import { CrawlerCounts } from './counting-crawl-store';
+import { FailureCount } from './failures';
 
 /** What a crawler reports about its work. All numbers count from the start of the crawler. */
 export interface CrawlerMetrics {
@@ -20,6 +21,8 @@ export interface CrawlerMetrics {
 	pauseMs: number;
 	/** True while the crawler waits for new URLs. */
 	idle: boolean;
+	/** Why URLs failed, counted by reason. A key is `http:<status>`, `api:<status>`, `timeout`, `network:<code>`, `not-found`, `save` or `scrape`. */
+	failures: Record<string, FailureCount>;
 }
 
 /** What the crawler reads from an HTTP client. HttpClient has these. */
@@ -31,7 +34,7 @@ export interface RequestMeter {
 }
 
 /** Puts the numbers of all clients and the URL counts together. */
-export const collectMetrics = (meters: readonly RequestMeter[], counts: CrawlerCounts, idle = false, newLinks = 0): CrawlerMetrics => ({
+export const collectMetrics = (meters: readonly RequestMeter[], counts: CrawlerCounts, idle = false, newLinks = 0, failures: Record<string, FailureCount> = {}): CrawlerMetrics => ({
 	requests: meters.reduce((sum, meter) => sum + meter.requestCount, 0),
 	http429: meters.reduce((sum, meter) => sum + meter.rateLimitedCount, 0),
 	processed: counts.saved,
@@ -41,4 +44,5 @@ export const collectMetrics = (meters: readonly RequestMeter[], counts: CrawlerC
 	newLinks,
 	pauseMs: meters.reduce((longest, meter) => Math.max(longest, meter.pauseLeftMs), 0),
 	idle,
+	failures,
 });
