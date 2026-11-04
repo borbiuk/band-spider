@@ -38,6 +38,7 @@
 		"typescript": "7.0.2"
 	},
 	"overrides": {
+		"undici": "8.12.3",
 		"typeorm": {
 			"better-sqlite3": "13.0.3"
 		}
