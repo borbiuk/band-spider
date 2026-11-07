@@ -1,4 +1,4 @@
-import { NotFoundGuard } from './common/not-found-guard';
+import { BurstGuard } from './common/burst-guard';
 import { HttpClient } from './common/http-client';
 import { RateLimitGate } from './common/rate-limit-gate';
 import { AccountScanMarks } from './models/account-scan-marks';
@@ -34,7 +34,9 @@ export interface PageSource {
 	/** The 429 pause of this worker. */
 	rateLimitGate: RateLimitGate;
 	/** Tells a real 404 from a block of the IP of this worker. */
-	notFoundGuard: NotFoundGuard;
+	notFoundGuard: BurstGuard;
+	/** Tells a network error of one URL from a failure of the IP or the proxy of this worker. */
+	connectionGuard: BurstGuard;
 	/** Called after every processed URL. */
 	afterUrl: () => Promise<void>;
 	close: () => Promise<void>;

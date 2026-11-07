@@ -1,8 +1,8 @@
 import { setTimeout as sleep } from 'node:timers/promises';
-import { errorMessage, failureKey, FailureReport, PageNotFoundError } from './common/errors';
+import { BurstGuard, BurstVerdict } from './common/burst-guard';
+import { errorMessage, failureKey, FailureReport, isConnectionFailure, PageNotFoundError } from './common/errors';
 import { HttpClient } from './common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from './common/logger';
-import { NotFoundGuard, NotFoundVerdict } from './common/not-found-guard';
 import { NoProxy, ProxySource, StaticProxy } from './common/proxy-source';
 import { RateLimitedError, RateLimitGate } from './common/rate-limit-gate';
 import { isNullOrUndefined, logMessage } from './common/utils';
@@ -19,6 +19,12 @@ interface UrlTypeHandler {
 	source: LogSource;
 }
 
+/**
+ * After this many pauses in a row with no page read between them the crawler stops with an error.
+ * The pauses grow from 30 seconds to 15 minutes, so this is about an hour of failures.
+ */
+export const MAX_PAUSES_IN_ROW = 8;
+
 enum UrlResult {
 	Processed,
 	Failed,
@@ -28,6 +34,8 @@ enum UrlResult {
 	NotFound,
 	/** A 404 that may come from a block: the URL is released without a mark and tried again later. */
 	NotFoundUnsure,
+	/** A network error that may come from the proxy or a block: the URL is released without counting it. */
+	ConnectionUnsure,
 }
 
 export class BandSpider {
@@ -37,6 +45,7 @@ export class BandSpider {
 		failed: 0,
 		rateLimited: 0,
 		notFoundUnsure: 0,
+		connectionUnsure: 0,
 		start: null as number | null,
 	};
 
@@ -47,14 +56,18 @@ export class BandSpider {
 	private readonly idleWorkers = new Set<number>();
 	private workerCount = 0;
 
+	// aborted when requests keep failing for too long; `haltReason` says why
+	private halt = new AbortController();
+	private haltReason: Error | null = null;
+
 	constructor(
 		private readonly store: CrawlStore,
 		/** Builds the reader of a worker from its HTTP client. A test passes a fake one. */
 		private readonly createReader: (http: HttpClient) => PageReader = http => new FetchPageReader(http),
 		/** Called for each error that makes a URL fail, with the reason. */
 		private readonly onFailure: (failure: FailureReport) => void = () => { },
-		/** Builds the 404 guard of one IP. A test passes one that trusts every 404. */
-		private readonly createNotFoundGuard: () => NotFoundGuard = () => new NotFoundGuard(),
+		/** Builds a guard of one IP, one for 404s and one for network errors. A test passes one that trusts every answer. */
+		private readonly createGuard: () => BurstGuard = () => new BurstGuard(),
 	) {
 	}
 
@@ -76,6 +89,10 @@ export class BandSpider {
 		/** When aborted, every worker stops after its current URL. */
 		stop: AbortSignal = new AbortController().signal,
 	): Promise<void> {
+		this.halt = new AbortController();
+		this.haltReason = null;
+		// the workers also stop when requests keep failing
+		const workersStop = AbortSignal.any([stop, this.halt.signal]);
 
 		this.newestFirst = reverse;
 		this.workerCount = concurrency;
@@ -92,7 +109,7 @@ export class BandSpider {
 					this.createWorkerSource(source),
 					type,
 					id,
-					stop,
+					workersStop,
 					idleWaitMs,
 				);
 			});
@@ -104,6 +121,9 @@ export class BandSpider {
 		} finally {
 			await proxySource.close();
 		}
+		if (this.haltReason !== null) {
+			throw this.haltReason;
+		}
 	}
 
 	/**
@@ -113,22 +133,23 @@ export class BandSpider {
 	private createFetchSource(
 		proxySource: ProxySource,
 		delays: { minDelayMs?: number, maxDelayMs?: number },
-	): { http: HttpClient, rateLimitGate: RateLimitGate, notFoundGuard: NotFoundGuard } {
+	): { http: HttpClient, rateLimitGate: RateLimitGate, notFoundGuard: BurstGuard, connectionGuard: BurstGuard } {
 		const rateLimitGate = new RateLimitGate();
 		const http = new HttpClient(rateLimitGate, {
 			proxySource,
 			...delays,
 			onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(rateLimitGate, url, retryAfter),
 		});
-		return { http, rateLimitGate, notFoundGuard: this.createNotFoundGuard() };
+		return { http, rateLimitGate, notFoundGuard: this.createGuard(), connectionGuard: this.createGuard() };
 	}
 
-	/** A worker has its own reader, but uses the shared client, gate and 404 guard (one IP). */
-	private createWorkerSource(shared: { http: HttpClient, rateLimitGate: RateLimitGate, notFoundGuard: NotFoundGuard }): PageSource {
+	/** A worker has its own reader, but uses the shared client, gate and guards (one IP). */
+	private createWorkerSource(shared: { http: HttpClient, rateLimitGate: RateLimitGate, notFoundGuard: BurstGuard, connectionGuard: BurstGuard }): PageSource {
 		return {
 			reader: this.createReader(shared.http),
 			rateLimitGate: shared.rateLimitGate,
 			notFoundGuard: shared.notFoundGuard,
+			connectionGuard: shared.connectionGuard,
 			afterUrl: async () => { },
 			close: async () => { },
 		};
@@ -164,7 +185,7 @@ export class BandSpider {
 	): Promise<void> {
 		while (!stop.aborted) {
 			// do not take a URL while the pause after HTTP 429 is active
-			await source.rateLimitGate.wait();
+			await source.rateLimitGate.wait(stop);
 			if (stop.aborted) {
 				break;
 			}
@@ -191,6 +212,8 @@ export class BandSpider {
 				source.rateLimitGate.reportSuccess();
 			} else if (result === UrlResult.NotFoundUnsure) {
 				this.statistic.notFoundUnsure++;
+			} else if (result === UrlResult.ConnectionUnsure) {
+				this.statistic.connectionUnsure++;
 			} else if (result === UrlResult.RateLimited) {
 				this.statistic.rateLimited++;
 				// not lost: the task is released, so it is claimed again after the pause
@@ -202,15 +225,11 @@ export class BandSpider {
 				logger.debug(
 					logMessage(
 						LogSource.Main,
-						`Processed: ${successColor(this.statistic.processed).padEnd(4)}; Failed: ${errorColor(this.statistic.failed).padEnd(4)}; Rate limited: ${this.statistic.rateLimited}; Unsure 404: ${this.statistic.notFoundUnsure}; Speed: ${speedColor((this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)).padEnd(4)}`
+						`Processed: ${successColor(this.statistic.processed).padEnd(4)}; Failed: ${errorColor(this.statistic.failed).padEnd(4)}; Rate limited: ${this.statistic.rateLimited}; Unsure 404: ${this.statistic.notFoundUnsure}; Unsure network errors: ${this.statistic.connectionUnsure}; Speed: ${speedColor((this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)).padEnd(4)}`
 							.padStart(240)
 					)
 				);
 
-				// if (this.statistic.processed * 1.5 < this.statistic.failed) {
-				// 	await page.browser().close();
-				// 	throw 'No sense to process!';
-				// }
 			}
 
 			await source.afterUrl();
@@ -238,22 +257,29 @@ export class BandSpider {
 		const { process, source: logSource } = this.handlerOf(task.type);
 		try {
 			const processed = await process(task, this.store, source.reader, pageIndex, this.onFailure);
-			if (processed) {
-				source.notFoundGuard.reportPage();
-			} else {
+			// the page was answered, failed or not
+			source.notFoundGuard.reportOk();
+			source.connectionGuard.reportOk();
+			if (!processed) {
 				await this.store.release(task, 'failed');
 			}
 			return processed ? UrlResult.Processed : UrlResult.Failed;
 		} catch (error) {
 			// HTTP 429 is not a failure of the item: only release it, so it stays a candidate
 			if (error instanceof RateLimitedError) {
+				source.connectionGuard.reportOk();
 				await this.store.release(task, 'rateLimited');
 				this.pauseOnRateLimit(source.rateLimitGate, error.url, error.retryAfter);
 				return UrlResult.RateLimited;
 			}
 
 			if (error instanceof PageNotFoundError) {
+				source.connectionGuard.reportOk();
 				return await this.releaseNotFound(task, source, pageIndex, logSource, error);
+			}
+
+			if (isConnectionFailure(error)) {
+				return await this.releaseConnectionFailure(task, source, pageIndex, logSource, error);
 			}
 
 			await this.store.release(task, 'failed');
@@ -279,8 +305,8 @@ export class BandSpider {
 		logSource: LogSource,
 		error: PageNotFoundError,
 	): Promise<UrlResult> {
-		const verdict = source.notFoundGuard.reportNotFound();
-		if (verdict === NotFoundVerdict.Trusted) {
+		const verdict = source.notFoundGuard.reportSuspect();
+		if (verdict === BurstVerdict.Trusted) {
 			await this.store.release(task, 'notFound');
 			this.onFailure({ key: 'not-found', message: errorMessage(error), url: task.url });
 			logger.warn(
@@ -292,16 +318,35 @@ export class BandSpider {
 		// not a failure of the URL: only release it, so it is tried again later
 		await this.store.release(task, 'rateLimited');
 		this.onFailure({ key: 'not-found:unsure', message: errorMessage(error), url: task.url });
-		if (verdict === NotFoundVerdict.Burst) {
-			const pause = source.rateLimitGate.trip();
-			if (pause.started) {
-				logger.warn(
-					{ url: task.url, pauseSeconds: Math.round(pause.pauseMs / 1000), backoffLevel: pause.level },
-					logMessage(LogSource.Browser, 'Too many 404s, the IP may be blocked, requests paused')
-				);
-			}
+		if (verdict === BurstVerdict.Burst) {
+			this.pause(source.rateLimitGate, 'Too many 404s, the IP may be blocked, requests paused', { url: task.url });
 		}
 		return UrlResult.NotFoundUnsure;
+	}
+
+	/**
+	 * Releases a URL that failed with a network error, a timeout, HTTP 403 or 5xx. It counts as a
+	 * failure of the URL only when the guard trusts it. Otherwise the URL is only released, and on a
+	 * burst of such errors the worker pauses like on 429.
+	 */
+	private async releaseConnectionFailure(
+		task: CrawlTask,
+		source: PageSource,
+		pageIndex: number,
+		logSource: LogSource,
+		error: unknown,
+	): Promise<UrlResult> {
+		const verdict = source.connectionGuard.reportSuspect();
+		const trusted = verdict === BurstVerdict.Trusted;
+		await this.store.release(task, trusted ? 'failed' : 'rateLimited');
+		this.onFailure({ key: failureKey(error), message: errorMessage(error), url: task.url });
+		logger.error(
+			logMessage(logSource, `[${pageIndex}] Request failed${trusted ? '' : ', not counted'}: ${errorMessage(error)}`, task.url)
+		);
+		if (verdict === BurstVerdict.Burst) {
+			this.pause(source.rateLimitGate, 'Too many network errors, the proxy or the IP may be down, requests paused', { url: task.url });
+		}
+		return trusted ? UrlResult.Failed : UrlResult.ConnectionUnsure;
 	}
 
 	/** The handler and the log source of one URL type. */
@@ -314,14 +359,28 @@ export class BandSpider {
 		}
 	}
 
-	/** Starts the pause of the shared gate and logs one line when a new pause starts. */
+	/** Starts the pause of the shared gate after HTTP 429. */
 	private pauseOnRateLimit(gate: RateLimitGate, url: string, retryAfter?: string): void {
+		this.pause(gate, 'HTTP 429, requests paused', { url, status: 429, retryAfter: retryAfter ?? null }, retryAfter);
+	}
+
+	/**
+	 * Starts the pause of the shared gate and logs one line when a new pause starts. After
+	 * `MAX_PAUSES_IN_ROW` pauses with no page read between them, all workers stop with an error.
+	 */
+	private pause(gate: RateLimitGate, message: string, details: Record<string, unknown>, retryAfter?: string): void {
 		const pause = gate.trip(retryAfter);
-		if (pause.started) {
-			logger.warn(
-				{ url, status: 429, retryAfter: retryAfter ?? null, pauseSeconds: Math.round(pause.pauseMs / 1000), backoffLevel: pause.level },
-				logMessage(LogSource.Browser, 'HTTP 429, requests paused')
-			);
+		if (!pause.started) {
+			return;
+		}
+		logger.warn(
+			{ ...details, pauseSeconds: Math.round(pause.pauseMs / 1000), backoffLevel: pause.level },
+			logMessage(LogSource.Browser, message)
+		);
+		if (pause.level >= MAX_PAUSES_IN_ROW && this.haltReason === null) {
+			this.haltReason = new Error(`Requests kept failing: ${pause.level} pauses in a row with no page read, the last: ${message}`);
+			logger.error(logMessage(LogSource.Main, `${this.haltReason.message}. Stopping the crawler`));
+			this.halt.abort();
 		}
 	}
 }

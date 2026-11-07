@@ -135,6 +135,17 @@ describe('RateLimitGate', () => {
 		assert.equal(gate.isPaused, false);
 	});
 
+	it('wait ends at once when the signal is aborted', async () => {
+		const { gate, sleeps } = createGate();
+		gate.trip('5');
+		const stop = new AbortController();
+		stop.abort();
+
+		await gate.wait(stop.signal);
+		assert.deepEqual(sleeps, []);
+		assert.equal(gate.isPaused, true);
+	});
+
 	it('RateLimitedError carries the URL and the header', () => {
 		const error = new RateLimitedError('https://x.bandcamp.com/a', '7');
 

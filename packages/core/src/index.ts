@@ -9,7 +9,7 @@ export * from './band-spider';
 export * from './common/errors';
 export * from './common/http-client';
 export * from './common/logger';
-export * from './common/not-found-guard';
+export * from './common/burst-guard';
 export * from './common/proxy-source';
 export * from './common/rate-limit-gate';
 export * from './common/serial-queue';

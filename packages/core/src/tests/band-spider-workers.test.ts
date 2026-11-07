@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { BandSpider } from '../band-spider';
-import { FailureReport, HttpStatusError, PageNotFoundError } from '../common/errors';
+import { BandSpider, MAX_PAUSES_IN_ROW } from '../band-spider';
+import { FailureReport, HttpStatusError, NetworkError, PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
-import { NotFoundGuard } from '../common/not-found-guard';
+import { BurstGuard } from '../common/burst-guard';
 import { RateLimitedError } from '../common/rate-limit-gate';
 import type { CrawlStore, CrawlTask } from '../crawl-store';
 import { defaultItemTabStatistic } from '../item/models/item-tab-statistic';
@@ -69,6 +69,9 @@ const reader = (onItem: (url: string) => Promise<ItemPageData> | ItemPageData = 
 	readItemPage: async url => onItem(url),
 	readAccountPage: async () => { throw new Error('not used'); },
 });
+
+/** A guard that trusts every answer, so a single 404 or network error counts at once. */
+const trustingGuard = () => new BurstGuard({ minSamples: 1, maxShare: 1 });
 
 const options = (extra: { concurrency?: number, idleWaitMs?: number, type?: UrlType } = {}) => ({
 	concurrency: 1, type: UrlType.Item, superTag: false, reverse: false, minDelayMs: 0, maxDelayMs: 0, ...extra,
@@ -174,7 +177,7 @@ describe('failure reports', () => {
 		store.queue.push(url);
 		const failures: FailureReport[] = [];
 		const stop = new AbortController();
-		const spider = new BandSpider(store, () => reader(() => { throw new HttpStatusError(503, url); }), failure => failures.push(failure));
+		const spider = new BandSpider(store, () => reader(() => { throw new HttpStatusError(503, url); }), failure => failures.push(failure), trustingGuard);
 		const running = spider.run(options({ idleWaitMs: 10 }), stop.signal);
 
 		await until(() => failures.length > 0);
@@ -185,8 +188,38 @@ describe('failure reports', () => {
 		assert.equal(store.released[0], `failed:${url}`);
 	});
 
+	it('only releases a URL with a network error the guard does not trust', async () => {
+		const store = new FakeStore();
+		store.release = async (task, reason) => { store.released.push(`${reason}:${task.url}`); };
+		const url = 'https://a.bandcamp.com/track/1';
+		store.queue.push(url);
+		const failures: FailureReport[] = [];
+		const stop = new AbortController();
+		// the default guard needs more answers before it trusts a network error
+		const spider = new BandSpider(store, () => reader(() => { throw new NetworkError(`Request failed (0): ${url}`, '0'); }), failure => failures.push(failure));
+		const running = spider.run(options({ idleWaitMs: 10 }), stop.signal);
+
+		await until(() => failures.length > 0);
+		stop.abort();
+		await running;
+
+		assert.deepEqual(failures.map(x => x.key), ['network:0']);
+		assert.deepEqual(store.released, [`rateLimited:${url}`]);
+	});
+
+	it('stops with an error after too many pauses in a row', async () => {
+		const store = new FakeStore();
+		store.queue.push('https://a.bandcamp.com/track/1');
+		let reads = 0;
+		// a pause of 0 seconds: each 429 starts a new pause right away
+		const spider = new BandSpider(store, () => reader(url => { reads++; throw new RateLimitedError(url, '0'); }));
+
+		await assert.rejects(spider.run(options({ idleWaitMs: 10 })), /Requests kept failing: 8 pauses in a row/);
+		assert.equal(reads, MAX_PAUSES_IN_ROW);
+	});
+
 	/** Runs the spider on one URL that answers 404 and returns the release and the failure keys. */
-	const runNotFound = async (type: UrlType, guard?: () => NotFoundGuard) => {
+	const runNotFound = async (type: UrlType, guard?: () => BurstGuard) => {
 		const store = new FakeStore();
 		// a released URL is not queued again: a loop with no real I/O would starve the timers of the test
 		store.release = async (task, reason) => { store.released.push(`${reason}:${task.url}`); };
@@ -211,7 +244,7 @@ describe('failure reports', () => {
 
 	for (const type of [UrlType.Item, UrlType.Account]) {
 		it(`releases an ${type} page that does not exist as not found when the guard trusts the 404`, async () => {
-			const { url, released, keys } = await runNotFound(type, () => new NotFoundGuard({ minSamples: 1, maxShare: 1 }));
+			const { url, released, keys } = await runNotFound(type, trustingGuard);
 
 			assert.deepEqual(released, [`notFound:${url}`]);
 			assert.deepEqual(keys, ['not-found']);

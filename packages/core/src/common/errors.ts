@@ -32,6 +32,15 @@ export class NetworkError extends Error {
 	}
 }
 
+/**
+ * True for an error that is likely about the connection, not about the page: a network error, a
+ * timeout, HTTP 403 or a 5xx status. A failing proxy or a blocked IP gives these for every page.
+ */
+export const isConnectionFailure = (error: unknown): boolean =>
+	error instanceof NetworkError
+	|| (error instanceof HttpStatusError && (error.status === 403 || error.status >= 500))
+	|| (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'));
+
 /** The message of a caught value: `message` of an `Error`, the value as text otherwise. */
 export const errorMessage = (error: unknown): string =>
 	error instanceof Error ? error.message : String(error);

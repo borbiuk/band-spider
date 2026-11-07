@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ApiRefusedError, asError, errorMessage, failureKey, HttpStatusError, NetworkError, PageNotFoundError } from '../common/errors';
+import { ApiRefusedError, asError, errorMessage, failureKey, HttpStatusError, isConnectionFailure, NetworkError, PageNotFoundError } from '../common/errors';
 import { getPageHtml, HttpClient } from '../common/http-client';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
 import { buildAccountPageData } from '../account/clients/account-page-common';
@@ -165,5 +165,22 @@ describe('failureKey', () => {
 		assert.equal(failureKey(new Error('missing selector')), 'scrape');
 		assert.equal(failureKey('text'), 'scrape');
 		assert.equal(failureKey(new HttpStatusError(500, url), 'save'), 'save');
+	});
+});
+
+describe('isConnectionFailure', () => {
+	const url = 'https://a.bandcamp.com/track/1';
+	const timeout = Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+
+	it('is true for errors of the connection', () => {
+		for (const error of [new NetworkError('x', 'ECONNRESET'), timeout, new HttpStatusError(403, url), new HttpStatusError(503, url)]) {
+			assert.equal(isConnectionFailure(error), true, String(error));
+		}
+	});
+
+	it('is false for errors of the page', () => {
+		for (const error of [new PageNotFoundError(), new HttpStatusError(410, url), new ApiRefusedError('x', 500), new Error('parse')]) {
+			assert.equal(isConnectionFailure(error), false, String(error));
+		}
 	});
 });

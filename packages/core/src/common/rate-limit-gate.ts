@@ -13,8 +13,8 @@ export interface RateLimitGateOptions {
 	jitterRatio?: number;
 	/** Current time in ms. */
 	now?: () => number;
-	/** Resolves after the given time in ms. */
-	sleep?: (ms: number) => Promise<void>;
+	/** Resolves after the given time in ms, or earlier when the signal is aborted. */
+	sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 	/** Number in [0, 1). */
 	random?: () => number;
 }
@@ -67,7 +67,7 @@ export class RateLimitGate {
 	private readonly maxPauseMs: number;
 	private readonly jitterRatio: number;
 	private readonly now: () => number;
-	private readonly sleep: (ms: number) => Promise<void>;
+	private readonly sleep: (ms: number, signal?: AbortSignal) => Promise<void>;
 	private readonly random: () => number;
 
 	private pausedUntil = 0;
@@ -78,7 +78,7 @@ export class RateLimitGate {
 		this.maxPauseMs = options.maxPauseMs ?? MAX_PAUSE_MS;
 		this.jitterRatio = options.jitterRatio ?? JITTER_RATIO;
 		this.now = options.now ?? Date.now;
-		this.sleep = options.sleep ?? (ms => sleep(ms));
+		this.sleep = options.sleep ?? ((ms, signal) => sleep(ms, undefined, { signal }).catch(() => { }));
 		this.random = options.random ?? Math.random;
 	}
 
@@ -119,14 +119,17 @@ export class RateLimitGate {
 		}
 	}
 
-	/** Resolves when no pause is active. A pause that grows while waiting is waited out too. */
-	public async wait(): Promise<void> {
-		while (true) {
+	/**
+	 * Resolves when no pause is active, or when the signal is aborted. A pause that grows while
+	 * waiting is waited out too.
+	 */
+	public async wait(signal?: AbortSignal): Promise<void> {
+		while (!signal?.aborted) {
 			const left = this.pausedUntil - this.now();
 			if (left <= 0) {
 				return;
 			}
-			await this.sleep(left);
+			await this.sleep(left, signal);
 		}
 	}
 
