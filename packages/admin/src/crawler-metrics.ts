@@ -34,6 +34,10 @@ export interface CrawlerStats {
 	bytesPerHour: number;
 	/** New item-account links per minute. */
 	linksPerMin: number;
+	/** Failed URLs per minute. */
+	failedPerMin: number;
+	/** The share of failed URLs among the URLs done in the speed window, 0 to 1. Undefined when no URL was done. */
+	failShare?: number;
 	totals: { requests: number; processed: number; failed: number; http429: number; bytes: number; newLinks: number };
 	pauseMs: number;
 	idle: boolean;
@@ -48,6 +52,8 @@ export interface MetricSeries {
 	requests: number[];
 	urls: number[];
 	http429: number[];
+	/** Failed URLs. */
+	failed: number[];
 	/** New item-account links. */
 	links: number[];
 	/** Bytes through the proxy. */
@@ -109,12 +115,16 @@ export class CrawlerMetricsTracker {
 		const speedBase = this.baseFor(last.at - SPEED_WINDOW_MS);
 		const hourBase = this.baseFor(last.at - HOUR_MS);
 		const minutes = Math.max(last.at - speedBase.at, 1) / 60_000;
+		const failedRecent = last.failed - speedBase.failed;
+		const doneRecent = last.processed + last.failed - speedBase.processed - speedBase.failed;
 		return {
 			requestsPerMin: round((last.requests - speedBase.requests) / minutes),
 			urlsPerMin: round((last.processed + last.failed - speedBase.processed - speedBase.failed) / minutes),
 			http429PerHour: last.http429 - hourBase.http429,
 			bytesPerHour: Math.round((bytesOf(last) - bytesOf(speedBase)) / minutes * 60),
 			linksPerMin: round(((last.newLinks ?? 0) - (speedBase.newLinks ?? 0)) / minutes),
+			failedPerMin: round(failedRecent / minutes),
+			failShare: doneRecent > 0 ? failedRecent / doneRecent : undefined,
 			totals: {
 				requests: last.requests,
 				processed: last.processed,
@@ -141,6 +151,7 @@ export class CrawlerMetricsTracker {
 		const requests: number[] = [];
 		const urls: number[] = [];
 		const http429: number[] = [];
+		const failed: number[] = [];
 		const links: number[] = [];
 		const bytes: number[] = [];
 		for (let i = 0; i < SERIES_BUCKETS; i++) {
@@ -150,10 +161,11 @@ export class CrawlerMetricsTracker {
 			requests.push(Math.max(to.requests - from.requests, 0));
 			urls.push(Math.max(to.processed + to.failed - from.processed - from.failed, 0));
 			http429.push(Math.max(to.http429 - from.http429, 0));
+			failed.push(Math.max(to.failed - from.failed, 0));
 			links.push(Math.max((to.newLinks ?? 0) - (from.newLinks ?? 0), 0));
 			bytes.push(Math.max(bytesOf(to) - bytesOf(from), 0));
 		}
-		return { requests, urls, http429, links, bytes };
+		return { requests, urls, http429, failed, links, bytes };
 	}
 
 	/** The newest sample that is not newer than the given time, or the oldest one. */

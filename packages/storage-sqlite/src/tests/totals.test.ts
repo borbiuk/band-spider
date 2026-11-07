@@ -14,6 +14,13 @@ let store: LocalCrawlStore;
 // the counted numbers are kept for five minutes, so the tests move this clock past it
 let clock = 0;
 const later = () => { clock += 6 * 60_000; };
+// the cache is old: the numbers are counted again in the background, then read
+const recount = async () => {
+	later();
+	await store.totals();
+	await store.idle();
+	return await store.totals();
+};
 
 before(async () => {
 	db = await BandDatabase.open({ file: path.join(tempDir, 'totals.sqlite'), synchronize: true });
@@ -45,13 +52,12 @@ describe('totals', () => {
 		await db.account.addItems(first, itemIds, false);
 		await db.account.addItems(second, itemIds.slice(0, 1), true);
 		await db.query('INSERT INTO followers (followerId, followedId) VALUES (?, ?)', [first, second]);
-		await db.query('UPDATE items SET lastProcessingDate = CURRENT_DATE WHERE id = ?', [itemIds[0]]);
+		await db.query('UPDATE items SET lastProcessingDate = unixepoch() WHERE id = ?', [itemIds[0]]);
 		// an account processed before the re-process date counts as not processed
-		await db.query("UPDATE accounts SET lastProcessingDate = '2024-01-01' WHERE id = ?", [first]);
-		await db.query("UPDATE accounts SET lastProcessingDate = '2026-06-01' WHERE id = ?", [second]);
+		await db.query("UPDATE accounts SET lastProcessingDate = unixepoch('2024-01-01') WHERE id = ?", [first]);
+		await db.query("UPDATE accounts SET lastProcessingDate = unixepoch('2026-06-01') WHERE id = ?", [second]);
 
-		later();
-		const totals = await store.totals();
+		const totals = await recount();
 		assert.equal(totals.items, 3);
 		assert.equal(totals.itemsProcessed, 1);
 		assert.equal(totals.accounts, 2);
@@ -63,10 +69,13 @@ describe('totals', () => {
 
 	it('reuses the counted numbers for five minutes', async () => {
 		later();
-		const first = await store.totals();
+		const first = await recount();
 		await db.item.insert('https://t.bandcamp.com/track/99');
 		assert.equal((await store.totals()).items, first.items);
+		// an old number is returned at once and counted again in the background
 		later();
+		assert.equal((await store.totals()).items, first.items);
+		await store.idle();
 		assert.equal((await store.totals()).items, first.items + 1);
 	});
 });

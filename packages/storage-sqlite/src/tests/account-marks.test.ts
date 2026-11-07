@@ -60,7 +60,7 @@ const fakeBandcamp = (collection: string[]) => {
 };
 
 const linkedItems = async (accountId: number): Promise<string[]> =>
-	(await db.query('SELECT i.url FROM "items-to-accounts" ia JOIN items i ON i.id = ia.itemId WHERE ia.accountId = ? ORDER BY i.url', [accountId]))
+	(await db.query('SELECT i.url FROM items_to_accounts ia JOIN items i ON i.id = ia.itemId WHERE ia.accountId = ? ORDER BY i.url', [accountId]))
 		.map(x => x.url);
 
 describe('reading an account again', () => {

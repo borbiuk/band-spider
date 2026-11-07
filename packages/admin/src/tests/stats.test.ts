@@ -277,7 +277,7 @@ describe('statistics on the page', () => {
 			name: 'items', configured: true, state: 'running' as const,
 			counts: { claimed: 5, saved: 4, failed: 1, rateLimited: 0, notFound: 0 },
 			stats: {
-				requestsPerMin: 120.5, urlsPerMin: 60, http429PerHour: 3, bytesPerHour: 36_000_000, linksPerMin: 4.5,
+				requestsPerMin: 120.5, urlsPerMin: 60, http429PerHour: 3, bytesPerHour: 36_000_000, linksPerMin: 4.5, failedPerMin: 0,
 				totals: { requests: 12345, processed: 800, failed: 12, http429: 4, bytes: 1_500_000_000, newLinks: 321 }, pauseMs: 65_000, idle: false, failures: [] as CrawlerStats['failures'],
 			},
 		}],
@@ -327,7 +327,7 @@ describe('statistics on the page', () => {
 		const values = Array.from({ length: 30 }, (_, i) => i * 2);
 		const html = renderStatus({
 			db: { ...baseStatus.db, queueHistory: [9, 7, 5] },
-			crawlers: [{ ...crawler, series: { requests: values, urls: values, http429: values, links: values, bytes: values } }],
+			crawlers: [{ ...crawler, series: { requests: values, urls: values, http429: values, failed: values, links: values, bytes: values } }],
 		}, config);
 
 		assert.match(html, /<svg class="chart"/);

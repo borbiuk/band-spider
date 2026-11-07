@@ -24,11 +24,16 @@ describe('npm scripts', () => {
 			...Object.keys(APP_RUNS),
 			'build',
 			'db:service',
+			'db:migrate:v2',
 			'crawler:items',
 			'crawler:accounts',
 			'admin',
 			'test',
 		].sort());
+	});
+
+	it('"db:migrate:v2" builds and runs the migration CLI', () => {
+		assert.equal(scripts['db:migrate:v2'], 'npm run build && node ./packages/storage-sqlite/dist/migrations/v2-cli.js');
 	});
 
 	for (const [name, flags] of Object.entries(APP_RUNS)) {

@@ -1,4 +1,5 @@
 import { BandDatabase } from '../db';
+import { isItemUrl } from '../models/item-url';
 import { AccountPageData, AccountPageStatistic, AccountTabData, AccountTabStatistic } from '@band-spider/core';
 
 export async function saveAccountPageData(
@@ -48,8 +49,10 @@ async function saveAccountItems(
 	let newUrls: string[] = [];
 	let newRelationsCount: number = 0;
 
-	if (pageReadResult.urls.length !== 0) {
-		const inserted = await database.item.insertMany(pageReadResult.urls);
+	// only tracks and albums are items; a tab may also list other pages
+	const itemUrls = pageReadResult.urls.filter(isItemUrl);
+	if (itemUrls.length !== 0) {
+		const inserted = await database.item.insertMany(itemUrls);
 		newUrls = inserted.newUrls;
 		const ids = inserted.ids;
 		newRelationsCount = await database.account.addItems(accountId, ids, wishlist);

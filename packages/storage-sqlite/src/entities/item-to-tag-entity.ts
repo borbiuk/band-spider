@@ -2,7 +2,7 @@ import { Entity, ManyToOne, PrimaryColumn } from 'typeorm';
 import { ItemEntity } from './item-entity';
 import { TagEntity } from './tag-entity';
 
-@Entity('items-to-tags')
+@Entity('items_to_tags', { withoutRowid: true })
 export class ItemToTagEntity {
 
 	@PrimaryColumn()

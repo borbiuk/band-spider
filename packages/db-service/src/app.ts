@@ -23,6 +23,7 @@ import {
 	validatorCompiler,
 	ZodTypeProvider,
 } from 'fastify-type-provider-zod';
+import { logSlowRequest } from './diagnostics';
 import { toAccountPageData, toCrawlTask, toCrawlTaskDto, toItemPageData } from './mapping';
 import { ServiceStats } from './stats';
 
@@ -35,7 +36,17 @@ export interface AppOptions {
 	totals?: () => Promise<TotalsResponse>;
 	/** When set, every request except /health needs this bearer token. */
 	token?: string;
+	/**
+	 * The most requests that are open at the same time. When there are more, the service answers 503
+	 * with `Retry-After` at once, so a crowd of crawlers does not pile up behind a slow query.
+	 */
+	maxOpenRequests?: number;
 }
+
+export const DEFAULT_MAX_OPEN_REQUESTS = 200;
+
+/** Seconds that a crawler that was turned away waits. */
+const RETRY_AFTER_SECONDS = 2;
 
 const hasValidToken = (header: string | undefined, token: string): boolean => {
 	const expected = Buffer.from(`Bearer ${token}`);
@@ -44,14 +55,41 @@ const hasValidToken = (header: string | undefined, token: string): boolean => {
 };
 
 /** The HTTP side of the DB service. It only knows the CrawlStore interface. */
-export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, totals, token }: AppOptions): FastifyInstance => {
+export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, totals, token, maxOpenRequests = DEFAULT_MAX_OPEN_REQUESTS }: AppOptions): FastifyInstance => {
 	const app = Fastify({ logger: false }).withTypeProvider<ZodTypeProvider>();
 	app.setValidatorCompiler(validatorCompiler);
 	app.setSerializerCompiler(serializerCompiler);
 
+	let open = 0;
+	const startedAt = new WeakMap<object, number>();
+
+	// only the requests that reach a handler are counted; /health and /stats are always answered
 	app.addHook('onRequest', async (request, reply) => {
+		const heavy = request.method === 'POST';
+		if (heavy && open >= maxOpenRequests) {
+			return reply.code(503).header('Retry-After', String(RETRY_AFTER_SECONDS)).send({ message: 'The DB service is busy' });
+		}
+		if (heavy) {
+			open++;
+			startedAt.set(request, performance.now());
+		}
 		if (token && request.url !== '/health' && !hasValidToken(request.headers.authorization, token)) {
 			return reply.code(401).send({ message: 'Unauthorized' });
+		}
+	});
+
+	app.addHook('onResponse', async request => {
+		const start = startedAt.get(request);
+		if (start !== undefined) {
+			open--;
+			logSlowRequest(request.method, request.url, performance.now() - start, open);
+		}
+	});
+
+	// a request that was cut by the client does not get onResponse
+	app.addHook('onRequestAbort', async request => {
+		if (startedAt.delete(request)) {
+			open--;
 		}
 	});
 

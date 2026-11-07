@@ -1,4 +1,6 @@
 export * from './account/account-db-client';
+export * from './counting/count-queries';
+export * from './counting/row-counter';
 export * from './db';
 export * from './entities/account-entity';
 export * from './entities/account-scan-entity';

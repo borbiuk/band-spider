@@ -8,7 +8,7 @@ import { after, before, describe, it } from 'node:test';
 import { saveAccountPageData } from '../account/account-db-client';
 import { AccountPageData, ItemPageData } from '@band-spider/core';
 import { saveItemPageData } from '../item/item-db-client';
-import { BandDatabase, SCHEMA_ADDITIONS } from '../db';
+import { BandDatabase } from '../db';
 
 // tests run from `dist/tests`, the fixtures stay in `src/tests/fixtures`
 const SCHEMA_FIXTURE = path.join(__dirname, '../../src/tests/fixtures/schema.json');
@@ -80,27 +80,21 @@ describe('reopening an existing file', () => {
 	});
 });
 
-describe('schema additions', () => {
-	it('creates account-scans in an existing file the same way a new file gets it', async () => {
-		const file = path.join(tempDir, 'old-schema.sqlite');
-		const created = await BandDatabase.open({ file, synchronize: true });
-		const fresh = (await created.query("SELECT sql FROM sqlite_master WHERE name = 'account-scans'"))[0].sql;
-		// an existing file from before the table existed
-		await created.query('DROP TABLE "account-scans"');
-		await created.close();
+describe('a file with the old schema', () => {
+	it('is not opened, also not with a schema sync', async () => {
+		const file = path.join(tempDir, 'v1.sqlite');
+		const Database = require('better-sqlite3');
+		const old = new Database(file);
+		old.exec(fs.readFileSync(path.join(__dirname, '../../src/tests/fixtures/schema-v1.sql'), 'utf8'));
+		old.close();
 
-		const reopened = await BandDatabase.open({ file, synchronize: false });
+		await assert.rejects(BandDatabase.open({ file, synchronize: true }), /schema before v2/);
+
+		const check = new Database(file, { readonly: true });
 		try {
-			const added = (await reopened.query("SELECT sql FROM sqlite_master WHERE name = 'account-scans'"))[0].sql;
-			assert.equal(added, fresh);
-			assert.equal(SCHEMA_ADDITIONS.length, 1);
-
-			// TypeORM would change nothing in this file
-			const pending = await (reopened as unknown as { dataSource: { driver: { createSchemaBuilder(): { log(): Promise<{ upQueries: unknown[] }> } } } })
-				.dataSource.driver.createSchemaBuilder().log();
-			assert.deepEqual(pending.upQueries, []);
+			assert.equal(check.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE name = 'items_to_accounts'").get().n, 0, 'the sync did not run');
 		} finally {
-			await reopened.close();
+			check.close();
 		}
 	});
 });
@@ -169,6 +163,33 @@ describe('repositories', () => {
 		assert.deepEqual([second.isInserted, second.entity.id], [false, first.entity.id]);
 	});
 
+	it('account.insert and insertMany store the URL trimmed and in lower case', async () => {
+		const { entity, isInserted } = await db.account.insert(' https://bandcamp.com/Case-Fan ');
+		const many = await db.account.insertMany(['https://bandcamp.com/case-fan', 'https://bandcamp.com/CASE-FAN', 'https://bandcamp.com/Other-Fan']);
+
+		assert.deepEqual([isInserted, entity.url], [true, 'https://bandcamp.com/case-fan']);
+		assert.deepEqual(many.ids.slice(0, 2), [entity.id, entity.id]);
+		assert.deepEqual(many.newUrls, ['https://bandcamp.com/other-fan']);
+	});
+
+	it('item.insert and insertMany trim the URL, keep its case and set the type', async () => {
+		const { entity } = await db.item.insert(' https://type.bandcamp.com/album/Mixed ');
+		const many = await db.item.insertMany(['https://type.bandcamp.com/album/Mixed', 'https://type.bandcamp.com/track/one']);
+		const rows = await query("SELECT url, type FROM items WHERE url LIKE 'https://type.bandcamp.com/%' ORDER BY url");
+
+		assert.equal(entity.url, 'https://type.bandcamp.com/album/Mixed');
+		assert.equal(many.ids[0], entity.id);
+		assert.deepEqual(rows.map(x => [x.url, x.type]), [
+			['https://type.bandcamp.com/album/Mixed', 1],
+			['https://type.bandcamp.com/track/one', 0],
+		]);
+	});
+
+	it('item.insert and insertMany refuse a URL that is not a track or an album', async () => {
+		await assert.rejects(db.item.insert('https://artist.bandcamp.com/'), /Not a track or album URL/);
+		await assert.rejects(db.item.insertMany(['https://artist.bandcamp.comnull']), /Not a track or album URL/);
+	});
+
 	it('tag.insert stores the name in lower case', async () => {
 		const first = await db.tag.insert('Deep House');
 		const second = await db.tag.insert('deep house');
@@ -180,7 +201,7 @@ describe('repositories', () => {
 	it('account.addItem adds a relation once and updates the wishlist flag', async () => {
 		const { entity: account } = await db.account.insert('https://bandcamp.com/add-item');
 		const { entity: item } = await db.item.insert('https://band.bandcamp.com/album/add-item');
-		const wishlist = async () => (await query('SELECT wishlist FROM "items-to-accounts" WHERE accountId = ? AND itemId = ?', [account.id, item.id]))[0].wishlist;
+		const wishlist = async () => (await query('SELECT wishlist FROM items_to_accounts WHERE accountId = ? AND itemId = ?', [account.id, item.id]))[0].wishlist;
 
 		assert.equal(await db.account.addItem(account.id, item.id), true);
 		assert.equal(await wishlist(), 0);
@@ -214,7 +235,7 @@ describe('repositories', () => {
 		assert.equal(await db.account.addItems(account.id, [...ids, ids[0], ids[1]], false), 600);
 		assert.equal(await db.account.addItems(account.id, ids, true), 0);
 
-		const rows = await query('SELECT wishlist, COUNT(*) AS n FROM "items-to-accounts" WHERE accountId = ? GROUP BY wishlist', [account.id]);
+		const rows = await query('SELECT wishlist, COUNT(*) AS n FROM items_to_accounts WHERE accountId = ? GROUP BY wishlist', [account.id]);
 		assert.deepEqual(rows, [{ wishlist: 1, n: 600 }]);
 	});
 
@@ -311,18 +332,18 @@ describe('saveItemPageData', () => {
 		});
 
 		const row = await itemByUrl(albumUrl);
-		assert.equal(row.releaseDate, '2024-03-01');
+		assert.equal(row.releaseDate, Date.UTC(2024, 2, 1) / 86_400_000, 'days since 1970-01-01 of 2024-03-01');
 		assert.equal(row.imageUrl, 'https://f4.bcbits.com/img/save.jpg');
 		assert.ok(row.lastProcessingDate !== null);
 		for (const url of trackUrls) {
 			assert.equal((await itemByUrl(url)).albumId, album.id);
 		}
 		assert.deepEqual(
-			await query('SELECT t.name FROM "items-to-tags" it JOIN tags t ON t.id = it.tagId WHERE it.itemId = ? ORDER BY t.name', [album.id]),
+			await query('SELECT t.name FROM items_to_tags it JOIN tags t ON t.id = it.tagId WHERE it.itemId = ? ORDER BY t.name', [album.id]),
 			[{ name: 'save-house' }, { name: 'save-techno' }],
 		);
 		assert.deepEqual(
-			await query('SELECT a.url, ia.wishlist FROM "items-to-accounts" ia JOIN accounts a ON a.id = ia.accountId WHERE ia.itemId = ? ORDER BY a.url', [album.id]),
+			await query('SELECT a.url, ia.wishlist FROM items_to_accounts ia JOIN accounts a ON a.id = ia.accountId WHERE ia.itemId = ? ORDER BY a.url', [album.id]),
 			fans.map(url => ({ url, wishlist: 0 })),
 		);
 	});
@@ -411,6 +432,24 @@ describe('saveAccountPageData', () => {
 		errors: [],
 	});
 
+	it('skips a collection URL that is not a track or an album', async () => {
+		const { entity: account } = await db.account.insert('https://bandcamp.com/acc-junk');
+		const junk = ['https://junk.bandcamp.comnull', 'https://junk.bandcamp.com/subscribe'];
+		const good = 'https://junk.bandcamp.com/album/kept';
+
+		const stat = await saveAccountPageData(account.id, {
+			url: 'https://bandcamp.com/acc-junk',
+			collection: { total: 3, urls: [...junk, good], complete: true },
+			wishlist: { total: 0, urls: [], complete: true },
+			followers: { total: 0, urls: [], complete: true },
+			following: { total: 0, urls: [], complete: true },
+			errors: [],
+		}, db);
+
+		assert.deepEqual(stat.collection, { total: 3, allScraped: true, newRecords: 1, newRelations: 1, newUrls: [good] });
+		assert.deepEqual(await query("SELECT url FROM items WHERE url LIKE 'https://junk.bandcamp.com%'"), [{ url: good }]);
+	});
+
 	it('saves all tabs and counts what is new', async () => {
 		const url = 'https://bandcamp.com/acc-owner';
 		const { entity: account } = await db.account.insert(url);
@@ -425,7 +464,7 @@ describe('saveAccountPageData', () => {
 		});
 
 		assert.deepEqual(
-			await query('SELECT i.url, ia.wishlist FROM "items-to-accounts" ia JOIN items i ON i.id = ia.itemId WHERE ia.accountId = ? ORDER BY i.url', [account.id]),
+			await query('SELECT i.url, ia.wishlist FROM items_to_accounts ia JOIN items i ON i.id = ia.itemId WHERE ia.accountId = ? ORDER BY i.url', [account.id]),
 			[{ url: items[0], wishlist: 0 }, { url: items[1], wishlist: 1 }],
 			'an item in both tabs ends up as wishlist',
 		);
@@ -492,7 +531,7 @@ describe('batched saves', () => {
 		assert.equal(first.accounts.newRecords, 1200);
 		assert.equal(first.accounts.newRelations, 1200);
 		assert.equal(first.newUrls.length, 1200);
-		assert.equal((await query('SELECT COUNT(*) AS n FROM "items-to-accounts" WHERE itemId = ?', [item.id]))[0].n, 1200);
+		assert.equal((await query('SELECT COUNT(*) AS n FROM items_to_accounts WHERE itemId = ?', [item.id]))[0].n, 1200);
 
 		const second = await saveItemPageData(item.id, itemData(url, supporters, []), db);
 		assert.deepEqual(second.accounts, { total: 1201, newRecords: 0, newRelations: 0 });
@@ -509,7 +548,7 @@ describe('batched saves', () => {
 
 		assert.equal(stat.accounts.newRecords, 0);
 		assert.equal(stat.accounts.newRelations, 0);
-		const link = (await query('SELECT wishlist FROM "items-to-accounts" WHERE itemId = ? AND accountId = ?', [item.id, account.id]))[0];
+		const link = (await query('SELECT wishlist FROM items_to_accounts WHERE itemId = ? AND accountId = ?', [item.id, account.id]))[0];
 		assert.equal(Boolean(link.wishlist), false);
 	});
 
@@ -521,7 +560,7 @@ describe('batched saves', () => {
 
 		assert.deepEqual(stat.tags, { total: 3, newRecords: 2, newRelations: 2 });
 		assert.equal((await query('SELECT COUNT(*) AS n FROM tags WHERE name IN (?, ?)', ['batch-rock', 'batch-jazz']))[0].n, 2);
-		assert.equal((await query('SELECT COUNT(*) AS n FROM "items-to-tags" WHERE itemId = ?', [item.id]))[0].n, 2);
+		assert.equal((await query('SELECT COUNT(*) AS n FROM items_to_tags WHERE itemId = ?', [item.id]))[0].n, 2);
 
 		const again = await saveItemPageData(item.id, itemData(url, [], ['batch-rock', 'Batch-Jazz']), db);
 		assert.deepEqual(again.tags, { total: 2, newRecords: 0, newRelations: 0 });
@@ -539,7 +578,7 @@ describe('batched saves', () => {
 
 		assert.equal(await count('accounts'), accountsBefore);
 		assert.equal((await query('SELECT COUNT(*) AS n FROM tags WHERE name = ?', ['batch-rollback']))[0].n, 0);
-		assert.equal((await query('SELECT COUNT(*) AS n FROM "items-to-accounts" WHERE itemId = ?', [item.id]))[0].n, 0);
+		assert.equal((await query('SELECT COUNT(*) AS n FROM items_to_accounts WHERE itemId = ?', [item.id]))[0].n, 0);
 		assert.equal((await itemByUrl(url)).lastProcessingDate, null);
 	});
 

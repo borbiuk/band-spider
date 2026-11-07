@@ -65,7 +65,7 @@ describe('computeInsights', () => {
 	const crawler = (name: string, requests: number, processed: number, failed: number): CrawlerStatus => ({
 		name, configured: true, state: 'running',
 		stats: {
-			requestsPerMin: 1, urlsPerMin: 1, http429PerHour: 2, bytesPerHour: 0, linksPerMin: 0,
+			requestsPerMin: 1, urlsPerMin: 1, http429PerHour: 2, bytesPerHour: 0, linksPerMin: 0, failedPerMin: 0,
 			totals: { requests, processed, failed, http429: 1, bytes: 0, newLinks: 0 }, pauseMs: 0, idle: false, failures: [],
 		},
 	});

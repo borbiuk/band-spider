@@ -1,9 +1,10 @@
-import { EntityManager, ILike } from 'typeorm';
+import { EntityManager } from 'typeorm';
 import { isNullOrUndefined } from '@band-spider/core';
 import { InsertResult } from '../models/insert-result';
 import { ItemEntity } from '../entities/item-entity';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
-import { insertManyByUrl, insertUnique } from './insert-helpers';
+import { ItemType, normalizeItemUrl } from '../models/item-url';
+import { insertManyByUrl, insertUnique, requireItemType } from './insert-helpers';
 import { NEXT_FAILED_COUNT_SQL, NOT_FOUND_MARK, notProcessedWhere, processedWhere } from './selection';
 
 export class ItemRepository {
@@ -38,9 +39,9 @@ export class ItemRepository {
 		return await this.manager.getRepository(ItemEntity).count({ where: processedWhere() });
 	}
 
-	/** The shared filter of items and accounts, and only /track/ URLs. */
+	/** The shared filter of items and accounts, and only tracks. */
 	private notProcessedWhere() {
-		return { ...notProcessedWhere(), url: ILike('%/track/%') };
+		return { ...notProcessedWhere(), type: ItemType.Track };
 	}
 
 	public async getUserItems(accountId: number): Promise<ItemEntity[]> {
@@ -60,17 +61,22 @@ export class ItemRepository {
 			.execute();
 	}
 
+	/** Inserts a track or album URL (trimmed first), or returns the item that has it. Other URLs throw. */
 	public async insert(itemUrl: string): Promise<InsertResult<ItemEntity>> {
+		const url = normalizeItemUrl(itemUrl);
+		const type = requireItemType(url);
 		return await insertUnique(
 			this.manager.getRepository(ItemEntity),
-			{ url: itemUrl },
-			generated => ({ ...(generated as ItemEntity), url: itemUrl }),
+			{ url },
+			generated => ({ ...(generated as ItemEntity), url, type }),
+			{ type },
 		);
 	};
 
 	/**
 	 * Batch version of `insert` for the hot path: resolves many item URLs to ids with a few queries.
-	 * Each URL ends up exactly as `insert(url)` would leave it (only `url` is set, the rest are column defaults).
+	 * Each URL ends up exactly as `insert(url)` would leave it (only `url` and `type` are set, the rest are column defaults).
+	 * Every URL must be a track or an album.
 	 *
 	 * @returns ids in the same order as `urls` (duplicates give the same id) and the URLs that did not exist before.
 	 */
@@ -142,7 +148,7 @@ export class ItemRepository {
 	public async removeByUrl(itemUrl: string): Promise<void> {
 		const repository = this.manager.getRepository(ItemEntity)
 
-		const existingRecord = await repository.findOne({ where: { url: itemUrl } });
+		const existingRecord = await repository.findOne({ where: { url: normalizeItemUrl(itemUrl) } });
 		if (isNullOrUndefined(existingRecord)) {
 			return;
 		}

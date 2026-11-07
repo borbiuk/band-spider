@@ -12,6 +12,7 @@ import {
 	HOURS_PER_MONTH,
 	icon,
 	isActive,
+	isFailing,
 	kpi,
 	level429,
 	rateText,
@@ -70,20 +71,25 @@ const kpiRow = (status: SupervisorStatus, summary: CrawlerSummary): string => {
 	const traffic = total(status, stats => stats.totals.bytes);
 	const perHour = total(status, stats => stats.bytesPerHour);
 	const links = total(status, stats => stats.totals.newLinks);
+	const failingCount = status.crawlers.filter(isFailing).length;
+	const failedPerMin = total(status, stats => stats.failedPerMin);
 	const crawlersSub = [
 		summary.failed ? `<span class="lvl-bad">${summary.failed} failed</span>` : '',
+		failingCount ? `<span class="lvl-bad">${failingCount} with errors</span>` : '',
 		summary.paused ? `${summary.paused} paused` : '',
 		summary.idle ? `${summary.idle} waiting` : '',
 	].filter(Boolean).join(' · ') || 'running / total';
 	const level = level429(per429);
 	return `<div class="kpis">
-	${kpi('Crawlers', `${summary.running} / ${summary.total}`, crawlersSub, summary.failed ? 'bad' : summary.running ? 'ok' : 'idle', '', '#crawlers')}
+	${kpi('Crawlers', `${summary.running} / ${summary.total}`, crawlersSub, summary.failed || failingCount ? 'bad' : summary.running ? 'ok' : 'idle', '', '#crawlers')}
 	${kpi('URLs/min', rateText(total(status, stats => stats.urlsPerMin)), `${esc(rateText(total(status, stats => stats.requestsPerMin)))} requests/min`, 'urls',
 		series ? sparkline(allSeries(status, 'urls'), 'urls', 'URLs per minute, last 30 minutes') : '')}
 	${kpi('New links/min', rateText(total(status, stats => stats.linksPerMin)), `${esc(number(links))} item-account links since start`, 'links',
 		series ? sparkline(allSeries(status, 'links'), 'links', 'New links per minute, last 30 minutes') : '')}
 	${kpi('Traffic/hour', bytesText(perHour), traffic ? `${esc(bytesText(traffic))} since start, ~${esc(bytesText(perHour * HOURS_PER_MONTH))}/month` : 'proxy traffic since start', 'traffic',
 		series ? sparkline(allSeries(status, 'bytes'), 'traffic', 'Traffic per minute, last 30 minutes') : '', '#traffic')}
+	${kpi('Errors/min', rateText(failedPerMin), failingCount ? `${failingCount} crawlers fail most URLs` : failedPerMin ? 'failed URLs' : 'none', failingCount ? 'bad' : 'idle',
+		series ? sparkline(allSeries(status, 'failed'), 'bad', 'Failed URLs per minute, last 30 minutes') : '')}
 	${kpi('HTTP 429/hour', number(per429), per429 >= BAD_429_PER_HOUR ? 'too many, slow down' : per429 ? 'rate limited' : 'none', level === 'ok' ? 'idle' : level,
 		series ? sparkline(allSeries(status, 'http429'), 'r429', 'HTTP 429 per minute, last 30 minutes') : '')}
 	${kpi('Queue left', queue ? number(queue.items) : '-', queue ? `items, ${esc(number(queue.accounts))} accounts` : 'unknown', 'queue', sparkline(db.queueHistory, 'queue', 'Queue left over time'), '#insights')}
@@ -95,7 +101,12 @@ export const CHART_METRICS = [
 	{ key: 'speed', label: 'Speed' },
 	{ key: 'links', label: 'New links' },
 	{ key: 'traffic', label: 'Traffic' },
+	{ key: 'errors', label: 'Errors' },
 ] as const;
+
+/** Failed URLs per minute. A proxy that Bandcamp blocks shows here as a rise, while the other charts only fall. */
+const errorsChart = (values: number[]): string =>
+	trendChart([{ label: 'errors/min', tone: 'bad', values }], SERIES_BUCKETS, 'Failed URLs per minute');
 
 const mainChart = (status: SupervisorStatus): string => {
 	if (!hasSeries(status)) {
@@ -107,9 +118,11 @@ const mainChart = (status: SupervisorStatus): string => {
 			{ label: 'requests/min', tone: 'req', values: allSeries(status, 'requests') },
 			{ label: 'URLs/min', tone: 'urls', values: allSeries(status, 'urls') },
 			{ label: 'HTTP 429/min', tone: 'r429', values: allSeries(status, 'http429') },
+			{ label: 'errors/min', tone: 'bad', values: allSeries(status, 'failed') },
 		], SERIES_BUCKETS),
 		links: trendChart([{ label: 'new links/min', tone: 'links', values: allSeries(status, 'links') }], SERIES_BUCKETS, 'New item-account links per minute'),
 		traffic: trendChart([{ label: 'traffic/min', tone: 'traffic', values: allSeries(status, 'bytes') }], SERIES_BUCKETS, 'Proxy traffic per minute', { format: bytesText }),
+		errors: errorsChart(allSeries(status, 'failed')),
 	};
 	const picks = CHART_METRICS.map(metric =>
 		`<button type="button" data-chart-pick="${metric.key}" aria-pressed="false">${esc(metric.label)}</button>`).join('');
@@ -198,7 +211,7 @@ export const trafficView = (status: SupervisorStatus, settings: Map<string, Craw
 			const share = sum > 0 ? (stats.totals.bytes / sum) * 100 : 0;
 			return `
 		<li data-key="traffic:${esc(crawler.name)}">
-			<button type="button" class="link traffic-name" ${detailAttrs(crawler.name)}>${stateDot(crawler.state)}<span class="clip">${esc(crawler.name)}</span></button>
+			<button type="button" class="link traffic-name" ${detailAttrs(crawler.name)}>${stateDot(crawler.state)}<span class="clip">${esc(crawler.name)}</span>${isFailing(crawler) ? '<span class="pill pill-bad">errors</span>' : ''}</button>
 			${shareBar(share, 'traffic', `${crawler.name}: ${Math.round(share)}% of the traffic`)}
 			<span class="num"><b>${esc(bytesText(stats.totals.bytes))}</b><span class="sub">${Math.round(share)}%</span></span>
 			<span class="num"><b>${esc(bytesText(stats.bytesPerHour))}</b><span class="sub">per hour</span></span>
@@ -208,6 +221,9 @@ export const trafficView = (status: SupervisorStatus, settings: Map<string, Craw
 	const chart = hasSeries(status)
 		? trendChart([{ label: 'traffic/min', tone: 'traffic', values: sumSeries(billed.map(crawler => crawler.series?.bytes), SERIES_BUCKETS) }],
 			SERIES_BUCKETS, 'Proxy traffic per minute', { format: bytesText })
+		: `<div class="empty">${icon('info')}<p>The chart shows up when a crawler sends its first report.</p></div>`;
+	const errors = hasSeries(status)
+		? errorsChart(sumSeries(status.crawlers.map(crawler => crawler.series?.failed), SERIES_BUCKETS))
 		: `<div class="empty">${icon('info')}<p>The chart shows up when a crawler sends its first report.</p></div>`;
 	return `
 <div class="view" data-view="traffic">
@@ -225,6 +241,10 @@ export const trafficView = (status: SupervisorStatus, settings: Map<string, Craw
 	<div class="panel panel-chart">
 		<div class="panel-head"><h2>Traffic per minute, last ${SERIES_BUCKETS} min</h2></div>
 		${chart}
+	</div>
+	<div class="panel panel-chart">
+		<div class="panel-head"><h2>Errors per minute, last ${SERIES_BUCKETS} min</h2><span class="meta">failed URLs of all crawlers, a rise can mean blocked proxies</span></div>
+		${errors}
 	</div>
 	<div class="panel">
 		<div class="panel-head"><h2>By crawler</h2><span class="meta">sent and received, still compressed, as the proxy bills it</span></div>

@@ -33,9 +33,9 @@ before(async () => {
 
 /** Makes every row processed, so a test sees only the rows it inserts. */
 const clean = async () => {
-	const open = "lastProcessingDate IS NULL OR lastProcessingDate < '2026-01-01'";
-	await db.query(`UPDATE items SET lastProcessingDate = CURRENT_DATE WHERE ${open}`);
-	await db.query(`UPDATE accounts SET lastProcessingDate = CURRENT_DATE WHERE ${open}`);
+	const open = "lastProcessingDate IS NULL OR lastProcessingDate < unixepoch('2026-01-01')";
+	await db.query(`UPDATE items SET lastProcessingDate = unixepoch() WHERE ${open}`);
+	await db.query(`UPDATE accounts SET lastProcessingDate = unixepoch() WHERE ${open}`);
 	await store.resetBusy();
 };
 
@@ -419,7 +419,7 @@ describe('LocalCrawlStore selection', () => {
 			await db.item.insert(item);
 			await db.account.insert(account);
 			for (const [table, url] of [['items', item], ['accounts', account]]) {
-				await db.query(`UPDATE ${table} SET lastProcessingDate = ?, failedCount = ? WHERE url = ?`, [date, failed, url]);
+				await db.query(`UPDATE ${table} SET lastProcessingDate = unixepoch(?), failedCount = ? WHERE url = ?`, [date, failed, url]);
 			}
 			items.push(item);
 			accounts.push(account);

@@ -20,7 +20,7 @@ const NOW = 50_000_000;
 const PASS = 'pages-secret-pass';
 
 const stats = (extra: Partial<CrawlerStats> = {}): CrawlerStats => ({
-	requestsPerMin: 30, urlsPerMin: 20, http429PerHour: 0, bytesPerHour: 3_600_000, linksPerMin: 2,
+	requestsPerMin: 30, urlsPerMin: 20, http429PerHour: 0, bytesPerHour: 3_600_000, linksPerMin: 2, failedPerMin: 0,
 	totals: { requests: 300, processed: 200, failed: 3, http429: 0, bytes: 1_000_000, newLinks: 40 },
 	pauseMs: 0, idle: false, failures: [], reportedAt: NOW - 30_000, ...extra,
 });
@@ -42,8 +42,7 @@ const status = (crawlers: SupervisorStatus['crawlers']): SupervisorStatus => ({ 
 
 describe('the "Needs attention" list', () => {
 	it('is empty when all is well', () => {
-		const clean = adminConfigSchema.parse({ crawlers: [{ name: 'a', type: 'item' }] });
-		assert.deepEqual(attentionItems(status([{ name: 'a', configured: true, state: 'running', stats: stats() }]), clean, NOW), []);
+		assert.deepEqual(attentionItems(status([{ name: 'a', configured: true, state: 'running', stats: stats() }]), NOW), []);
 	});
 
 	it('puts failures first, then warnings, then notes, and names the crawler', () => {
@@ -54,19 +53,18 @@ describe('the "Needs attention" list', () => {
 				{ name: 'b', configured: true, state: 'failed', error: 'proxy refused' },
 				{ name: 'c', configured: true, state: 'running', stats: stats({ pauseMs: 30_000, http429PerHour: 75 }) },
 			],
-		}, config, NOW);
-		assert.deepEqual(items.map(item => item.tone), ['bad', 'bad', 'warn', 'warn', 'warn', 'info']);
+		}, NOW);
+		assert.deepEqual(items.map(item => item.tone), ['bad', 'bad', 'warn', 'warn', 'info']);
 		assert.deepEqual(items.map(item => item.title), [
 			'b: failed',
 			'c: too many HTTP 429',
 			'DB statistics cannot be read',
 			'c: paused after HTTP 429',
-			'Proxy 10.1.0.1:80 is shared',
 			'a: waiting for URLs',
 		]);
 		assert.equal(items[0].crawler, 'b');
 		assert.equal(items[0].detail, 'proxy refused');
-		assert.equal(items[4].crawler, undefined);
+		assert.equal(items[2].crawler, undefined);
 	});
 
 	it('finds a crawler that hangs or sends nothing, and one that was removed from the config', () => {
@@ -77,7 +75,7 @@ describe('the "Needs attention" list', () => {
 				{ name: 'c', configured: true, state: 'running', stats: stats({ requestsPerMin: 0 }) },
 				{ name: 'old', configured: false, state: 'running' },
 			],
-		}, adminConfigSchema.parse({}), NOW);
+		}, NOW);
 		assert.deepEqual(items.map(item => `${item.tone} ${item.title}`), [
 			'bad DB service failed',
 			'warn a: no report',
@@ -100,7 +98,7 @@ describe('bulk action messages', () => {
 describe('the live pages', () => {
 	const page = renderStatus(status([
 		{ name: 'a', configured: true, state: 'running', stats: stats({ pauseMs: 5000 }), series: {
-			requests: Array(30).fill(1), urls: Array(30).fill(1), http429: Array(30).fill(0), links: Array(30).fill(2), bytes: Array(30).fill(1000),
+			requests: Array(30).fill(1), urls: Array(30).fill(1), http429: Array(30).fill(0), failed: Array(30).fill(0), links: Array(30).fill(2), bytes: Array(30).fill(1000),
 		} },
 		{ name: 'b', configured: true, state: 'failed', error: 'proxy <refused>' },
 		{ name: 'c', configured: true, state: 'stopped', stats: stats() },
@@ -110,19 +108,51 @@ describe('the live pages', () => {
 		for (const view of ['overview', 'crawlers', 'traffic']) {
 			assert.match(page, new RegExp(`class="view" data-view="${view}"`));
 		}
-		assert.match(page, /data-nav-summary data-running="1" data-total="3" data-failed="1" data-attention="3"/);
+		assert.match(page, /data-nav-summary data-running="1" data-total="3" data-failed="1" data-attention="2"/);
 		// the chart has one pane for each metric, the page script shows the chosen one
-		for (const metric of ['speed', 'links', 'traffic']) {
+		for (const metric of ['speed', 'links', 'traffic', 'errors']) {
 			assert.match(page, new RegExp(`data-chart-pick="${metric}"`));
 			assert.match(page, new RegExp(`data-chart-pane="${metric}"`));
 		}
 	});
 
 	it('shows what needs attention with a link to the details, escaped', () => {
-		assert.match(page, /Needs attention <span class="count count-bad">3<\/span>/);
+		assert.match(page, /Needs attention <span class="count count-bad">2<\/span>/);
 		assert.match(page, /<b>b: failed<\/b><span class="meta clip" title="proxy &lt;refused&gt;">/);
 		assert.match(page, /hx-get="\/fragments\/crawler-detail\?name=b"/);
 		assert.doesNotMatch(page, /proxy <refused>/);
+	});
+
+	it('marks a running crawler that fails most of its URLs, in the table, the attention list and the proxy list', () => {
+		const blocked = stats({ failedPerMin: 12, failShare: 0.8, failures: [{ key: 'http:403', count: 90, last: 'HTTP 403 https://x.bandcamp.com/' }] });
+		const crawlers: SupervisorStatus['crawlers'] = [
+			{ name: 'a', configured: true, state: 'running', stats: blocked },
+			{ name: 'b', configured: true, state: 'running', stats: stats({ failedPerMin: 1, failShare: 0.1 }) },
+		];
+		const live = renderStatus(status(crawlers), config, NOW);
+		assert.match(live, /row-running row-failing" data-key="crawler:a"/);
+		assert.doesNotMatch(live, /row-failing" data-key="crawler:b"/);
+		assert.match(live, /pill pill-bad"[^>]*>errors 80%</);
+		assert.match(live, /<b>a: most URLs fail<\/b>/);
+		assert.match(live, /1 with errors/);
+		const pool = renderProxyList([{ key: '10.1.0.1:80', host: '10.1.0.1', port: 80, username: 'u', usedBy: ['a'] }, { key: '10.1.0.2:80', host: '10.1.0.2', port: 80, username: 'u', usedBy: ['b'] }], crawlers);
+		assert.match(pool, /class="row-failing"[^>]*>\s*<td class="pick">[^]*?10\.1\.0\.1:80/);
+		assert.equal((pool.match(/class="row-failing"/g) ?? []).length, 1);
+	});
+
+	it('does not mark a stopped crawler, whatever its last report said', () => {
+		const stopped = status([{ name: 'a', configured: true, state: 'stopped', stats: stats({ failedPerMin: 12, failShare: 0.9 }) }]);
+		assert.doesNotMatch(renderStatus(stopped, config, NOW), /row-failing|errors 90%/);
+	});
+
+	it('draws the errors on the overview chart and on the traffic page', () => {
+		const withSeries = status([{ name: 'a', configured: true, state: 'running', stats: stats(), series: {
+			requests: Array(30).fill(1), urls: Array(30).fill(1), http429: Array(30).fill(0), failed: Array(30).fill(4), links: Array(30).fill(2), bytes: Array(30).fill(1000),
+		} }]);
+		const live = renderStatus(withSeries, config, NOW);
+		assert.match(live, /errors\/min, now <b>4<\/b>/);
+		assert.match(live, /Errors per minute, last 30 min/);
+		assert.match(live, /data-chart-pane="errors"/);
 	});
 
 	it('shows a pause only while the crawler runs', () => {

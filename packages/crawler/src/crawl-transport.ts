@@ -8,7 +8,7 @@ export interface CrawlTransport {
 	post(route: string, body: unknown): Promise<unknown>;
 }
 
-/** The DB service answered, but with an error status. It is not retried. */
+/** The DB service answered, but with an error status. It is not retried, except 503 (busy). */
 export class DbServiceError extends Error {
 	constructor(public readonly status: number, message: string) {
 		super(`DB service answered HTTP ${status}: ${message}`);
@@ -26,7 +26,15 @@ export interface HttpCrawlTransportOptions {
 	/** The default is the global fetch, never a proxy: the DB service is always reached directly. */
 	fetchFn?: typeof fetch;
 	sleep?: (ms: number) => Promise<void>;
+	/** A number in [0, 1) for the random part of a pause. A test can fix it. */
+	random?: () => number;
 }
+
+/** The pause of the attempt: it grows twice per try up to the maximum, then half of it is random, so crawlers do not retry together. */
+export const retryDelay = (attempt: number, baseMs: number, maxMs: number, random: () => number): number => {
+	const delay = Math.min(baseMs * 2 ** (attempt - 1), maxMs);
+	return Math.round(delay / 2 + random() * (delay / 2));
+};
 
 /**
  * HTTP/JSON to the DB service. A connection error (the service is down or restarts, a timeout) is
@@ -39,6 +47,7 @@ export class HttpCrawlTransport implements CrawlTransport {
 	private readonly timeoutMs: number;
 	private readonly fetchFn: typeof fetch;
 	private readonly sleep: (ms: number) => Promise<void>;
+	private readonly random: () => number;
 
 	constructor(
 		private readonly baseUrl: string,
@@ -51,6 +60,7 @@ export class HttpCrawlTransport implements CrawlTransport {
 		// looked up on every call, so a replaced global fetch is used
 		this.fetchFn = options.fetchFn ?? ((input, init) => globalThis.fetch(input, init));
 		this.sleep = options.sleep ?? (ms => sleep(ms));
+		this.random = options.random ?? Math.random;
 	}
 
 	public async post(route: string, body: unknown): Promise<unknown> {
@@ -70,13 +80,21 @@ export class HttpCrawlTransport implements CrawlTransport {
 				if (attempt >= this.maxAttempts) {
 					throw error;
 				}
-				const delay = Math.min(this.baseDelayMs * 2 ** (attempt - 1), this.maxDelayMs);
+				const delay = retryDelay(attempt, this.baseDelayMs, this.maxDelayMs, this.random);
 				logger.warn(logMessage(LogSource.Main, `DB service is not reachable (${describeFailure(error)}), try ${attempt}/${this.maxAttempts}, next in ${delay} ms`));
 				await this.sleep(delay);
 				continue;
 			}
 
 			const payload: unknown = await response.json().catch((): undefined => undefined);
+			if (response.status === 503 && attempt < this.maxAttempts) {
+				// the service is busy and said so: wait as long as it asks, at least the pause of this attempt
+				const asked = Number(response.headers.get('retry-after')) * 1000;
+				const delay = Math.max(Number.isFinite(asked) ? asked : 0, retryDelay(attempt, this.baseDelayMs, this.maxDelayMs, this.random));
+				logger.warn(logMessage(LogSource.Main, `DB service is busy (HTTP 503), try ${attempt}/${this.maxAttempts}, next in ${delay} ms`));
+				await this.sleep(delay);
+				continue;
+			}
 			if (!response.ok) {
 				const parsed = errorResponseSchema.safeParse(payload);
 				throw new DbServiceError(response.status, parsed.success ? parsed.data.message : response.statusText);

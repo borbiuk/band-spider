@@ -2,7 +2,7 @@ import { Entity, ManyToOne, PrimaryColumn } from 'typeorm';
 import { SuperTagEntity } from './super-tag-entity';
 import { TagEntity } from './tag-entity';
 
-@Entity('tags-to-super-tags')
+@Entity('tags_to_super_tags', { withoutRowid: true })
 export class TagToSuperTagEntity {
 	@PrimaryColumn()
 	tagId: number;

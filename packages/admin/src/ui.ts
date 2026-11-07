@@ -7,7 +7,7 @@ import { autoAddText, AutoCrawlerService, autoCrawlerKindSchema } from './auto-c
 import { AdminConfig, adminConfigSchema, crawlerSettingSchema, CrawlerSetting, poolKeyOf } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError, conflict, notFound } from './errors';
-import { ImportMode, poolUsage, ProxyPoolService } from './proxy-pool';
+import { ImportMode, ProxyPoolService } from './proxy-pool';
 import { maskConfig, restoreSecrets } from './secrets';
 import { Supervisor } from './supervisor';
 import { bulkText } from './ui-bulk';
@@ -22,7 +22,6 @@ import {
 	renderProxyImport,
 	renderProxyList,
 	renderStatus,
-	sharedPoolWarning,
 	stripAnsi,
 	toast,
 } from './ui-render';
@@ -352,15 +351,9 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 			return await fail(errorMessage(error));
 		}
 		await configStore.save(config);
-		// one crawler per IP is the rule, so a shared pool proxy is a warning and not an error
-		const proxy = setting.data.proxy;
-		const warning = proxy.kind === 'pool'
-			? sharedPoolWarning(proxy.key, poolUsage(config).get(proxy.key) ?? [], setting.data.name)
-			: undefined;
 		// the form closes, and the status and the pool list are updated in the same response
 		return html(reply, await statusOob() + await poolListOob()
-			+ toast('ok', `Crawler ${setting.data.name} saved. It uses the new settings at the next start.`)
-			+ (warning ? toast('warn', warning) : ''));
+			+ toast('ok', `Crawler ${setting.data.name} saved. It uses the new settings at the next start.`));
 	});
 
 	app.get('/fragments/proxy-import', async (_request, reply) => html(reply, renderProxyImport()));
@@ -403,7 +396,7 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 		}
 		const result = await autoCrawlers.addForProxies(form.data.keys, form.data.type);
 		let message = toast(result.added === 0 ? 'warn' : 'ok', result.added === 0
-			? 'No crawler added: the chosen proxies are used or not in the pool'
+			? 'No crawler added: the chosen proxies are not in the pool'
 			: autoAddText(result));
 		if (form.data.start !== undefined && result.added > 0) {
 			// like "Start all": the DB service comes first, so the crawlers do not start it at the same time

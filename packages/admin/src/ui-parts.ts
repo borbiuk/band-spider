@@ -84,6 +84,13 @@ export const postStatus = (path: string, confirm?: string): string =>
 export const action = (path: string, label: string, disabled = false, confirm?: string, tone: Tone = 'ghost', iconName?: IconName): string =>
 	button(label, postStatus(path, confirm), disabled, tone, iconName);
 
+/** A running crawler is "failing" when at least this share of its latest URLs failed. */
+export const FAILING_SHARE = 0.5;
+
+/** True for a running crawler that fails most of its URLs now, for example because its proxy is blocked. */
+export const isFailing = (crawler: { state: string; stats?: { failShare?: number; failedPerMin: number } }): boolean =>
+	crawler.state === 'running' && !!crawler.stats && crawler.stats.failedPerMin > 0 && (crawler.stats.failShare ?? 0) >= FAILING_SHARE;
+
 export const isActive = (state: string): boolean => state === 'starting' || state === 'running' || state === 'stopping';
 
 /** A state as a small colored badge with its name. */

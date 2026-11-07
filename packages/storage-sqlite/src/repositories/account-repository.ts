@@ -4,6 +4,7 @@ import { InsertResult } from '../models/insert-result';
 import { AccountEntity } from '../entities/account-entity';
 import { AccountScanEntity } from '../entities/account-scan-entity';
 import { FollowerEntity } from '../entities/follower-entity';
+import { normalizeAccountUrl } from '../models/item-url';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 import { DB_BATCH_SIZE, insertManyByUrl, insertRelation, insertUnique } from './insert-helpers';
 import { NEXT_FAILED_COUNT_SQL, NOT_FOUND_MARK, notProcessedWhere, processedWhere } from './selection';
@@ -75,11 +76,13 @@ export class AccountRepository {
 		return await this.manager.getRepository(AccountEntity).findOne({ where: { id: accountId } });
 	}
 
+	/** Inserts an account URL (trimmed and lower-cased first), or returns the account that has it. */
 	public async insert(accountUrl: string): Promise<InsertResult<AccountEntity>> {
+		const url = normalizeAccountUrl(accountUrl);
 		return await insertUnique(
 			this.manager.getRepository(AccountEntity),
-			{ url: accountUrl },
-			generated => generated as AccountEntity,
+			{ url },
+			generated => ({ ...(generated as AccountEntity), url }),
 		);
 	};
 
@@ -113,7 +116,7 @@ export class AccountRepository {
 
 		for (const part of chunk([...new Set(itemIds)], DB_BATCH_SIZE)) {
 			const existing: { itemId: number, wishlist: number }[] = await this.manager.query(
-				`SELECT itemId, wishlist FROM "items-to-accounts" WHERE accountId = ? AND itemId IN (${part.map(() => '?').join(',')})`,
+				`SELECT itemId, wishlist FROM items_to_accounts WHERE accountId = ? AND itemId IN (${part.map(() => '?').join(',')})`,
 				[accountId, ...part]
 			);
 			const existingIds = new Set(existing.map(x => x.itemId));
@@ -121,7 +124,7 @@ export class AccountRepository {
 			const toUpdate = existing.filter(x => Boolean(x.wishlist) !== wishlist).map(x => x.itemId);
 			if (toUpdate.length !== 0) {
 				await this.manager.query(
-					`UPDATE "items-to-accounts" SET wishlist = ? WHERE accountId = ? AND itemId IN (${toUpdate.map(() => '?').join(',')})`,
+					`UPDATE items_to_accounts SET wishlist = ? WHERE accountId = ? AND itemId IN (${toUpdate.map(() => '?').join(',')})`,
 					[wishlist ? 1 : 0, accountId, ...toUpdate]
 				);
 			}
@@ -129,7 +132,7 @@ export class AccountRepository {
 			const toInsert = part.filter(x => !existingIds.has(x));
 			if (toInsert.length !== 0) {
 				await this.manager.query(
-					`INSERT OR IGNORE INTO "items-to-accounts"(itemId, accountId, wishlist) VALUES ${toInsert.map(() => '(?,?,?)').join(',')}`,
+					`INSERT OR IGNORE INTO items_to_accounts(itemId, accountId, wishlist) VALUES ${toInsert.map(() => '(?,?,?)').join(',')}`,
 					toInsert.flatMap(x => [x, accountId, wishlist ? 1 : 0])
 				);
 				newRelations += toInsert.length;
@@ -159,7 +162,7 @@ export class AccountRepository {
 
 		for (const part of chunk([...new Set(accountIds)], DB_BATCH_SIZE)) {
 			const existing: { accountId: number, wishlist: number }[] = await this.manager.query(
-				`SELECT accountId, wishlist FROM "items-to-accounts" WHERE itemId = ? AND accountId IN (${part.map(() => '?').join(',')})`,
+				`SELECT accountId, wishlist FROM items_to_accounts WHERE itemId = ? AND accountId IN (${part.map(() => '?').join(',')})`,
 				[itemId, ...part]
 			);
 			const existingIds = new Set(existing.map(x => x.accountId));
@@ -167,7 +170,7 @@ export class AccountRepository {
 			const toUpdate = existing.filter(x => Boolean(x.wishlist)).map(x => x.accountId);
 			if (toUpdate.length !== 0) {
 				await this.manager.query(
-					`UPDATE "items-to-accounts" SET wishlist = 0 WHERE itemId = ? AND accountId IN (${toUpdate.map(() => '?').join(',')})`,
+					`UPDATE items_to_accounts SET wishlist = 0 WHERE itemId = ? AND accountId IN (${toUpdate.map(() => '?').join(',')})`,
 					[itemId, ...toUpdate]
 				);
 			}
@@ -175,7 +178,7 @@ export class AccountRepository {
 			const toInsert = part.filter(x => !existingIds.has(x));
 			if (toInsert.length !== 0) {
 				await this.manager.query(
-					`INSERT OR IGNORE INTO "items-to-accounts"(itemId, accountId, wishlist) VALUES ${toInsert.map(() => '(?,?,0)').join(',')}`,
+					`INSERT OR IGNORE INTO items_to_accounts(itemId, accountId, wishlist) VALUES ${toInsert.map(() => '(?,?,0)').join(',')}`,
 					toInsert.flatMap(x => [itemId, x])
 				);
 				added += toInsert.length;
@@ -277,7 +280,7 @@ export class AccountRepository {
 	public async removeByUrl(accountUrl: string): Promise<void> {
 		const repository = this.manager.getRepository(AccountEntity)
 
-		const existingRecord = await repository.findOne({ where: { url: accountUrl } });
+		const existingRecord = await repository.findOne({ where: { url: normalizeAccountUrl(accountUrl) } });
 		if (isNullOrUndefined(existingRecord)) {
 			return;
 		}

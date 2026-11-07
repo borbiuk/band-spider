@@ -90,7 +90,7 @@ Crawlers start only after the DB service is ready. Stopping the admin stops all 
 
 ### Crawlers and proxies
 
-Add one crawler per IP. Each crawler has one of these proxy settings:
+One proxy can serve one crawler or many. Each crawler has one of these proxy settings:
 
 - **none**: the crawler uses the local IP;
 - **url**: a proxy URL such as `http://user:pass@host:port`;
@@ -215,7 +215,7 @@ npm run db:items:reverse
 
 When an account is read again, every tab that was read to its end before is read only up to its newest
 records from that read: Bandcamp lists the newest records first, so the older ones are saved already. The app keeps
-these marks in the `account-scans` table; a tab without a mark (or whose marked record is gone) is read in full.
+these marks in the `account_scans` table; a tab without a mark (or whose marked record is gone) is read in full.
 
 To send the requests through a proxy (a manual test option), pass its URL. Without the flag the local IP is used:
 
@@ -238,6 +238,18 @@ Run the scripts from the repository root, so the DB file and `logfile.log` stay 
 |---|---|
 | `BAND_DB_PATH` | Path of the SQLite file. Default: `band_db.sqlite` in the working directory. |
 | `DB_SYNCHRONIZE=true` | Update the schema from the entities on start. Without it, the schema is created only for a new file. |
+
+### 🔁 Schema v2 migration
+
+A DB file made before schema v2 (tables like `items-to-accounts`) is not opened: it must be migrated once. The
+migration only reads the old file and builds a new one next to it. Stop the DB service and the crawlers first:
+
+```shell
+npm run db:migrate:v2 -- band_db.sqlite band_db.v2.sqlite
+```
+
+Then keep the old file as `band_db.v1.sqlite`, rename the new one to `band_db.sqlite`, and start the DB service. The
+steps, the checks and the rollback are in [docs/db-schema-migration.md](docs/db-schema-migration.md).
 
 The app logs to the console and to `logfile.log` in the working directory (one JSON object per line). To read the
 file in a readable form:

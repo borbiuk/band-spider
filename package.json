@@ -26,6 +26,7 @@
 		"db:items": "npm run build && node ./packages/cli/dist/index.js",
 		"db:accounts:reverse": "npm run build && node ./packages/cli/dist/index.js --account --reverse",
 		"db:items:reverse": "npm run build && node ./packages/cli/dist/index.js --reverse",
+		"db:migrate:v2": "npm run build && node ./packages/storage-sqlite/dist/migrations/v2-cli.js",
 		"test": "npm run build && node --test \"packages/*/dist/tests/**/*.test.js\"",
 		"superTag": "npm run build && node ./packages/cli/dist/index.js --superTag"
 	},

@@ -1,5 +1,6 @@
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { ItemToAccountEntity } from './item-to-account-entity';
+import { unixSecondsTransformer } from './transformers';
 
 @Entity('accounts')
 export class AccountEntity {
@@ -7,10 +8,12 @@ export class AccountEntity {
 	@PrimaryGeneratedColumn()
 	id: number;
 
-	@Column({ unique: true, length: 512 })
+	/** Trimmed and lower-cased: Bandcamp fan URLs do not depend on case. */
+	@Column({ type: 'text', unique: true })
 	url: string;
 
-	@Column({ type: 'date', nullable: true })
+	/** Unix seconds in the DB. */
+	@Column({ type: 'integer', nullable: true, transformer: unixSecondsTransformer })
 	lastProcessingDate?: Date;
 
 	@Column({ type: 'boolean', default: false })

@@ -1,7 +1,11 @@
 import { IsNull, LessThan, MoreThanOrEqual, Or } from 'typeorm';
+import { toUnixSeconds } from '../entities/transformers';
 
 /** An item or an account processed before this date is processed again. */
 export const REPROCESS_BEFORE = new Date('2026-01-01');
+
+/** `REPROCESS_BEFORE` as stored in `lastProcessingDate`, for raw SQL. TypeORM converts the `Date` itself. */
+export const REPROCESS_BEFORE_SECONDS = toUnixSeconds(REPROCESS_BEFORE);
 
 /** A URL that failed this many times is not claimed again. */
 export const MAX_FAILED = 3;

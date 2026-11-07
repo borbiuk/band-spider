@@ -8,7 +8,7 @@ export class TagEntity {
 	@PrimaryGeneratedColumn()
 	id: number;
 
-	@Column({ unique: true, length: 64 })
+	@Column({ type: 'text', unique: true })
 	name: string;
 
 

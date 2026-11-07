@@ -1,6 +1,7 @@
 import { logger, logMessage, LogSource } from '@band-spider/core';
-import { BandDatabase, LocalCrawlStore } from '@band-spider/storage-sqlite';
+import { BandDatabase, LocalCrawlStore, WorkerRowCounter } from '@band-spider/storage-sqlite';
 import { buildApp } from './app';
+import { startLoopMonitor } from './diagnostics';
 import { DbServiceConfig } from './config';
 import { ServiceStats } from './stats';
 
@@ -19,12 +20,15 @@ export const startDbService = async (config: DbServiceConfig): Promise<RunningDb
 	logger.debug(logMessage(LogSource.Main, 'DB synchronizing...'));
 	const database = await BandDatabase.open(config.database);
 	let stopping: Promise<void> | undefined;
+	const stopLoopMonitor = startLoopMonitor();
+	// the counts of a big DB take seconds: they run in their own thread, not in this one
+	const counter = new WorkerRowCounter(config.database.file);
 
 	try {
-		const store = new LocalCrawlStore(database, config.leaseMs);
+		const store = new LocalCrawlStore(database, config.leaseMs, undefined, counter);
 		await store.resetBusy();
 
-		const app = buildApp({ store, stats: new ServiceStats(), queueLeft: () => store.queueLeft(), totals: () => store.totals(), token: config.token });
+		const app = buildApp({ store, stats: new ServiceStats(), queueLeft: () => store.queueLeft(), totals: () => store.totals(), token: config.token, maxOpenRequests: config.maxOpenRequests });
 		await app.listen({ host: config.host, port: config.port });
 
 		const address = app.server.address();
@@ -36,11 +40,15 @@ export const startDbService = async (config: DbServiceConfig): Promise<RunningDb
 			url,
 			stop: () => stopping ??= (async () => {
 				// close() waits for the requests that run now, so a save is never cut in the middle
+				stopLoopMonitor();
 				await app.close();
+				await counter.close();
 				await database.close();
 			})(),
 		};
 	} catch (error) {
+		stopLoopMonitor();
+		await counter.close();
 		await database.close();
 		throw error;
 	}

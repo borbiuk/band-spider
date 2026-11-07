@@ -40,19 +40,21 @@ const nameGenerator = (config: AdminConfig): (type: CrawlerSetting['type']) => s
 };
 
 /**
- * One new crawler for each free proxy. Only the name, the type and the proxy are set, the rest stays at the defaults.
- * With `keys` only the free proxies among them get a crawler, still in the order of the pool.
+ * One new crawler for each proxy. Only the name, the type and the proxy are set, the rest stays at the defaults.
+ * Without `keys` each free proxy gets a crawler. With `keys` each chosen pool proxy gets one, also a proxy
+ * that other crawlers already use. The order is the order of the pool.
  */
 export const planAutoCrawlers = (config: AdminConfig, kind: AutoCrawlerKind, keys?: readonly string[]): CrawlerSetting[] => {
 	const nameOf = nameGenerator(config);
 	const wanted = keys ? new Set(keys) : undefined;
-	return freePoolKeys(config).filter(key => !wanted || wanted.has(key)).map((key, index) => {
+	const targets = wanted ? config.proxyPool.map(poolKeyOf).filter(key => wanted.has(key)) : freePoolKeys(config);
+	return targets.map((key, index) => {
 		const type = typeOf(kind, index);
 		return crawlerSettingSchema.parse({ name: nameOf(type), type, proxy: { kind: 'pool', key } });
 	});
 };
 
-/** Adds one crawler for each free pool proxy. It only knows the ConfigStore. The crawlers are not started. */
+/** Adds crawlers for free or chosen pool proxies. It only knows the ConfigStore. The crawlers are not started. */
 export class AutoCrawlerService {
 	constructor(private readonly configStore: ConfigStore) {
 	}
@@ -61,7 +63,7 @@ export class AutoCrawlerService {
 		return this.add(kind);
 	}
 
-	/** Adds one crawler for each chosen proxy. A proxy that is not free or not in the pool is skipped. */
+	/** Adds one crawler for each chosen proxy, also for a used one. A proxy that is not in the pool is skipped. */
 	async addForProxies(keys: readonly string[], kind: AutoCrawlerKind): Promise<AutoAddResult> {
 		return this.add(kind, keys);
 	}

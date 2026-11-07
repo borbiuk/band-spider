@@ -36,21 +36,35 @@ export interface DatabaseConfig {
  * file, so they are created here. The definitions are the same that TypeORM makes for a new file,
  * so a later sync sees no difference; a test checks that.
  */
-export const SCHEMA_ADDITIONS: string[] = [
-	'CREATE TABLE IF NOT EXISTS "account-scans" ("accountId" integer PRIMARY KEY NOT NULL, "collection" varchar(512), "wishlist" varchar(512), "followers" varchar(512), "following" varchar(512))',
-];
+export const SCHEMA_ADDITIONS: string[] = [];
 
 /** The part of a better-sqlite3 connection that `prepareDatabase` uses. */
 interface SqliteConnection {
 	pragma(source: string): unknown;
+	prepare(sql: string): { get(...parameters: unknown[]): unknown };
 }
+
+/** A table that only the schema before v2 has. */
+const V1_TABLE = 'items-to-accounts';
+
+/**
+ * Stops on a file with the schema before v2. A schema sync would add empty v2 tables next to the
+ * old ones, and the code would read nothing. Such a file must be migrated first (`migrations/v2`).
+ */
+const assertNotV1Schema = (connection: SqliteConnection): void => {
+	if (connection.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(V1_TABLE)) {
+		throw new Error('The DB file has the schema before v2. Migrate it first, see docs/db-schema-migration.md.');
+	}
+};
 
 /**
  * Sets the tuning pragmas on the raw connection. TypeORM calls it right after it opens the file, so
- * they apply to everything after, also to the schema sync of a new DB. `journal_mode = WAL` comes
+ * they apply to everything after, also to the schema sync of a new DB. It also stops on a file
+ * with the old schema, before a sync can touch it. `journal_mode = WAL` comes
  * from `enableWAL` and `busy_timeout` from `timeout`.
  */
 const prepareDatabase = (connection: SqliteConnection): void => {
+	assertNotV1Schema(connection);
 	connection.pragma('synchronous = NORMAL');
 	connection.pragma(`cache_size = -${SQLITE_CACHE_SIZE_KB}`);
 	connection.pragma(`mmap_size = ${SQLITE_MMAP_SIZE_BYTES}`);

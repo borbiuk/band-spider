@@ -16,6 +16,7 @@ import {
 	icon,
 	iconButton,
 	isActive,
+	isFailing,
 	level429,
 	logsAttrs,
 	postStatus,
@@ -152,8 +153,11 @@ const rowPill = (status: CrawlerStatus): string => {
 	const paused = stats && stats.pauseMs > 0
 		? `<span class="pill pill-warn" title="paused after HTTP 429, ${esc(durationText(stats.pauseMs))} left">paused ${esc(durationText(stats.pauseMs))}</span>`
 		: '';
+	const failing = isFailing(status)
+		? `<span class="pill pill-bad" title="${esc(`${Math.round((stats?.failShare ?? 0) * 100)}% of the latest URLs failed, ${rateText(stats?.failedPerMin ?? 0)} per minute. The proxy may be blocked.`)}">errors ${Math.round((stats?.failShare ?? 0) * 100)}%</span>`
+		: '';
 	const silent = isActive(status.state) && !status.stats ? '<span class="pill">no report yet</span>' : '';
-	return silent + paused + (stats?.idle ? '<span class="pill">waiting for URLs</span>' : '');
+	return failing + silent + paused + (stats?.idle ? '<span class="pill">waiting for URLs</span>' : '');
 };
 
 /** The cells of the numbers. Every cell has the same two lines, so a row keeps its height before the first report. */
@@ -191,7 +195,7 @@ const crawlerRow = (name: string, configured: boolean, status: CrawlerStatus, se
 	const active = isActive(status.state);
 	const about = setting ? `${settingsText(setting)} · ${proxyText(setting)}` : 'removed from config';
 	return `
-<tr class="row-${esc(status.state)}" data-key="crawler:${esc(name)}" ${rowData(name, status, setting, index)}>
+<tr class="row-${esc(status.state)}${isFailing(status) ? ' row-failing' : ''}" data-key="crawler:${esc(name)}" ${rowData(name, status, setting, index)}>
 	<td class="pick"><input type="checkbox" name="names" value="${esc(name)}" form="bulk-form" aria-label="Choose ${esc(name)}"></td>
 	<td class="name-cell" data-label="Crawler">
 		<div class="name-line">${stateDot(status.state)}<button type="button" class="link name" title="Details of ${esc(name)}" ${detailAttrs(name)}>${esc(name)}</button>${rowPill(status)}</div>
@@ -238,7 +242,7 @@ const crawlersView = (status: SupervisorStatus, settings: Map<string, CrawlerSet
 		<div class="table-wrap">
 		<table class="crawlers">
 			<thead><tr><th class="pick"><input type="checkbox" data-pick-all aria-label="Choose all shown crawlers"></th>${sortHead('name', 'Crawler')}${sortHead('requests', 'Req/min', 'requests per minute')}${sortHead('urls', 'URLs/min', 'URLs per minute')}${sortHead('http429', '429/hour', 'HTTP 429 answers per hour')}${sortHead('links', 'Links', 'new item-account links')}${sortHead('bytes', 'Traffic', 'traffic through the proxy')}<th>Last 30 min</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
-			<tbody>${rows.join('')}</tbody>
+			<tbody data-keep-order>${rows.join('')}</tbody>
 		</table>
 		</div>
 		<div class="empty" data-no-match hidden>${icon('search')}<p>No crawler matches the filter.</p><button type="button" class="btn-ghost" data-tools-reset>Reset the filter</button></div>
@@ -254,7 +258,7 @@ const navSummary = (summary: CrawlerSummary, attention: number): string =>
 export const renderStatus = (status: SupervisorStatus, config: AdminConfig, now = Date.now()): string => {
 	const settings = new Map(config.crawlers.map(crawler => [crawler.name, crawler]));
 	const summary = summarize(status, settings);
-	const attention = attentionItems(status, config, now);
+	const attention = attentionItems(status, now);
 	return `
 ${controlBar(status.db)}
 ${navSummary(summary, attention.filter(item => item.tone !== 'info').length)}
@@ -345,15 +349,7 @@ const poolSelect = (form: FormValues, pool: PoolItem[]): string => {
 	return `<select name="poolKey"><option value="">- choose -</option>${options.join('')}</select>`;
 };
 
-/** A warning when the chosen pool entry is used by another crawler. One crawler per IP is the rule. */
-export const sharedPoolWarning = (key: string, crawlers: string[], self: string): string | undefined => {
-	const others = crawlers.filter(name => name !== self);
-	return others.length ? `Proxy ${key} is also used by ${others.join(', ')}. Use one crawler per IP.` : undefined;
-};
-
 export const renderCrawlerForm = (form: FormValues, pool: PoolItem[], error?: string): string => {
-	const used = pool.find(item => item.key === form.poolKey)?.usedBy ?? [];
-	const warning = form.proxyKind === 'pool' ? sharedPoolWarning(form.poolKey, used, form.original) : undefined;
 	return `
 <div class="modal">
 <form class="panel modal-card" role="dialog" aria-modal="true" aria-labelledby="form-title" hx-post="/fragments/crawlers" hx-target="#form-area" hx-swap="innerHTML">
@@ -387,7 +383,6 @@ export const renderCrawlerForm = (form: FormValues, pool: PoolItem[], error?: st
 		</div>
 		<p class="meta">An empty field uses the default shown in it.</p>
 	</details>
-	${warning ? `<p class="warn">${esc(warning)}</p>` : ''}
 	<p class="meta">Changes are used the next time the crawler starts.</p>
 	<div class="buttons">
 		<button type="submit" class="btn-primary">Save</button>
@@ -446,7 +441,7 @@ const addCrawlersForm = (free: number): string => `
 </details>`;
 
 /**
- * The bar that adds one crawler for each chosen proxy (the checkboxes of the list belong to this form),
+ * The bar that adds one crawler for each chosen proxy, free or used (the checkboxes of the list belong to this form),
  * with the type of the new crawlers and the choice to start them. It shows only while a proxy is chosen.
  */
 const chosenCrawlersForm = (): string => `
@@ -469,7 +464,7 @@ const usedByCell = (item: PoolItem, states: Map<string, CrawlerStatus>): string 
 	}
 	const names = item.usedBy.map(name =>
 		`<button type="button" class="link used-by" ${detailAttrs(name)}>${stateDot(states.get(name)?.state ?? 'stopped')}${esc(name)}</button>`).join('');
-	return names + (item.usedBy.length > 1 ? '<span class="warn block">Many crawlers use this IP. Use one crawler per IP.</span>' : '');
+	return names;
 };
 
 /**
@@ -482,11 +477,15 @@ export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = [
 		const kind = item.usedBy.length === 0 ? 'free' : item.usedBy.length > 1 ? 'shared' : 'used';
 		const bytes = item.usedBy.reduce((sum, name) => sum + (states.get(name)?.stats?.totals.bytes ?? 0), 0);
 		const perHour = item.usedBy.reduce((sum, name) => sum + (states.get(name)?.stats?.bytesPerHour ?? 0), 0);
+		const failing = item.usedBy.filter(name => {
+			const crawler = states.get(name);
+			return crawler ? isFailing(crawler) : false;
+		});
 		return `
-	<tr data-key="proxy:${esc(item.key)}" data-pstate="${kind}" class="${kind === 'shared' ? 'row-shared' : ''}">
-		<td class="pick"><input type="checkbox" form="chosen-form" name="keys" value="${esc(item.key)}" aria-label="Choose ${esc(item.key)}"${item.usedBy.length ? ' disabled' : ' data-free'}></td>
+	<tr data-key="proxy:${esc(item.key)}" data-pstate="${kind}"${failing.length ? ' class="row-failing"' : ''}>
+		<td class="pick"><input type="checkbox" form="chosen-form" name="keys" value="${esc(item.key)}" aria-label="Choose ${esc(item.key)}"${item.usedBy.length ? '' : ' data-free'}></td>
 		<td class="num-col" data-label="No.">${index + 1}</td>
-		<td data-label="Proxy"><b class="mono">${esc(item.key)}</b></td>
+		<td data-label="Proxy"><b class="mono">${esc(item.key)}</b>${failing.length ? `<span class="pill pill-bad" title="${esc(`Most URLs fail through this proxy (${failing.join(', ')}). Bandcamp may have blocked it.`)}">errors</span>` : ''}</td>
 		<td data-label="Used by">${usedByCell(item, states)}</td>
 		<td class="num" data-label="Traffic">${item.usedBy.length ? `<b>${esc(bytesText(bytes))}</b><span class="sub">${esc(bytesText(perHour))}/hour</span>` : '<span class="meta">-</span>'}</td>
 		<td class="actions">${iconButton('trash', `Delete ${item.key}`, `hx-delete="/fragments/proxy-list/${esc(encodeURIComponent(item.key))}" hx-target="#proxy-list" hx-swap="morph" hx-confirm="Delete proxy ${esc(item.key)}?"`, item.usedBy.length > 0, 'danger')}</td>
@@ -517,7 +516,7 @@ export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = [
 	<div class="kpi kpi-idle"><span class="kpi-label">Proxies</span><span class="kpi-value">${items.length}</span><span class="kpi-sub">in the pool</span></div>
 	<div class="kpi kpi-ok"><span class="kpi-label">Used</span><span class="kpi-value">${used}</span><span class="kpi-sub">by a crawler</span></div>
 	<div class="kpi kpi-queue"><span class="kpi-label">Free</span><span class="kpi-value">${free}</span><span class="kpi-sub">ready for a crawler</span></div>
-	<div class="kpi ${shared ? 'kpi-warn' : 'kpi-idle'}"><span class="kpi-label">Shared</span><span class="kpi-value">${shared}</span><span class="kpi-sub">more than one crawler</span></div>
+	<div class="kpi kpi-idle"><span class="kpi-label">Shared</span><span class="kpi-value">${shared}</span><span class="kpi-sub">more than one crawler</span></div>
 </div>
 <div class="panel panel-table">
 	<div class="toolbar">
@@ -526,6 +525,7 @@ export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = [
 		</div>
 		<span class="grow"></span>
 		<span class="meta hint">Shift+click chooses a range</span>
+		<button type="button" class="btn-ghost btn-small" data-select="all">${icon('check')}Select all</button>
 		<button type="button" class="btn-ghost btn-small" data-select="free">${icon('check')}Select free</button>
 		<button type="button" class="btn-ghost btn-small" data-select="none">Clear</button>
 	</div>

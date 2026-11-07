@@ -84,6 +84,19 @@ describe('free proxies', () => {
 		assert.deepEqual(crawler, { name: 'accounts-1', type: 'account', reverse: false, workers: 1, proxy: { kind: 'pool', key: '10.0.0.1:80' } });
 	});
 
+	it('plans a crawler for a chosen proxy that is already used, and skips keys that are not in the pool', () => {
+		const config = configOf(3, [pooled('a', '10.0.0.2:80'), pooled('b', '10.0.0.2:80')]);
+		const planned = planAutoCrawlers(config, 'item', ['10.0.0.3:80', '10.0.0.2:80', 'nope:1']);
+		assert.deepEqual(planned.map(crawler => [crawler.name, crawler.proxy]), [
+			['items-1', { kind: 'pool', key: '10.0.0.2:80' }],
+			['items-2', { kind: 'pool', key: '10.0.0.3:80' }],
+		]);
+		assert.deepEqual(planAutoCrawlers(config, 'item').map(crawler => crawler.proxy), [
+			{ kind: 'pool', key: '10.0.0.1:80' },
+			{ kind: 'pool', key: '10.0.0.3:80' },
+		]);
+	});
+
 	it('alternates items and accounts in split mode, items first', () => {
 		const planned = planAutoCrawlers(configOf(5), 'split');
 		assert.deepEqual(planned.map(crawler => crawler.name), ['items-1', 'accounts-1', 'items-2', 'accounts-2', 'items-3']);
@@ -189,23 +202,27 @@ describe('create crawlers for chosen proxies (page)', () => {
 				.map(([name, value]) => `${name}=${encodeURIComponent(value)}`).join('&'),
 		});
 
-	it('draws a checkbox for each free proxy and a disabled one for a used proxy', async () => {
+	it('draws a checkbox for each proxy, marks the free ones and has select all and select free', async () => {
 		await configStore.save(configOf(2, [pooled('a', '10.0.0.1:80')]));
 		const list = await app.inject({ method: 'GET', url: '/fragments/proxy-list', headers });
-		assert.match(list.body, /name="keys" value="10\.0\.0\.1:80"[^>]* disabled>/);
+		assert.match(list.body, /name="keys" value="10\.0\.0\.1:80" aria-label="Choose 10\.0\.0\.1:80">/);
 		assert.match(list.body, /name="keys" value="10\.0\.0\.2:80"[^>]* data-free>/);
+		assert.doesNotMatch(list.body, /name="keys"[^>]* disabled/);
+		assert.match(list.body, /data-select="all"/);
+		assert.match(list.body, /data-select="free"/);
 		assert.match(list.body, /Create crawlers for chosen proxies/);
 	});
 
-	it('adds a crawler only for the chosen free proxies, with the chosen type', async () => {
+	it('adds a crawler for each chosen proxy, also for a used one, with the chosen type', async () => {
 		await configStore.save(configOf(4, [pooled('a', '10.0.0.1:80')]));
 		const response = await postKeys(['10.0.0.1:80', '10.0.0.3:80', '10.0.0.4:80', 'nope:1'], { type: 'account' });
-		assert.match(response.body, /2 crawlers added: accounts-1, accounts-2/);
+		assert.match(response.body, /3 crawlers added: accounts-1, accounts-2, accounts-3/);
 		const crawlers = saved().crawlers;
 		assert.deepEqual(crawlers.map((item: CrawlerSetting) => [item.name, item.type, item.proxy]), [
 			['a', 'item', { kind: 'pool', key: '10.0.0.1:80' }],
-			['accounts-1', 'account', { kind: 'pool', key: '10.0.0.3:80' }],
-			['accounts-2', 'account', { kind: 'pool', key: '10.0.0.4:80' }],
+			['accounts-1', 'account', { kind: 'pool', key: '10.0.0.1:80' }],
+			['accounts-2', 'account', { kind: 'pool', key: '10.0.0.3:80' }],
+			['accounts-3', 'account', { kind: 'pool', key: '10.0.0.4:80' }],
 		]);
 		assert.ok((await supervisor.status()).crawlers.every(item => item.state === 'stopped'));
 	});
@@ -263,7 +280,7 @@ describe('traffic and new links in the crawler table', () => {
 		const config = configOf(1, [pooled('a', '10.0.0.1:80'), { name: 'local', type: 'item', proxy: { kind: 'none' } }]);
 		const status = await supervisor.status();
 		const stats = {
-			requestsPerMin: 1, urlsPerMin: 1, http429PerHour: 0, bytesPerHour: 36_000_000, linksPerMin: 4.5,
+			requestsPerMin: 1, urlsPerMin: 1, http429PerHour: 0, bytesPerHour: 36_000_000, linksPerMin: 4.5, failedPerMin: 0,
 			totals: { requests: 1, processed: 1, failed: 0, http429: 0, bytes: 1_500_000_000, newLinks: 321 }, pauseMs: 0, idle: false, failures: [] as CrawlerStats['failures'],
 		};
 		const page = renderStatus({

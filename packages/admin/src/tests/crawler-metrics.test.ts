@@ -34,6 +34,8 @@ describe('CrawlerMetricsTracker', () => {
 			http429PerHour: 2,
 			bytesPerHour: 0,
 			linksPerMin: 0,
+			failedPerMin: 20,
+			failShare: 20 / 60,
 			totals: { requests: 120, processed: 40, failed: 20, http429: 2, bytes: 0, newLinks: 0 },
 			pauseMs: 5000,
 			idle: false,
@@ -132,6 +134,7 @@ describe('CrawlerMetricsTracker', () => {
 		assert.deepEqual(series?.requests.slice(-3), [0, 60, 120]);
 		assert.deepEqual(series?.urls.slice(-3), [0, 30, 30]);
 		assert.deepEqual(series?.http429.slice(-3), [0, 1, 0]);
+		assert.deepEqual(series?.failed.slice(-3), [0, 10, 0]);
 		assert.deepEqual(series?.links.slice(-3), [0, 5, 20]);
 		assert.deepEqual(series?.bytes.slice(-3), [0, 1000, 2000]);
 		assert.equal(series?.requests.slice(0, 27).every(value => value === 0), true);

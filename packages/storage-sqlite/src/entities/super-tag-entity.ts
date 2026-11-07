@@ -1,13 +1,13 @@
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 import { TagToSuperTagEntity } from './tag-to-super-tag-entity';
 
-@Entity('super-tags')
+@Entity('super_tags')
 export class SuperTagEntity {
 
 	@PrimaryGeneratedColumn()
 	id: number;
 
-	@Column({ unique: true, length: 64 })
+	@Column({ type: 'text', unique: true })
 	name: string;
 
 

@@ -15,6 +15,13 @@ let store: LocalCrawlStore;
 // the counted size is kept for a minute, so the tests move this clock past it
 let clock = 0;
 const later = () => { clock += 61_000; };
+// the number of the cache is old: it is counted again in the background, then read
+const recount = async (): Promise<{ items: number, accounts: number }> => {
+	later();
+	await store.queueLeft();
+	await store.idle();
+	return await store.queueLeft();
+};
 
 before(async () => {
 	db = await BandDatabase.open({ file: path.join(tempDir, 'queue.sqlite'), synchronize: true });
@@ -40,30 +47,29 @@ describe('queueLeft', () => {
 		await db.account.insert('https://bandcamp.com/q-one');
 		await db.account.insert('https://bandcamp.com/q-two');
 
-		later();
-		assert.deepEqual(await store.queueLeft(), { items: 405, accounts: 2 });
+		assert.deepEqual(await recount(), { items: 405, accounts: 2 });
 
 		// a claimed URL is busy, so it is not left
 		const [task] = await store.claim(UrlType.Account, 1, false);
-		later();
-		assert.deepEqual(await store.queueLeft(), { items: 405, accounts: 1 });
+		assert.deepEqual(await recount(), { items: 405, accounts: 1 });
 
 		// a processed account is not left either
-		await db.query('UPDATE accounts SET lastProcessingDate = CURRENT_DATE WHERE id = ?', [task.id]);
+		await db.query('UPDATE accounts SET lastProcessingDate = unixepoch() WHERE id = ?', [task.id]);
 		await store.release(task, 'rateLimited');
-		later();
-		assert.deepEqual(await store.queueLeft(), { items: 405, accounts: 1 });
+		assert.deepEqual(await recount(), { items: 405, accounts: 1 });
 	});
 
 	it('reuses the counted size for a minute', async () => {
-		later();
-		const before = await store.queueLeft();
+		const before = await recount();
 		await db.item.insert('https://q.bandcamp.com/track/new-one');
 
 		clock += 30_000;
 		assert.deepEqual(await store.queueLeft(), before);
 
+		// an old number is returned at once and counted again in the background
 		clock += 31_000;
+		assert.deepEqual(await store.queueLeft(), before);
+		await store.idle();
 		assert.deepEqual(await store.queueLeft(), { ...before, items: before.items + 1 });
 	});
 });

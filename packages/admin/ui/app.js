@@ -38,6 +38,8 @@
 	}
 
 	function morphChildren(from, to) {
+		// A parent with data-keep-order keeps the order its rows have now (the script sorts them), only new rows are added
+		var keepOrder = from.nodeType === 1 && from.hasAttribute('data-keep-order');
 		var keyed = {};
 		Array.prototype.forEach.call(from.childNodes, function (node) {
 			var key = keyOf(node);
@@ -45,6 +47,25 @@
 				keyed[key] = node;
 			}
 		});
+		if (keepOrder) {
+			var present = {};
+			Array.prototype.slice.call(to.childNodes).forEach(function (next) {
+				var key = keyOf(next);
+				if (key && keyed[key] && keyed[key].nodeName === next.nodeName) {
+					present[key] = true;
+					morphNode(keyed[key], next);
+				} else {
+					from.appendChild(next);
+				}
+			});
+			Array.prototype.slice.call(from.childNodes).forEach(function (node) {
+				var key = keyOf(node);
+				if (key && keyed[key] === node && !present[key]) {
+					from.removeChild(node);
+				}
+			});
+			return;
+		}
 		var position = 0;
 		Array.prototype.slice.call(to.childNodes).forEach(function (next) {
 			var key = keyOf(next);
@@ -271,7 +292,7 @@
 	// --- the chart of the overview: the chosen metric stays in the browser ---
 
 	var CHART_KEY = 'band-spider:chart';
-	var CHARTS = ['speed', 'links', 'traffic'];
+	var CHARTS = ['speed', 'links', 'traffic', 'errors'];
 	var chart = load(CHART_KEY, 'speed');
 	document.body.setAttribute('data-chart', CHARTS.indexOf(chart) < 0 ? 'speed' : chart);
 
@@ -561,7 +582,7 @@
 		}
 	}
 
-	// Shift+click chooses (or clears) every free proxy between the last clicked box and this one
+	// Shift+click chooses (or clears) every shown proxy between the last clicked box and this one
 	var lastPicked = null;
 	document.body.addEventListener('click', function (event) {
 		var box = event.target;
@@ -586,13 +607,18 @@
 			updateChosenCount();
 		}
 	});
-	// a proxy that got a crawler is not free any more, so its box is cleared
 	document.body.addEventListener('htmx:afterSwap', function () {
-		all('input[name="keys"]:disabled').forEach(function (box) {
-			box.checked = false;
-		});
 		updateChosenCount();
 		applyProxyFilter();
+	});
+	// after the crawlers are created the choice is done, so every box is cleared
+	document.body.addEventListener('htmx:afterRequest', function (event) {
+		if (event.detail.successful && event.detail.elt && event.detail.elt.id === 'chosen-form') {
+			all('input[name="keys"]').forEach(function (box) {
+				box.checked = false;
+			});
+			updateChosenCount();
+		}
 	});
 
 	// --- clicks ---
@@ -678,9 +704,11 @@
 
 		var select = target.closest('[data-select]');
 		if (select) {
-			var free = select.getAttribute('data-select') === 'free';
+			// "all" chooses every shown proxy, "free" only the shown proxies without a crawler, "none" clears
+			var mode = select.getAttribute('data-select');
 			all('input[name="keys"]').forEach(function (box) {
-				box.checked = free && box.hasAttribute('data-free') && !isHidden(box.closest('tr'));
+				var wanted = mode === 'all' || (mode === 'free' && box.hasAttribute('data-free'));
+				box.checked = wanted && !isHidden(box.closest('tr'));
 			});
 			updateChosenCount();
 		}

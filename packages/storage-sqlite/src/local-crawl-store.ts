@@ -9,6 +9,8 @@ import {
 	SerialQueue,
 	UrlType,
 } from '@band-spider/core';
+import { RowCounts } from './counting/count-queries';
+import { RowCounter } from './counting/row-counter';
 import { BandDatabase } from './db';
 import { saveAccountPageData } from './account/account-db-client';
 import { saveItemPageData } from './item/item-db-client';
@@ -57,6 +59,8 @@ export class LocalCrawlStore implements CrawlStore {
 		private readonly database: BandDatabase,
 		private readonly leaseMs: number = DEFAULT_LEASE_MS,
 		private readonly now: () => number = Date.now,
+		/** Counts off the main thread. Without it the counts run on the one connection, in the queue of the writes. */
+		private readonly counter?: RowCounter,
 	) {
 	}
 
@@ -75,41 +79,81 @@ export class LocalCrawlStore implements CrawlStore {
 		return this.writes.run(() => this.claimNow(type, count, newestFirst));
 	}
 
-	/** How many URLs of each type wait to be claimed. Busy rows are not counted. The number can be up to a minute old. */
+	/**
+	 * How many URLs of each type wait to be claimed. Busy rows are not counted. The number can be up to a
+	 * minute old: an old number is returned at once and counted again in the background, so a caller
+	 * does not wait for the count and the claims and saves wait only while it runs.
+	 */
 	public queueLeft(): Promise<{ items: number, accounts: number }> {
-		return this.writes.run(async () => {
-			if (this.queueLeftCache && this.now() - this.queueLeftCache.at < QUEUE_LEFT_CACHE_MS) {
-				return this.queueLeftCache.value;
+		const cache = this.queueLeftCache;
+		if (cache) {
+			if (this.now() - cache.at >= QUEUE_LEFT_CACHE_MS) {
+				this.refreshQueueLeft();
 			}
-			const value = {
-				items: await this.database.item.countNotProcessed(),
-				accounts: await this.database.account.countNotProcessed(),
-			};
-			this.queueLeftCache = { value, at: this.now() };
-			return value;
-		});
+			return Promise.resolve(cache.value);
+		}
+		return this.refreshQueueLeft();
 	}
 
-	/** The size of the DB. The numbers can be up to five minutes old, because counting a big DB takes seconds and blocks the process. */
+	/** The size of the DB. The numbers can be up to five minutes old and are counted again in the background, like `queueLeft`. */
 	public totals(): Promise<DbTotals> {
-		return this.writes.run(async () => {
-			if (this.totalsCache && this.now() - this.totalsCache.at < TOTALS_CACHE_MS) {
-				return this.totalsCache.value;
+		const cache = this.totalsCache;
+		if (cache) {
+			if (this.now() - cache.at >= TOTALS_CACHE_MS) {
+				this.refreshTotals();
 			}
-			const relations = await this.database.account.countItemRelations();
-			const value: DbTotals = {
-				countedAt: new Date(this.now()),
-				items: await this.database.item.countAll(),
-				itemsProcessed: await this.database.item.countProcessed(),
-				accounts: await this.database.account.countAll(),
-				accountsProcessed: await this.database.account.countProcessed(),
-				itemAccountRelations: relations.all,
-				wishlistRelations: relations.wishlist,
-				followers: await this.database.account.countFollowers(),
-			};
+			return Promise.resolve(cache.value);
+		}
+		return this.refreshTotals();
+	}
+
+	/** Resolves when the jobs that are queued now, also a recount in the background, are done. */
+	public async idle(): Promise<void> {
+		await Promise.allSettled([this.refreshQueueLeftJob, this.refreshTotalsJob]);
+		await this.writes.run(async () => { });
+	}
+
+	// one recount at a time: callers that come while it runs share it
+	private refreshQueueLeftJob: Promise<{ items: number, accounts: number }> | undefined;
+	private refreshTotalsJob: Promise<DbTotals> | undefined;
+
+	private refreshQueueLeft(): Promise<{ items: number, accounts: number }> {
+		const count = async () => {
+			const value = this.counter
+				? await this.counter.queueLeft()
+				: { items: await this.database.item.countNotProcessed(), accounts: await this.database.account.countNotProcessed() };
+			this.queueLeftCache = { value, at: this.now() };
+			return value;
+		};
+		this.refreshQueueLeftJob ??= (this.counter ? count() : this.writes.run(count)).finally(() => { this.refreshQueueLeftJob = undefined; });
+		// a failed recount in the background must not be an unhandled rejection: the old number stays
+		this.refreshQueueLeftJob.catch(() => { });
+		return this.refreshQueueLeftJob;
+	}
+
+	/** The counts on the connection of this process. */
+	private async countRowsHere(): Promise<RowCounts> {
+		const relations = await this.database.account.countItemRelations();
+		return {
+			items: await this.database.item.countAll(),
+			itemsProcessed: await this.database.item.countProcessed(),
+			accounts: await this.database.account.countAll(),
+			accountsProcessed: await this.database.account.countProcessed(),
+			itemAccountRelations: relations.all,
+			wishlistRelations: relations.wishlist,
+			followers: await this.database.account.countFollowers(),
+		};
+	}
+
+	private refreshTotals(): Promise<DbTotals> {
+		const count = async () => {
+			const value: DbTotals = { countedAt: new Date(this.now()), ...(this.counter ? await this.counter.rows() : await this.countRowsHere()) };
 			this.totalsCache = { value, at: this.now() };
 			return value;
-		});
+		};
+		this.refreshTotalsJob ??= (this.counter ? count() : this.writes.run(count)).finally(() => { this.refreshTotalsJob = undefined; });
+		this.refreshTotalsJob.catch(() => { });
+		return this.refreshTotalsJob;
 	}
 
 	public async extendLease(task: CrawlTask): Promise<boolean> {

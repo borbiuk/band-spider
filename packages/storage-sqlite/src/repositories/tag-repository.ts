@@ -74,7 +74,7 @@ export class TagRepository {
 
 		for (const part of chunk([...new Set(tagIds)], DB_BATCH_SIZE)) {
 			const existing: { tagId: number }[] = await this.manager.query(
-				`SELECT tagId FROM "items-to-tags" WHERE itemId = ? AND tagId IN (${part.map(() => '?').join(',')})`,
+				`SELECT tagId FROM items_to_tags WHERE itemId = ? AND tagId IN (${part.map(() => '?').join(',')})`,
 				[itemId, ...part]
 			);
 			const existingIds = new Set(existing.map(x => x.tagId));
@@ -82,7 +82,7 @@ export class TagRepository {
 			const toInsert = part.filter(x => !existingIds.has(x));
 			if (toInsert.length !== 0) {
 				await this.manager.query(
-					`INSERT OR IGNORE INTO "items-to-tags"(itemId, tagId) VALUES ${toInsert.map(() => '(?,?)').join(',')}`,
+					`INSERT OR IGNORE INTO items_to_tags(itemId, tagId) VALUES ${toInsert.map(() => '(?,?)').join(',')}`,
 					toInsert.flatMap(x => [itemId, x])
 				);
 				added += toInsert.length;

@@ -1,7 +1,5 @@
-import { AdminConfig } from './config';
-import { poolUsage } from './proxy-pool';
 import { SupervisorStatus } from './supervisor';
-import { BAD_429_PER_HOUR, durationText, formatNumber } from './ui-parts';
+import { BAD_429_PER_HOUR, durationText, formatNumber, isFailing } from './ui-parts';
 
 /** One line of the "Needs attention" list of the overview. */
 export interface AttentionItem {
@@ -18,10 +16,10 @@ export const STALL_MS = 3 * 60_000;
 const ORDER = { bad: 0, warn: 1, info: 2 };
 
 /**
- * What needs a look: failed processes, crawlers that hang, get too many HTTP 429 answers or wait,
- * and proxies that more than one crawler uses. The worst come first.
+ * What needs a look: failed processes, and crawlers that hang, get too many HTTP 429 answers or wait.
+ * The worst come first.
  */
-export const attentionItems = (status: SupervisorStatus, config: AdminConfig, now: number): AttentionItem[] => {
+export const attentionItems = (status: SupervisorStatus, now: number): AttentionItem[] => {
 	const items: AttentionItem[] = [];
 	const { db } = status;
 	if (db.state === 'failed') {
@@ -47,6 +45,10 @@ export const attentionItems = (status: SupervisorStatus, config: AdminConfig, no
 		if (stats.http429PerHour >= BAD_429_PER_HOUR) {
 			add('bad', 'too many HTTP 429', `${formatNumber(stats.http429PerHour)} in the last hour, slow it down or change the proxy`);
 		}
+		if (isFailing(crawler)) {
+			const top = stats.failures[0];
+			add('bad', 'most URLs fail', `${Math.round((stats.failShare ?? 0) * 100)}% of the latest URLs failed${top ? `, mostly: ${top.last}` : ''}. The proxy may be blocked.`);
+		}
 		const silentMs = stats.reportedAt === undefined ? 0 : now - stats.reportedAt;
 		if (silentMs > STALL_MS) {
 			add('warn', 'no report', `the last report came ${durationText(silentMs)} ago`);
@@ -56,11 +58,6 @@ export const attentionItems = (status: SupervisorStatus, config: AdminConfig, no
 			add('info', 'waiting for URLs', 'the queue gives it nothing to do');
 		} else if (stats.requestsPerMin === 0) {
 			add('warn', 'no requests', 'it sent no request in the last minutes');
-		}
-	}
-	for (const [key, names] of poolUsage(config)) {
-		if (names.length > 1) {
-			items.push({ tone: 'warn', title: `Proxy ${key} is shared`, detail: `used by ${names.join(', ')}. Use one crawler per IP.` });
 		}
 	}
 	return items.sort((a, b) => ORDER[a.tone] - ORDER[b.tone]);

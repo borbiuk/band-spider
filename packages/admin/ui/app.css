@@ -339,6 +339,7 @@ button.btn-icon.htmx-request .icon { display: none; }
 .seg button[aria-pressed="true"], .seg input:checked + span,
 body[data-chart="speed"] [data-chart-pick="speed"],
 body[data-chart="links"] [data-chart-pick="links"],
+body[data-chart="errors"] [data-chart-pick="errors"],
 body[data-chart="traffic"] [data-chart-pick="traffic"] { background: var(--panel); color: var(--text); box-shadow: var(--shadow); font-weight: 600; }
 
 .chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
@@ -525,11 +526,13 @@ a.kpi-link:hover { border-color: var(--accent); text-decoration: none; }
 .spark-links, .chart-links { color: var(--c-links); }
 .spark-traffic, .chart-traffic { color: var(--c-traffic); }
 .spark-r429, .chart-r429 { color: var(--c-r429); }
+.spark-bad, .chart-bad { color: var(--bad); }
 .spark-queue { color: var(--accent); }
 
 .chart-pane { display: none; }
 body[data-chart="speed"] [data-chart-pane="speed"],
 body[data-chart="links"] [data-chart-pane="links"],
+body[data-chart="errors"] [data-chart-pane="errors"],
 body[data-chart="traffic"] [data-chart-pane="traffic"] { display: block; }
 .chart-box { position: relative; }
 .chart-max { position: absolute; left: 8px; top: 4px; font-size: 11px; pointer-events: none; }
@@ -640,7 +643,7 @@ table.crawlers th:nth-child(8) { width: 88px; }
 .row-actions summary { color: var(--muted); }
 tr.row-failed { background: var(--bad-soft); }
 tr.row-failed:hover { background: var(--bad-soft); }
-tr.row-shared td:first-child { box-shadow: inset 3px 0 var(--warn); }
+tr.row-failing { box-shadow: inset 3px 0 0 var(--bad); }
 
 table.pool .num-col { width: 56px; color: var(--muted); }
 table.pool td.actions, table.pool th.actions { width: 56px; }

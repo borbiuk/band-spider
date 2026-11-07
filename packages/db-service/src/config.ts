@@ -12,12 +12,14 @@ export interface DbServiceConfig {
 	token?: string;
 	/** How long a claimed URL stays taken. The store default is used when not set. */
 	leaseMs?: number;
+	/** The most open write requests at once. The app default is used when not set. */
+	maxOpenRequests?: number;
 	database: DatabaseConfig;
 }
 
 /**
  * Reads the settings from the environment: DB_SERVICE_HOST, DB_SERVICE_PORT, DB_SERVICE_TOKEN,
- * DB_SERVICE_LEASE_MS, BAND_DB_PATH and DB_SYNCHRONIZE. Port 0 means a random free port.
+ * DB_SERVICE_LEASE_MS, DB_SERVICE_MAX_OPEN_REQUESTS, BAND_DB_PATH and DB_SYNCHRONIZE. Port 0 means a random free port.
  */
 export const readServiceConfig = (env: NodeJS.ProcessEnv = process.env): DbServiceConfig => {
 	const file = env.BAND_DB_PATH ?? DEFAULT_DB_FILE;
@@ -31,11 +33,17 @@ export const readServiceConfig = (env: NodeJS.ProcessEnv = process.env): DbServi
 		throw new Error(`DB_SERVICE_LEASE_MS is invalid: ${env.DB_SERVICE_LEASE_MS}`);
 	}
 
+	const maxOpenRequests = env.DB_SERVICE_MAX_OPEN_REQUESTS === undefined ? undefined : Number(env.DB_SERVICE_MAX_OPEN_REQUESTS);
+	if (maxOpenRequests !== undefined && !(Number.isInteger(maxOpenRequests) && maxOpenRequests > 0)) {
+		throw new Error(`DB_SERVICE_MAX_OPEN_REQUESTS is invalid: ${env.DB_SERVICE_MAX_OPEN_REQUESTS}`);
+	}
+
 	return {
 		host: env.DB_SERVICE_HOST ?? DEFAULT_HOST,
 		port,
 		token: env.DB_SERVICE_TOKEN || undefined,
 		leaseMs,
+		maxOpenRequests,
 		// same rule as the CLI: the schema is created only for a new file, or when asked
 		database: {
 			file,

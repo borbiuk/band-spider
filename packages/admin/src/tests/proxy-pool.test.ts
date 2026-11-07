@@ -316,15 +316,17 @@ describe('crawler form with a pool', () => {
 		assert.doesNotMatch(form, /class="warn"/);
 	});
 
-	it('warns, but does not block, when two crawlers use the same entry', async () => {
+	it('lets two crawlers use the same entry without a warning', async () => {
 		await importList(`10.0.0.1:80:u:${PASS}`);
 		await addPoolCrawler('c1', '10.0.0.1:80');
 		const second = await addPoolCrawler('c2', '10.0.0.1:80');
 		assert.match(second.body, /hx-swap-oob/);
-		assert.match(second.body, /Proxy 10\.0\.0\.1:80 is also used by c1\. Use one crawler per IP\./);
+		assert.doesNotMatch(second.body, /also used by|one crawler per IP/);
 		assert.equal(saved().crawlers.length, 2);
-		assert.match((await get('/fragments/proxy-list')).body, /Use one crawler per IP/);
-		assert.match((await get('/fragments/crawler-form?name=c2')).body, /also used by c1/);
+		const list = (await get('/fragments/proxy-list')).body;
+		assert.match(list, /data-pstate="shared"/);
+		assert.doesNotMatch(list, /one crawler per IP/);
+		assert.doesNotMatch((await get('/fragments/crawler-form?name=c2')).body, /class="warn"/);
 	});
 
 	it('refuses a crawler with no choice or an unknown key', async () => {

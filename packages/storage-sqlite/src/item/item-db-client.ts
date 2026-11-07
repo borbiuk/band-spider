@@ -7,6 +7,7 @@ import {
 	ItemTabStatistic,
 } from '@band-spider/core';
 import { BandDatabase } from '../db';
+import { isItemUrl } from '../models/item-url';
 
 export async function saveItemPageData(
 	itemId: number,
@@ -137,13 +138,13 @@ async function saveAlbumData(
 	database: BandDatabase,
 	newUrls: string[]
 ): Promise<ItemTabStatistic> {
-	if (isNullOrUndefined(data)) {
+	if (isNullOrUndefined(data) || !isItemUrl(data)) {
 		return defaultItemTabStatistic;
 	}
 
-	const { entity: { id }, isInserted } = await database.item.insert(data);
+	const { entity: { id, url }, isInserted } = await database.item.insert(data);
 	if (isInserted) {
-		newUrls.push(data);
+		newUrls.push(url);
 	}
 	const added = await database.item.updateTrackAlbum(trackId, id);
 
@@ -167,11 +168,11 @@ async function saveTracksData(
 	let newTracksCount: number = 0;
 	let newRelationsCount: number = 0;
 
-	for (const track of data) {
-		const { entity: { id }, isInserted } = await database.item.insert(track);
+	for (const track of data.filter(isItemUrl)) {
+		const { entity: { id, url }, isInserted } = await database.item.insert(track);
 		if (isInserted) {
 			newTracksCount++;
-			newUrls.push(track);
+			newUrls.push(url);
 		}
 
 		const added = await database.item.updateTrackAlbum(id, albumId);

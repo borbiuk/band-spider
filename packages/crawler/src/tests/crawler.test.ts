@@ -26,6 +26,7 @@ import {
 	CrawlTransport,
 	DbServiceError,
 	HttpCrawlTransport,
+	retryDelay,
 	parseCrawlerConfig,
 	readEnvConfig,
 	RemoteCrawlStore,
@@ -356,9 +357,42 @@ describe('HttpCrawlTransport', () => {
 
 		try {
 			const pauses: number[] = [];
-			const transport = new HttpCrawlTransport(url, { baseDelayMs: 100, sleep: async ms => { pauses.push(ms); } });
+			const transport = new HttpCrawlTransport(url, { baseDelayMs: 100, random: () => 1, sleep: async ms => { pauses.push(ms); } });
 			assert.deepEqual(await transport.post('/x', {}), { ok: true });
 			assert.deepEqual(pauses, [100, 200]);
+		} finally {
+			server.closeAllConnections();
+			await new Promise(resolve => server.close(resolve));
+		}
+	});
+
+	it('keeps every pause between half of the delay and the whole delay', () => {
+		assert.equal(retryDelay(1, 500, 15_000, () => 0), 250);
+		assert.equal(retryDelay(1, 500, 15_000, () => 0.999), 500);
+		assert.equal(retryDelay(3, 500, 15_000, () => 0), 1000);
+		// the delay stops growing at the maximum
+		assert.equal(retryDelay(20, 500, 15_000, () => 0), 7500);
+	});
+
+	it('tries again when the service is busy (503) and waits at least as long as it asks', async () => {
+		let calls = 0;
+		const server = http.createServer((_request, response) => {
+			calls++;
+			response.setHeader('content-type', 'application/json');
+			if (calls === 1) {
+				response.statusCode = 503;
+				response.setHeader('retry-after', '2');
+				response.end(JSON.stringify({ message: 'The DB service is busy' }));
+				return;
+			}
+			response.end(JSON.stringify({ ok: true }));
+		});
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+		try {
+			const pauses: number[] = [];
+			const transport = new HttpCrawlTransport(`http://127.0.0.1:${(server.address() as net.AddressInfo).port}`, { baseDelayMs: 100, random: () => 0, sleep: async ms => { pauses.push(ms); } });
+			assert.deepEqual(await transport.post('/x', {}), { ok: true });
+			assert.deepEqual(pauses, [2000]);
 		} finally {
 			server.closeAllConnections();
 			await new Promise(resolve => server.close(resolve));
