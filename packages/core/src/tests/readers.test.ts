@@ -220,13 +220,18 @@ describe('account reader', () => {
 		assert.equal(calls[1].older_than_token, 't2');
 	});
 
-	it('maps 404 and a page without #pagedata to "Page did not exist"', async () => {
+	it('maps 404 to "Page did not exist"', async () => {
 		handler = () => ({ status: 404 });
-		await assert.rejects(readAccountPageByFetch(accountUrl, createClient()), { message: 'Page did not exist' });
-
-		handler = () => ({ status: 200, body: '<html><body>nothing</body></html>' });
-		await assert.rejects(readAccountPageByFetch(accountUrl, createClient()), { message: 'Page did not exist' });
 		await assert.rejects(readAccountPageByFetch(accountUrl, createClient()), PageNotFoundError);
+	});
+
+	it('fails a page without #pagedata as a normal error, not as a missing page', async () => {
+		// a block or error page of a proxy can come with status 200
+		handler = () => ({ status: 200, body: '<html><body>nothing</body></html>' });
+		await assert.rejects(
+			readAccountPageByFetch(accountUrl, createClient()),
+			(e: unknown) => !(e instanceof PageNotFoundError) && (e as Error).message === 'The account page has no "#pagedata" blob',
+		);
 	});
 
 	it('maps 429 of the page and of the API to RateLimitedError', async () => {

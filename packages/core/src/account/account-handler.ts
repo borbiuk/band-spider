@@ -1,4 +1,4 @@
-import { errorMessage, failureKey, FailureReport, FailureStage } from '../common/errors';
+import { errorMessage, failureKey, FailureReport, FailureStage, PageNotFoundError } from '../common/errors';
 import { followerColor, itemColor, logger, LogSource } from '../common/logger';
 import { RateLimitedError } from '../common/rate-limit-gate';
 import { logMessage, minus, yesNo } from '../common/utils';
@@ -26,7 +26,7 @@ export async function processAccount(
 	try {
 		accountPageData = await reader.readAccountPage(url, marks);
 	} catch (e) {
-		if (e instanceof RateLimitedError) {
+		if (e instanceof RateLimitedError || e instanceof PageNotFoundError) {
 			throw e;
 		}
 		fail(e);

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { BandSpider, parseOptions } from '@band-spider/core';
+import { BandSpider, NotFoundGuard, parseOptions } from '@band-spider/core';
 import { BandDatabase, LocalCrawlStore } from '@band-spider/storage-sqlite';
 
 const tempDir: string = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-run-'));
@@ -45,7 +45,7 @@ describe('BandSpider.run', () => {
 	const fixture = (name: string): string => fs.readFileSync(path.join(__dirname, '../../../core/src/tests/fixtures', name), 'utf8');
 
 	/** Runs the spider with `answer` in place of the network. The run stops after the first request. */
-	const runWith = async (args: string[], answer: (url: string) => Response): Promise<void> => {
+	const runWith = async (args: string[], answer: (url: string) => Response, guard?: () => NotFoundGuard): Promise<void> => {
 		const stop = new AbortController();
 		const realFetch = globalThis.fetch;
 		globalThis.fetch = (async (input: string | URL | Request) => {
@@ -53,7 +53,7 @@ describe('BandSpider.run', () => {
 			return answer(String(input));
 		}) as typeof fetch;
 		try {
-			await new BandSpider(new LocalCrawlStore(db)).run(parseOptions(args), stop.signal);
+			await new BandSpider(new LocalCrawlStore(db), undefined, undefined, guard).run(parseOptions(args), stop.signal);
 		} finally {
 			globalThis.fetch = realFetch;
 		}
@@ -105,8 +105,30 @@ describe('BandSpider.run', () => {
 		const url = 'https://bandcamp.com/run-fan';
 		await db.account.insert(url);
 
-		await runWith(['--account'], () => new Response('', { status: 404 }));
+		await runWith(['--account'], () => new Response('', { status: 500 }));
 
 		assert.deepEqual(await accountRow(url), { processed: 0, failedCount: 1, isBusy: 0 });
+	});
+
+	it('an account page that does not exist gets the not-found mark and is released', async () => {
+		await reset();
+		const url = 'https://bandcamp.com/run-gone';
+		await db.account.insert(url);
+
+		// a guard that trusts every 404
+		await runWith(['--account'], () => new Response('', { status: 404 }), () => new NotFoundGuard({ minSamples: 1, maxShare: 1 }));
+
+		assert.deepEqual(await accountRow(url), { processed: 0, failedCount: 404, isBusy: 0 });
+	});
+
+	it('an account page with a 404 the guard does not trust is only released', async () => {
+		await reset();
+		const url = 'https://bandcamp.com/run-unsure';
+		await db.account.insert(url);
+
+		// the default guard needs more answers before it trusts a 404
+		await runWith(['--account'], () => new Response('', { status: 404 }));
+
+		assert.deepEqual(await accountRow(url), { processed: 0, failedCount: 0, isBusy: 0 });
 	});
 });

@@ -2,6 +2,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { errorMessage, failureKey, FailureReport, PageNotFoundError } from './common/errors';
 import { HttpClient } from './common/http-client';
 import { errorColor, logger, LogSource, speedColor, successColor } from './common/logger';
+import { NotFoundGuard, NotFoundVerdict } from './common/not-found-guard';
 import { NoProxy, ProxySource, StaticProxy } from './common/proxy-source';
 import { RateLimitedError, RateLimitGate } from './common/rate-limit-gate';
 import { isNullOrUndefined, logMessage } from './common/utils';
@@ -23,6 +24,10 @@ enum UrlResult {
 	Failed,
 	/** Bandcamp answered HTTP 429: the URL is not counted as failed and is tried again after the pause. */
 	RateLimited,
+	/** The page answered 404 and got the not-found mark. */
+	NotFound,
+	/** A 404 that may come from a block: the URL is released without a mark and tried again later. */
+	NotFoundUnsure,
 }
 
 export class BandSpider {
@@ -31,6 +36,7 @@ export class BandSpider {
 		skipped: 0,
 		failed: 0,
 		rateLimited: 0,
+		notFoundUnsure: 0,
 		start: null as number | null,
 	};
 
@@ -47,6 +53,8 @@ export class BandSpider {
 		private readonly createReader: (http: HttpClient) => PageReader = http => new FetchPageReader(http),
 		/** Called for each error that makes a URL fail, with the reason. */
 		private readonly onFailure: (failure: FailureReport) => void = () => { },
+		/** Builds the 404 guard of one IP. A test passes one that trusts every 404. */
+		private readonly createNotFoundGuard: () => NotFoundGuard = () => new NotFoundGuard(),
 	) {
 	}
 
@@ -105,21 +113,22 @@ export class BandSpider {
 	private createFetchSource(
 		proxySource: ProxySource,
 		delays: { minDelayMs?: number, maxDelayMs?: number },
-	): { http: HttpClient, rateLimitGate: RateLimitGate } {
+	): { http: HttpClient, rateLimitGate: RateLimitGate, notFoundGuard: NotFoundGuard } {
 		const rateLimitGate = new RateLimitGate();
 		const http = new HttpClient(rateLimitGate, {
 			proxySource,
 			...delays,
 			onRateLimited: (url, retryAfter) => this.pauseOnRateLimit(rateLimitGate, url, retryAfter),
 		});
-		return { http, rateLimitGate };
+		return { http, rateLimitGate, notFoundGuard: this.createNotFoundGuard() };
 	}
 
-	/** A worker has its own reader, but uses the shared client and gate. */
-	private createWorkerSource(shared: { http: HttpClient, rateLimitGate: RateLimitGate }): PageSource {
+	/** A worker has its own reader, but uses the shared client, gate and 404 guard (one IP). */
+	private createWorkerSource(shared: { http: HttpClient, rateLimitGate: RateLimitGate, notFoundGuard: NotFoundGuard }): PageSource {
 		return {
 			reader: this.createReader(shared.http),
 			rateLimitGate: shared.rateLimitGate,
+			notFoundGuard: shared.notFoundGuard,
 			afterUrl: async () => { },
 			close: async () => { },
 		};
@@ -177,9 +186,11 @@ export class BandSpider {
 			const result = await this.processUrl(task, source, id);
 
 			// update statistic
-			if (result === UrlResult.Processed) {
+			if (result === UrlResult.Processed || result === UrlResult.NotFound) {
 				this.statistic.processed++;
 				source.rateLimitGate.reportSuccess();
+			} else if (result === UrlResult.NotFoundUnsure) {
+				this.statistic.notFoundUnsure++;
 			} else if (result === UrlResult.RateLimited) {
 				this.statistic.rateLimited++;
 				// not lost: the task is released, so it is claimed again after the pause
@@ -191,7 +202,7 @@ export class BandSpider {
 				logger.debug(
 					logMessage(
 						LogSource.Main,
-						`Processed: ${successColor(this.statistic.processed).padEnd(4)}; Failed: ${errorColor(this.statistic.failed).padEnd(4)}; Rate limited: ${this.statistic.rateLimited}; Speed: ${speedColor((this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)).padEnd(4)}`
+						`Processed: ${successColor(this.statistic.processed).padEnd(4)}; Failed: ${errorColor(this.statistic.failed).padEnd(4)}; Rate limited: ${this.statistic.rateLimited}; Unsure 404: ${this.statistic.notFoundUnsure}; Speed: ${speedColor((this.statistic.processed / ((new Date().getTime() - this.statistic.start) / 1000)).toFixed(2)).padEnd(4)}`
 							.padStart(240)
 					)
 				);
@@ -227,7 +238,9 @@ export class BandSpider {
 		const { process, source: logSource } = this.handlerOf(task.type);
 		try {
 			const processed = await process(task, this.store, source.reader, pageIndex, this.onFailure);
-			if (!processed) {
+			if (processed) {
+				source.notFoundGuard.reportPage();
+			} else {
 				await this.store.release(task, 'failed');
 			}
 			return processed ? UrlResult.Processed : UrlResult.Failed;
@@ -240,12 +253,7 @@ export class BandSpider {
 			}
 
 			if (error instanceof PageNotFoundError) {
-				await this.store.release(task, 'notFound');
-				this.onFailure({ key: 'not-found', message: errorMessage(error), url: task.url });
-				logger.warn(
-					logMessage(logSource, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), task.url)
-				);
-				return UrlResult.Processed;
+				return await this.releaseNotFound(task, source, pageIndex, logSource, error);
 			}
 
 			await this.store.release(task, 'failed');
@@ -258,6 +266,42 @@ export class BandSpider {
 
 			return UrlResult.Failed;
 		}
+	}
+
+	/**
+	 * Releases a URL that answered 404. The not-found mark is saved only when the guard trusts the
+	 * 404. Otherwise the URL is only released, and on a burst of 404s the worker pauses like on 429.
+	 */
+	private async releaseNotFound(
+		task: CrawlTask,
+		source: PageSource,
+		pageIndex: number,
+		logSource: LogSource,
+		error: PageNotFoundError,
+	): Promise<UrlResult> {
+		const verdict = source.notFoundGuard.reportNotFound();
+		if (verdict === NotFoundVerdict.Trusted) {
+			await this.store.release(task, 'notFound');
+			this.onFailure({ key: 'not-found', message: errorMessage(error), url: task.url });
+			logger.warn(
+				logMessage(logSource, `[${String(pageIndex).padStart(2)}] Page did not exist`.padEnd(50), task.url)
+			);
+			return UrlResult.NotFound;
+		}
+
+		// not a failure of the URL: only release it, so it is tried again later
+		await this.store.release(task, 'rateLimited');
+		this.onFailure({ key: 'not-found:unsure', message: errorMessage(error), url: task.url });
+		if (verdict === NotFoundVerdict.Burst) {
+			const pause = source.rateLimitGate.trip();
+			if (pause.started) {
+				logger.warn(
+					{ url: task.url, pauseSeconds: Math.round(pause.pauseMs / 1000), backoffLevel: pause.level },
+					logMessage(LogSource.Browser, 'Too many 404s, the IP may be blocked, requests paused')
+				);
+			}
+		}
+		return UrlResult.NotFoundUnsure;
 	}
 
 	/** The handler and the log source of one URL type. */

@@ -1,5 +1,4 @@
 import * as cheerio from 'cheerio';
-import { PageNotFoundError } from '../../common/errors';
 import { getPageHtml, HttpClient } from '../../common/http-client';
 import { isNullOrUndefined } from '../../common/utils';
 import { AccountScanMarks } from '../../models/account-scan-marks';
@@ -9,8 +8,9 @@ import { ACCOUNT_SELECTORS, API_BASE, buildAccountPageData, FanPageBlob } from '
 /**
  * Reads an account page with plain HTTP requests. Gives the same data as `readAccountPage`.
  *
- * @throws `PageNotFoundError` for HTTP 404 or a page without `#pagedata`, `RateLimitedError` for
- * HTTP 429, `ApiRefusedError` when the API refuses a request, a normal error for any other failure.
+ * @throws `PageNotFoundError` for HTTP 404, `RateLimitedError` for
+ * HTTP 429, `ApiRefusedError` when the API refuses a request, a normal error for any other failure,
+ * also for a page without `#pagedata`: a block or error page of a proxy can come with status 200.
  */
 export async function readAccountPageByFetch(
 	url: string,
@@ -21,7 +21,7 @@ export async function readAccountPageByFetch(
 
 	const blob = readPageBlob(html);
 	if (isNullOrUndefined(blob)) {
-		throw new PageNotFoundError();
+		throw new Error('The account page has no "#pagedata" blob');
 	}
 
 	return await buildAccountPageData(url, blob, async (endpoint, body) => {

@@ -1,3 +1,4 @@
+import { NotFoundGuard } from './common/not-found-guard';
 import { HttpClient } from './common/http-client';
 import { RateLimitGate } from './common/rate-limit-gate';
 import { AccountScanMarks } from './models/account-scan-marks';
@@ -32,6 +33,8 @@ export interface PageSource {
 	reader: PageReader;
 	/** The 429 pause of this worker. */
 	rateLimitGate: RateLimitGate;
+	/** Tells a real 404 from a block of the IP of this worker. */
+	notFoundGuard: NotFoundGuard;
 	/** Called after every processed URL. */
 	afterUrl: () => Promise<void>;
 	close: () => Promise<void>;

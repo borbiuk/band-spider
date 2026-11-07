@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { BandSpider } from '../band-spider';
-import { FailureReport, HttpStatusError } from '../common/errors';
+import { FailureReport, HttpStatusError, PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
+import { NotFoundGuard } from '../common/not-found-guard';
 import { RateLimitedError } from '../common/rate-limit-gate';
 import type { CrawlStore, CrawlTask } from '../crawl-store';
 import { defaultItemTabStatistic } from '../item/models/item-tab-statistic';
@@ -69,7 +70,7 @@ const reader = (onItem: (url: string) => Promise<ItemPageData> | ItemPageData = 
 	readAccountPage: async () => { throw new Error('not used'); },
 });
 
-const options = (extra: { concurrency?: number, idleWaitMs?: number } = {}) => ({
+const options = (extra: { concurrency?: number, idleWaitMs?: number, type?: UrlType } = {}) => ({
 	concurrency: 1, type: UrlType.Item, superTag: false, reverse: false, minDelayMs: 0, maxDelayMs: 0, ...extra,
 });
 
@@ -183,6 +184,47 @@ describe('failure reports', () => {
 		assert.deepEqual(failures[0], { key: 'http:503', message: `HTTP 503: ${url}`, url });
 		assert.equal(store.released[0], `failed:${url}`);
 	});
+
+	/** Runs the spider on one URL that answers 404 and returns the release and the failure keys. */
+	const runNotFound = async (type: UrlType, guard?: () => NotFoundGuard) => {
+		const store = new FakeStore();
+		// a released URL is not queued again: a loop with no real I/O would starve the timers of the test
+		store.release = async (task, reason) => { store.released.push(`${reason}:${task.url}`); };
+		const url = type === UrlType.Item ? 'https://a.bandcamp.com/track/gone' : 'https://bandcamp.com/gone';
+		store.queue.push(url);
+		const failures: FailureReport[] = [];
+		const stop = new AbortController();
+		const notFound = async (): Promise<never> => { throw new PageNotFoundError(); };
+		const spider = new BandSpider(
+			store,
+			() => ({ readItemPage: notFound, readAccountPage: notFound }),
+			failure => failures.push(failure),
+			guard,
+		);
+		const running = spider.run(options({ idleWaitMs: 10, type }), stop.signal);
+
+		await until(() => store.released.length > 0);
+		stop.abort();
+		await running;
+		return { url, released: store.released, keys: failures.map(x => x.key) };
+	};
+
+	for (const type of [UrlType.Item, UrlType.Account]) {
+		it(`releases an ${type} page that does not exist as not found when the guard trusts the 404`, async () => {
+			const { url, released, keys } = await runNotFound(type, () => new NotFoundGuard({ minSamples: 1, maxShare: 1 }));
+
+			assert.deepEqual(released, [`notFound:${url}`]);
+			assert.deepEqual(keys, ['not-found']);
+		});
+
+		it(`only releases an ${type} page with a 404 the guard does not trust`, async () => {
+			// the default guard needs more answers before it trusts a 404
+			const { url, released, keys } = await runNotFound(type);
+
+			assert.deepEqual(released, [`rateLimited:${url}`]);
+			assert.deepEqual(keys, ['not-found:unsure']);
+		});
+	}
 
 	it('reports each scraping issue of a saved page', async () => {
 		const store = new FakeStore();
