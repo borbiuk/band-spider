@@ -266,7 +266,7 @@ npx pino-pretty < logfile.log
 ## 🌐 How pages are read
 
 Pages are read with plain HTTP requests. All workers of one run share one HTTP client (one IP): requests never
-overlap, and a random pause of 550-700 ms is kept from the end of one request to the start of the next. A pause after
+overlap, and a random pause of 650-800 ms is kept from the end of one request to the start of the next. A pause after
 HTTP 429 stops all requests of that client. No browser is needed.
 
 ## 🧪 Tests
