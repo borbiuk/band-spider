@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { FlowStats } from '@band-spider/contracts';
 import { DbStats, DbTotals } from '../db-stats';
+import { countWithShare, fillMonths } from '../ui-parts';
 import { computeInsights, flowRate, flowSample, flowSeries, FlowSample, longDurationText } from '../insights';
 import { CrawlerStatus, InsightsSnapshot } from '../supervisor';
 import { renderInsights } from '../ui-insights';
@@ -145,6 +146,16 @@ describe('computeInsights', () => {
 	});
 });
 
+describe('fillMonths', () => {
+	it('adds the months without rows, also across a year', () => {
+		assert.deepEqual(fillMonths([{ month: '2025-11', count: 3 }, { month: '2026-02', count: 1 }]), [
+			{ month: '2025-11', count: 3 }, { month: '2025-12', count: 0 }, { month: '2026-01', count: 0 }, { month: '2026-02', count: 1 },
+		]);
+		assert.deepEqual(fillMonths([]), []);
+		assert.equal(countWithShare(1, 0), '1');
+	});
+});
+
 describe('renderInsights', () => {
 	const snapshot = (extra: Partial<InsightsSnapshot> = {}): InsightsSnapshot => ({
 		db: { state: 'running', dbStats: STATS },
@@ -152,6 +163,7 @@ describe('renderInsights', () => {
 		history: [sample(2, { items: 0 }), sample(0, { items: 30, pages: 5 })],
 		totals: TOTALS,
 		totalsLoading: false,
+		processingHistoryLoading: false,
 		...extra,
 	});
 
@@ -172,6 +184,36 @@ describe('renderInsights', () => {
 	it('says that the DB size is being counted, or why it failed', () => {
 		assert.match(renderInsights(snapshot({ totals: undefined, totalsLoading: true }), NOW), /Counting the rows of the DB/);
 		assert.match(renderInsights(snapshot({ totals: undefined, totalsError: 'timed out <b>' }), NOW), /DB size: timed out &lt;b&gt;/);
+	});
+
+	it('draws the processing by month with the count and the share on the Y axis', () => {
+		const html = renderInsights(snapshot({
+			processingHistory: {
+				countedAt: new Date('2026-04-01T10:00:00.000Z'),
+				items: { total: 200, months: [{ month: '2026-01', count: 20 }, { month: '2026-04', count: 50 }] },
+				accounts: { total: 10, months: [{ month: '2026-02', count: 5 }] },
+			},
+		}), NOW);
+		assert.match(html, /Accounts processed per month/);
+		assert.match(html, /Items processed per month/);
+		// the Y axis: the highest bar, half of it and zero, each with its share of the total
+		assert.match(html, /<span>50 \(25\.0%\)<\/span><span>25 \(12\.5%\)<\/span><span>0 \(0\.0%\)<\/span>/);
+		// the items go from January to April, so their two empty months are drawn too (4), and the accounts have one month (1)
+		assert.equal((html.match(/<title>2026-0[1-4]: /g) ?? []).length, 5);
+		assert.match(html, /<title>2026-02: 0 \(0\.0%\)<\/title>/);
+		assert.match(html, /Processed <b>70 \(35\.0%\)<\/b> of 200, not processed yet 130/);
+		assert.match(html, /every 30 minutes/);
+		assert.doesNotMatch(html, /\sstyle=/);
+	});
+
+	it('says that the months are being counted, or why they failed', () => {
+		assert.match(renderInsights(snapshot({ processingHistoryLoading: true }), NOW), /Counting when the items and the accounts were processed/);
+		assert.match(renderInsights(snapshot({ processingHistoryError: 'timed out <b>' }), NOW), /Processing by month: timed out &lt;b&gt;/);
+	});
+
+	it('says so when nothing was processed yet', () => {
+		const html = renderInsights(snapshot({ processingHistory: { countedAt: new Date(NOW), items: { total: 3, months: [] }, accounts: { total: 0, months: [] } } }), NOW);
+		assert.match(html, /Nothing was processed yet/);
 	});
 
 	it('says that there is nothing to show while the DB service is stopped', () => {

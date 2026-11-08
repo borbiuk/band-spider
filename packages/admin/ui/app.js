@@ -184,19 +184,43 @@
 		}, Math.max(200, 1000 - (Date.now() - lastRefresh)));
 	}
 
+	// the whole log is kept here, the box shows the lines that match the filter
+	var logRaw = '';
+
+	function renderLog() {
+		var view = document.getElementById('log-view');
+		if (!view) {
+			return;
+		}
+		var filter = document.querySelector('[data-log-filter]');
+		var term = filter ? filter.value.trim().toLowerCase() : '';
+		view.textContent = term
+			? logRaw.split('\n').filter(function (line) {
+				return line.toLowerCase().indexOf(term) >= 0;
+			}).join('\n')
+			: logRaw;
+		var follow = document.querySelector('[data-log-follow]');
+		if (!follow || follow.checked) {
+			view.scrollTop = view.scrollHeight;
+		}
+	}
+
 	function appendLog(event) {
 		var data = JSON.parse(event.data);
 		var view = document.getElementById('log-view');
 		if (!view || view.getAttribute('data-source') !== data.source) {
 			return;
 		}
-		var follow = document.querySelector('[data-log-follow]');
-		var text = view.textContent + data.text;
-		view.textContent = text.length > MAX_LOG_CHARS ? text.slice(text.length - MAX_LOG_CHARS) : text;
-		if (!follow || follow.checked) {
-			view.scrollTop = view.scrollHeight;
-		}
+		var text = logRaw + data.text;
+		logRaw = text.length > MAX_LOG_CHARS ? text.slice(text.length - MAX_LOG_CHARS) : text;
+		renderLog();
 	}
+
+	document.body.addEventListener('input', function (event) {
+		if (event.target.hasAttribute && event.target.hasAttribute('data-log-filter')) {
+			renderLog();
+		}
+	});
 
 	// Scrolling up in the log stops the follow, scrolling to the end starts it again
 	document.addEventListener('scroll', function (event) {
@@ -207,10 +231,32 @@
 		}
 	}, true);
 
-	function setConnection(state, text) {
-		connection.setAttribute('data-state', state);
-		connectionText.textContent = text;
+	// "live" only says that the stream is open. The age of the last update says how fresh the numbers are.
+	var connectionState = 'connecting';
+	var lastUpdate = 0;
+
+	function ageText() {
+		if (!lastUpdate) {
+			return '';
+		}
+		var seconds = Math.max(Math.round((Date.now() - lastUpdate) / 1000), 0);
+		return ' · updated ' + (seconds < 5 ? 'now' : seconds < 60 ? seconds + 's ago' : Math.floor(seconds / 60) + 'm ago');
 	}
+
+	function setConnection(state, text) {
+		connectionState = state;
+		connection.setAttribute('data-state', state);
+		connectionText.textContent = text + (state === 'live' ? ageText() : '');
+		connectionText.setAttribute('data-base', text);
+	}
+
+	setInterval(function () {
+		if (connectionState === 'live') {
+			connectionText.textContent = connectionText.getAttribute('data-base') + ageText();
+			// a stream that is open but silent for long: the numbers are old
+			connection.setAttribute('data-stale', String(lastUpdate > 0 && Date.now() - lastUpdate > 180000));
+		}
+	}, 1000);
 
 	var source = new EventSource('/events');
 	source.addEventListener('status', refreshStatus);
@@ -292,7 +338,7 @@
 	// --- the chart of the overview: the chosen metric stays in the browser ---
 
 	var CHART_KEY = 'band-spider:chart';
-	var CHARTS = ['speed', 'links', 'traffic', 'errors'];
+	var CHARTS = ['speed', 'limits', 'links', 'traffic', 'errors'];
 	var chart = load(CHART_KEY, 'speed');
 	document.body.setAttribute('data-chart', CHARTS.indexOf(chart) < 0 ? 'speed' : chart);
 
@@ -347,7 +393,10 @@
 			return;
 		}
 		var percent = Number(box.getAttribute('data-month-bytes')) / (limit * 1e9) * 100;
-		text.textContent = '~' + Math.round(percent) + '% of the plan at this speed';
+		var perDay = Number(box.getAttribute('data-month-bytes')) / 30;
+		var days = perDay > 0 ? limit * 1e9 / perDay : 0;
+		text.textContent = '~' + Math.round(percent) + '% of the plan at this speed'
+			+ (days > 0 ? ', lasts ~' + (days >= 10 ? Math.round(days) : days.toFixed(1)) + ' days' : '');
 		bar.setAttribute('width', String(Math.min(percent, 100).toFixed(1)));
 		box.setAttribute('data-level', percent >= 100 ? 'bad' : percent >= 80 ? 'warn' : 'ok');
 	}
@@ -364,7 +413,7 @@
 	// The server sends the rows in the order of the config with data-* values. The choice lives here, so a live update
 	// (which puts the rows back in the order of the config) cannot lose it.
 	var TOOLS_KEY = 'band-spider:crawler-tools';
-	var NUMERIC = { index: 1, requests: 1, urls: 1, http429: 1, saved: 1, bytes: 1, links: 1 };
+	var NUMERIC = { index: 1, requests: 1, urls: 1, success: 1, http429: 1, saved: 1, bytes: 1, links: 1 };
 	var ACTIVE = { starting: 1, running: 1, stopping: 1 };
 	var DEFAULT_TOOLS = { search: '', state: '', type: '', sort: 'index', desc: false };
 	var tools = JSON.parse(JSON.stringify(DEFAULT_TOOLS));
@@ -405,6 +454,11 @@
 		return !tools.state || (tools.state === 'active' ? ACTIVE[state] === 1 : state === tools.state);
 	}
 
+	// "problems" is not a state: the server marks the rows that need a look
+	function rowMatchesState(row) {
+		return tools.state === 'problems' ? row.dataset.problem === '1' : stateMatches(row.dataset.state);
+	}
+
 	/**
 	 * Applies the filter and the sort. A live update does not move the rows while the pointer is over the table,
 	 * so a click does not hit a row that just moved there. The order is fixed when the pointer leaves.
@@ -441,7 +495,7 @@
 		var shown = 0;
 		rows.forEach(function (row) {
 			var match = (!term || row.dataset.search.indexOf(term) >= 0)
-				&& stateMatches(row.dataset.state)
+				&& rowMatchesState(row)
 				&& (!tools.type || row.dataset.type === tools.type);
 			row.hidden = !match;
 			if (match) {
@@ -555,6 +609,7 @@
 
 	// the status block is drawn again by every live update and by the control buttons
 	function afterStatus() {
+		lastUpdate = Date.now();
 		applyTools(true);
 		applyChart();
 		applyNav();
@@ -574,6 +629,65 @@
 			chip.setAttribute('aria-pressed', String(chip.getAttribute('data-proxy-chip') === chosen));
 		});
 	}
+
+	// search and sort of the proxy table. The choice lives here, a live update puts the rows back in the order of the server.
+	var proxyTools = { search: '', sort: 'index', desc: false };
+
+	function applyProxyTools() {
+		var body = document.querySelector('table.pool tbody');
+		if (!body) {
+			return;
+		}
+		var term = proxyTools.search.trim().toLowerCase();
+		var rows = Array.prototype.slice.call(body.rows);
+		rows.forEach(function (row) {
+			var match = !term || row.dataset.search.indexOf(term) >= 0;
+			row.hidden = !match;
+			if (!match) {
+				var box = row.querySelector('input[name="keys"]');
+				if (box) {
+					box.checked = false;
+				}
+			}
+		});
+		var key = proxyTools.sort;
+		rows.sort(function (a, b) {
+			var camel = key.replace(/-([a-z])/g, function (_, letter) {
+				return letter.toUpperCase();
+			});
+			var order = camel === 'country'
+				? (a.dataset.country || '\uffff').localeCompare(b.dataset.country || '\uffff', 'en')
+				: Number(a.dataset[camel]) - Number(b.dataset[camel]);
+			if (order === 0) {
+				order = Number(a.dataset.index) - Number(b.dataset.index);
+			}
+			return proxyTools.desc ? -order : order;
+		}).forEach(function (row, position) {
+			if (body.rows[position] !== row) {
+				body.insertBefore(row, body.rows[position]);
+			}
+		});
+		all('table.pool th').forEach(function (head) {
+			var button = head.querySelector('[data-psort]');
+			if (button && button.getAttribute('data-psort') === proxyTools.sort && proxyTools.sort !== 'index') {
+				head.setAttribute('aria-sort', proxyTools.desc ? 'descending' : 'ascending');
+			} else {
+				head.removeAttribute('aria-sort');
+			}
+		});
+		var search = document.querySelector('[data-proxy-search]');
+		if (search && search.value !== proxyTools.search) {
+			search.value = proxyTools.search;
+		}
+		updateChosenCount();
+	}
+
+	document.body.addEventListener('input', function (event) {
+		if (event.target.hasAttribute && event.target.hasAttribute('data-proxy-search')) {
+			proxyTools.search = event.target.value;
+			applyProxyTools();
+		}
+	});
 
 	function updateChosenCount() {
 		var counter = document.querySelector('[data-selected-count]');
@@ -610,6 +724,7 @@
 	document.body.addEventListener('htmx:afterSwap', function () {
 		updateChosenCount();
 		applyProxyFilter();
+		applyProxyTools();
 	});
 	// after the crawlers are created the choice is done, so every box is cleared
 	document.body.addEventListener('htmx:afterRequest', function (event) {
@@ -618,6 +733,39 @@
 				box.checked = false;
 			});
 			updateChosenCount();
+		}
+	});
+
+	// --- chart tooltip: the native one waits a second, this one shows at once ---
+
+	var tip = document.createElement('div');
+	tip.className = 'chart-tip';
+	tip.hidden = true;
+	document.body.appendChild(tip);
+
+	document.body.addEventListener('mouseover', function (event) {
+		var hit = event.target.closest && event.target.closest('rect.hit');
+		if (!hit) {
+			return;
+		}
+		var title = hit.querySelector('title');
+		if (title) {
+			// the text moves to an attribute, so the browser does not show its own tip as well
+			hit.setAttribute('data-tip', title.textContent);
+			title.remove();
+		}
+		tip.textContent = hit.getAttribute('data-tip') || '';
+		tip.hidden = !tip.textContent;
+	});
+	document.body.addEventListener('mousemove', function (event) {
+		if (!tip.hidden) {
+			tip.style.left = Math.min(event.clientX + 14, window.innerWidth - tip.offsetWidth - 8) + 'px';
+			tip.style.top = (event.clientY + 16) + 'px';
+		}
+	});
+	document.body.addEventListener('mouseout', function (event) {
+		if (event.target.closest && event.target.closest('rect.hit')) {
+			tip.hidden = true;
 		}
 	});
 
@@ -734,6 +882,24 @@
 			target.close();
 		}
 
+		if (target.closest('[data-log-copy]')) {
+			var shownLog = document.getElementById('log-view');
+			if (shownLog && navigator.clipboard) {
+				navigator.clipboard.writeText(shownLog.textContent).catch(function () {
+					// no permission: the lines can still be selected by hand
+				});
+			}
+		}
+
+		var psort = target.closest('[data-psort]');
+		if (psort) {
+			var pkey = psort.getAttribute('data-psort');
+			// numbers start with the biggest, the verdict and the country start with the first
+			proxyTools.desc = proxyTools.sort === pkey ? !proxyTools.desc : (pkey !== 'verdict-order' && pkey !== 'country');
+			proxyTools.sort = pkey;
+			applyProxyTools();
+		}
+
 		if (target.closest('#theme-toggle')) {
 			var current = document.documentElement.getAttribute('data-theme') || 'auto';
 			var next = THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
@@ -844,6 +1010,7 @@
 		}
 		var view = document.getElementById('log-view');
 		if (view && target.id === 'logs') {
+			logRaw = view.textContent;
 			view.scrollTop = view.scrollHeight;
 		}
 		// a drawer that just opened gets the focus, so Tab and Escape work in it

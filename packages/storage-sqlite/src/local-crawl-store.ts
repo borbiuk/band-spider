@@ -9,7 +9,7 @@ import {
 	SerialQueue,
 	UrlType,
 } from '@band-spider/core';
-import { RowCounts } from './counting/count-queries';
+import { ProcessingHistoryCounts, processingMonthsSql, RowCounts, toMonthlyProcessing } from './counting/count-queries';
 import { RowCounter } from './counting/row-counter';
 import { BandDatabase } from './db';
 import { saveAccountPageData } from './account/account-db-client';
@@ -24,6 +24,14 @@ const QUEUE_LEFT_CACHE_MS = 60 * 1000;
 
 /** How long counted DB totals are reused. A count of every table of a big DB takes long and blocks the process. */
 const TOTALS_CACHE_MS = 5 * 60 * 1000;
+
+/** How long the months of the processing are reused. The query scans the items and the accounts, so it runs rarely. */
+const PROCESSING_HISTORY_CACHE_MS = 30 * 60 * 1000;
+
+/** When the items and the accounts were processed, by month. */
+export interface ProcessingHistory extends ProcessingHistoryCounts {
+	countedAt: Date;
+}
 
 /** The size of the DB. */
 export interface DbTotals {
@@ -58,6 +66,7 @@ export class LocalCrawlStore implements CrawlStore {
 	private controlCache: { urls: string[], at: number } | undefined;
 	private totalsCache: { value: DbTotals, at: number } | undefined;
 	private queueLeftCache: { value: { items: number, accounts: number }, at: number } | undefined;
+	private processingHistoryCache: { value: ProcessingHistory, at: number } | undefined;
 
 	// Claims, saves and releases run one by one. Two callers never read the same candidates, and a
 	// write never joins the transaction of another save (the DB has one connection).
@@ -80,6 +89,7 @@ export class LocalCrawlStore implements CrawlStore {
 			this.candidates.clear();
 			this.queueLeftCache = undefined;
 			this.totalsCache = undefined;
+			this.processingHistoryCache = undefined;
 		});
 	}
 
@@ -115,15 +125,28 @@ export class LocalCrawlStore implements CrawlStore {
 		return this.refreshTotals();
 	}
 
+	/** When the items and the accounts were processed, by month. The numbers can be up to half an hour old and are counted again in the background. */
+	public processingHistory(): Promise<ProcessingHistory> {
+		const cache = this.processingHistoryCache;
+		if (cache) {
+			if (this.now() - cache.at >= PROCESSING_HISTORY_CACHE_MS) {
+				this.refreshProcessingHistory();
+			}
+			return Promise.resolve(cache.value);
+		}
+		return this.refreshProcessingHistory();
+	}
+
 	/** Resolves when the jobs that are queued now, also a recount in the background, are done. */
 	public async idle(): Promise<void> {
-		await Promise.allSettled([this.refreshQueueLeftJob, this.refreshTotalsJob]);
+		await Promise.allSettled([this.refreshQueueLeftJob, this.refreshTotalsJob, this.refreshProcessingHistoryJob]);
 		await this.writes.run(async () => { });
 	}
 
 	// one recount at a time: callers that come while it runs share it
 	private refreshQueueLeftJob: Promise<{ items: number, accounts: number }> | undefined;
 	private refreshTotalsJob: Promise<DbTotals> | undefined;
+	private refreshProcessingHistoryJob: Promise<ProcessingHistory> | undefined;
 
 	private refreshQueueLeft(): Promise<{ items: number, accounts: number }> {
 		const count = async () => {
@@ -162,6 +185,23 @@ export class LocalCrawlStore implements CrawlStore {
 		this.refreshTotalsJob ??= (this.counter ? count() : this.writes.run(count)).finally(() => { this.refreshTotalsJob = undefined; });
 		this.refreshTotalsJob.catch(() => { });
 		return this.refreshTotalsJob;
+	}
+
+	/** The months on the connection of this process. */
+	private async countProcessingHistoryHere(): Promise<ProcessingHistoryCounts> {
+		const months = async (table: 'items' | 'accounts') => toMonthlyProcessing(await this.database.query(processingMonthsSql(table)));
+		return { items: await months('items'), accounts: await months('accounts') };
+	}
+
+	private refreshProcessingHistory(): Promise<ProcessingHistory> {
+		const count = async () => {
+			const value: ProcessingHistory = { countedAt: new Date(this.now()), ...(this.counter ? await this.counter.processingHistory() : await this.countProcessingHistoryHere()) };
+			this.processingHistoryCache = { value, at: this.now() };
+			return value;
+		};
+		this.refreshProcessingHistoryJob ??= (this.counter ? count() : this.writes.run(count)).finally(() => { this.refreshProcessingHistoryJob = undefined; });
+		this.refreshProcessingHistoryJob.catch(() => { });
+		return this.refreshProcessingHistoryJob;
 	}
 
 	public async extendLease(task: CrawlTask): Promise<boolean> {

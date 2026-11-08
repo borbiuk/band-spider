@@ -8,7 +8,7 @@ import {
 	Takeaway,
 } from './insights';
 import { InsightsSnapshot } from './supervisor';
-import { action, esc, formatNumber as number, icon, kpi, trendChart } from './ui-render';
+import { action, countWithShare, esc, formatNumber as number, icon, kpi, monthlyBars, trendChart } from './ui-render';
 
 const perMinuteText = (value?: number): string => value === undefined ? 'speed unknown yet' : `${number(Math.round(value * 10) / 10)} / min`;
 
@@ -52,8 +52,20 @@ const noveltyList = (rows: NoveltyRow[]): string => `
 const line = (label: string, value: string): string =>
 	`<li class="line-row"><span class="meta">${esc(label)}</span><b>${esc(value)}</b></li>`;
 
-const takeawayList = (list: Takeaway[]): string => list.length === 0 ? '' : `
-<ul class="takeaways">${list.map(item => `<li class="takeaway takeaway-${item.tone}">${esc(item.text)}</li>`).join('')}</ul>`;
+const TAKEAWAY_ORDER = { bad: 0, warn: 1, ok: 2, info: 3 };
+const TAKEAWAYS_SHOWN = 3;
+
+/** The three that matter most are shown, the rest is one click away. */
+const takeawayList = (list: Takeaway[]): string => {
+	if (list.length === 0) {
+		return '';
+	}
+	const sorted = [...list].sort((a, b) => TAKEAWAY_ORDER[a.tone] - TAKEAWAY_ORDER[b.tone]);
+	const item = (entry: Takeaway): string => `<li class="takeaway takeaway-${entry.tone}">${esc(entry.text)}</li>`;
+	const rest = sorted.slice(TAKEAWAYS_SHOWN);
+	return `<ul class="takeaways">${sorted.slice(0, TAKEAWAYS_SHOWN).map(item).join('')}</ul>`
+		+ (rest.length ? `<details class="more takeaways-more"><summary>${rest.length} more ${rest.length === 1 ? 'note' : 'notes'}</summary><ul class="takeaways">${rest.map(item).join('')}</ul></details>` : '');
+};
 
 const splitBlock = (insights: Insights): string => {
 	const { db, added } = insights;
@@ -68,7 +80,7 @@ const splitBlock = (insights: Insights): string => {
 };
 
 const queueBlock = (insights: Insights): string => {
-	const { queue, db } = insights;
+	const { queue } = insights;
 	const eta = queue.etaMs !== undefined ? longDurationText(queue.etaMs) : queue.growing ? 'never, the queue grows' : '-';
 	const rows = [
 		line('Queue left (items + accounts)', queue.left === undefined ? 'unknown' : number(queue.left)),
@@ -77,10 +89,26 @@ const queueBlock = (insights: Insights): string => {
 		line('Net change of the queue', `${queue.net > 0 ? '+' : ''}${number(queue.net)}`),
 		line('Time to an empty queue', eta),
 	];
-	const coverage = db ? `
-		<li class="split-row"><span class="meta">Items processed</span>${bar(db.itemsCoverage, 'high', `Items processed: ${percent(db.itemsCoverage)}`)}<b>${percent(db.itemsCoverage)}</b></li>
-		<li class="split-row"><span class="meta">Accounts processed</span>${bar(db.accountsCoverage, 'high', `Accounts processed: ${percent(db.accountsCoverage)}`)}<b>${percent(db.accountsCoverage)}</b></li>` : '';
-	return `<ul class="rows plain">${rows.join('')}${coverage}</ul>`;
+	return `<ul class="rows plain">${rows.join('')}</ul>`;
+};
+
+/** The main question of the crawl: how much is done, and when it ends. These are numbers of the whole DB, not of this run. */
+const progressBlock = (insights: Insights): string => {
+	const { db, queue } = insights;
+	if (!db) {
+		return '<div class="panel panel-inner progress"><h3>Progress</h3><p class="meta">The DB size is being counted. The progress shows up when it is done.</p></div>';
+	}
+	const eta = queue.etaMs !== undefined ? `empty in about ${longDurationText(queue.etaMs)}` : queue.growing ? 'the queue grows, no end at this speed' : 'end unknown yet';
+	const row = (label: string, coverage: number | undefined, done: number, all: number): string =>
+		`<li class="progress-row"><span class="progress-label">${esc(label)}</span>${bar(coverage, 'high', `${label}: ${percent(coverage)}`)}`
+		+ `<span class="progress-value"><b>${percent(coverage)}</b> <span class="meta">${number(done)} of ${number(all)}</span></span></li>`;
+	return `<div class="panel panel-inner progress"><h3>Progress <span class="meta">of the whole DB, all runs together</span></h3>
+	<ul class="rows plain progress-rows">
+		${row('Items processed', db.itemsCoverage, db.totals.itemsProcessed, db.totals.items)}
+		${row('Accounts processed', db.accountsCoverage, db.totals.accountsProcessed, db.totals.accounts)}
+	</ul>
+	<p class="progress-eta"><b>${queue.left === undefined ? 'unknown' : number(queue.left)}</b> URLs in the queue, <b>${esc(eta)}</b></p>
+	<p class="meta">Processed means: the page was saved at least once. The queue and the speed are for this run of the DB service.</p></div>`;
 };
 
 const sizeBlock = (insights: Insights, snapshot: InsightsSnapshot): string => {
@@ -106,9 +134,29 @@ const crawlerTable = (insights: Insights): string => insights.crawlers.length ==
 	: `<table class="efficiency">
 	<thead><tr><th>Crawler</th><th>Requests</th><th>Saved</th><th>Saved per request</th><th>Failed</th><th>HTTP 429/hour</th></tr></thead>
 	<tbody>${insights.crawlers.map(row => `
-		<tr><td><b>${esc(row.name)}</b></td><td>${number(row.requests)}</td><td>${number(row.saved)}</td><td>${decimal(row.savedPerRequest)}</td>
+		<tr${(row.savedPerRequest ?? 1) < 0.5 || (row.failedPercent ?? 0) >= 30 ? ' class="row-failing"' : ''}><td><b>${esc(row.name)}</b></td><td>${number(row.requests)}</td><td>${number(row.saved)}</td><td>${decimal(row.savedPerRequest)}</td>
 		<td>${number(row.failed)} <span class="meta">${percent(row.failedPercent)}</span></td><td>${number(row.http429PerHour)}</td></tr>`).join('')}
 	</tbody></table>`;
+
+/** One chart of the processing: the rows of a table by the month of their last processing. */
+const processingChart = (name: string, tone: string, data: { total: number, months: Array<{ month: string, count: number }> }): string => {
+	const processed = data.months.reduce((sum, entry) => sum + entry.count, 0);
+	const summary = `<p class="meta">Processed <b>${esc(countWithShare(processed, data.total))}</b> of ${number(data.total)}, not processed yet ${number(Math.max(data.total - processed, 0))}</p>`;
+	return `<div class="panel panel-inner"><h3>${esc(name)} processed per month</h3>${summary}${
+		data.months.length === 0 ? '<p class="meta">Nothing was processed yet.</p>' : monthlyBars(data.months, data.total, tone, `${name} processed per month`)}</div>`;
+};
+
+/** The two charts of the processing by month, or why there are none yet. The numbers are counted every half an hour. */
+const processingBlock = (snapshot: InsightsSnapshot): string => {
+	const history = snapshot.processingHistory;
+	if (!history) {
+		return `<div class="panel panel-inner"><h3>Processed per month</h3>${snapshot.processingHistoryError
+			? `<p class="error">Processing by month: ${esc(snapshot.processingHistoryError)}</p>`
+			: '<p class="meta">Counting when the items and the accounts were processed. A big DB needs some time, this page updates when it is done.</p>'}</div>`;
+	}
+	return `<div class="insights-grid">${processingChart('Accounts', 'accounts', history.accounts)}${processingChart('Items', 'items', history.items)}</div>
+	<p class="meta">A row counts in the month of its last processing. The months are UTC. Counted ${esc(history.countedAt.toISOString().slice(0, 19).replace('T', ' '))} UTC, and again every 30 minutes while this page is open.</p>`;
+};
 
 /** The Insights page: how well the crawl fills the DB. The page script loads it while the page is open. */
 export const renderInsights = (snapshot: InsightsSnapshot, now: number): string => {
@@ -139,13 +187,15 @@ export const renderInsights = (snapshot: InsightsSnapshot, now: number): string 
 
 	return `<div class="insights">
 	${head}
-	<p class="meta page-sub">Counters of the DB service since it started${esc(since)}. They start from zero when it restarts.</p>
+	${progressBlock(insights)}
+	<h2 class="section-title">Since the DB service started${esc(since)}</h2>
+	<p class="meta page-sub">These counters start from zero when the DB service restarts. The progress above and the size of the DB below do not.</p>
 	<div class="kpis">
 		${kpi('New items', number(insights.added.items), esc(perMinuteText(insights.perMinute.items)), 'req')}
 		${kpi('New accounts', number(insights.added.accounts), esc(perMinuteText(insights.perMinute.accounts)), 'urls')}
 		${kpi('New item-account links', number(insights.added.links), esc(perMinuteText(insights.perMinute.links)), 'queue')}
 		${kpi('Pages saved', number(insights.pages.total), esc(pageSplit), 'idle')}
-		${kpi('New records per page', decimal(insights.yield.newRecordsPerPage), `${decimal(insights.yield.linksPerPage)} links per page`, 'idle')}
+		${kpi('New records per page', decimal(insights.yield.newRecordsPerPage), `${decimal(insights.yield.linksPerPage)} links per page`, 'idle', '', '', { hint: 'New items and accounts for each saved page. A falling number means the crawl finds less that is new.' })}
 	</div>
 	${takeawayList(insights.takeaways)}
 	<div class="panel panel-inner">
@@ -155,7 +205,7 @@ export const renderInsights = (snapshot: InsightsSnapshot, now: number): string 
 	<div class="insights-grid">
 		<div class="panel panel-inner">
 			<h3>How much of what the pages show is new</h3>
-			<p class="meta">A low share means the DB already has most of it. Records are items, accounts and tags on the saved pages.</p>
+			<p class="meta">A low share means the DB already has most of it. This is normal late in a crawl, it only says the crawl finds less that is new. Under 5% is amber, 30% and more is green. Records are items, accounts and tags on the saved pages.</p>
 			${noveltyList(insights.novelty)}
 		</div>
 		<div class="panel panel-inner">
@@ -176,5 +226,6 @@ export const renderInsights = (snapshot: InsightsSnapshot, now: number): string 
 		<h3>Crawler efficiency</h3>
 		${crawlerTable(insights)}
 	</div>
+	${processingBlock(snapshot)}
 </div>`;
 };

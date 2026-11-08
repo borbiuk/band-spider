@@ -15,8 +15,11 @@ export const webshareEntrySchema = z.object({
 export type WebshareEntry = z.infer<typeof webshareEntrySchema>;
 
 /** One proxy of the pool that is imported from a file. Same shape as a Webshare entry. */
-export const poolEntrySchema = webshareEntrySchema;
-export type PoolEntry = WebshareEntry;
+export const poolEntrySchema = webshareEntrySchema.extend({
+	/** Two letters, like US. Found with the Webshare API ("Detect countries"), it is never in the imported file. */
+	countryCode: z.string().regex(/^[A-Za-z]{2}$/).transform(code => code.toUpperCase()).optional(),
+});
+export type PoolEntry = z.infer<typeof poolEntrySchema>;
 
 /** The key of a pool entry: host:port. A crawler points to it. */
 export const poolKeyOf = ({ host, port }: { host: string; port: number }): string => `${host}:${port}`;

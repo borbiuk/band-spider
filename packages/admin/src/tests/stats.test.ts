@@ -5,7 +5,7 @@ import { AddressInfo } from 'node:net';
 import { describe, it } from 'node:test';
 import { AdminConfig, adminConfigSchema } from '../config';
 import { ConfigStore } from '../config-store';
-import { DbStats, DbStatsSource, DbTotals, HttpDbStatsSource } from '../db-stats';
+import { DbProcessingHistory, DbStats, DbStatsSource, DbTotals, HttpDbStatsSource } from '../db-stats';
 import { renderStatus } from '../ui-render';
 import { Supervisor, SupervisorEvent } from '../supervisor';
 import { CRAWLER_ENTRY, DB_ENTRY, readyDbLauncher } from './fakes';
@@ -37,6 +37,12 @@ const DB_TOTALS: DbTotals = {
 	itemAccountRelations: 20, wishlistRelations: 5, followers: 3,
 };
 
+const DB_HISTORY: DbProcessingHistory = {
+	countedAt: new Date('2024-01-01T00:10:00.000Z'),
+	items: { total: 10, months: [{ month: '2024-01', count: 4 }] },
+	accounts: { total: 5, months: [{ month: '2023-12', count: 1 }, { month: '2024-01', count: 2 }] },
+};
+
 class FakeStatsSource implements DbStatsSource {
 	readonly calls: Array<{ url: string; token?: string }> = [];
 	failWith?: string;
@@ -58,6 +64,17 @@ class FakeStatsSource implements DbStatsSource {
 			throw new Error(this.totalsFailWith);
 		}
 		return DB_TOTALS;
+	}
+
+	readonly historyCalls: Array<{ url: string; token?: string }> = [];
+	historyFailWith?: string;
+
+	async readProcessingHistory(url: string, token?: string): Promise<DbProcessingHistory> {
+		this.historyCalls.push({ url, token });
+		if (this.historyFailWith) {
+			throw new Error(this.historyFailWith);
+		}
+		return DB_HISTORY;
 	}
 }
 
@@ -267,6 +284,51 @@ describe('DB size for the Insights view', () => {
 			server.closeAllConnections();
 			await new Promise(resolve => server.close(resolve));
 		}
+	});
+});
+
+describe('processing history for the Insights view', () => {
+	it('reads it in the background and only again after 30 minutes', async () => {
+		const { clock, source, supervisor } = setup(0);
+		await supervisor.startDb();
+
+		const first = await supervisor.insights();
+		assert.equal(first.processingHistory, undefined);
+		assert.equal(first.processingHistoryLoading, true);
+		await later(20);
+		const second = await supervisor.insights();
+		assert.deepEqual(second.processingHistory, DB_HISTORY);
+		assert.equal(second.processingHistoryLoading, false);
+		assert.deepEqual(source.historyCalls[0], { url: 'http://127.0.0.1:4100', token: 'secret' });
+
+		clock.now += 29 * MIN;
+		await supervisor.insights();
+		assert.equal(source.historyCalls.length, 1, 'the answer is reused for 30 minutes');
+		clock.now += 2 * MIN;
+		await supervisor.insights();
+		await later(20);
+		assert.equal(source.historyCalls.length, 2, 'it is read again when it is old');
+
+		await supervisor.stopDb();
+		assert.equal((await supervisor.insights()).processingHistory, undefined);
+	});
+
+	it('shows a failed read and tries again after a minute', async () => {
+		const { clock, source, supervisor } = setup(0);
+		source.historyFailWith = 'DB service answered HTTP 404 for the processing history';
+		await supervisor.startDb();
+		await supervisor.insights();
+		await later(20);
+		assert.equal((await supervisor.insights()).processingHistoryError, 'DB service answered HTTP 404 for the processing history');
+		assert.equal(source.historyCalls.length, 1);
+
+		clock.now += 2 * MIN;
+		source.historyFailWith = undefined;
+		await supervisor.insights();
+		await later(20);
+		const recovered = await supervisor.insights();
+		assert.equal(recovered.processingHistoryError, undefined);
+		assert.deepEqual(recovered.processingHistory, DB_HISTORY);
 	});
 });
 

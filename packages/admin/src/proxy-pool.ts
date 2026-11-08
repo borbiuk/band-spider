@@ -1,6 +1,7 @@
 import { AdminConfig, PoolEntry, poolKeyOf } from './config';
 import { ConfigStore } from './config-store';
 import { conflict, notFound } from './errors';
+import { ProxyListSource, WebshareProxySource } from './webshare';
 import { parseProxyList, ProxyListError } from './proxy-list';
 
 export type ImportMode = 'append' | 'replace';
@@ -23,6 +24,8 @@ export interface PoolItem {
 	host: string;
 	port: number;
 	username: string;
+	/** Two letters, like US. Missing until the countries are detected. */
+	countryCode?: string;
 	/** Names of the crawlers that use this entry. */
 	usedBy: string[];
 }
@@ -49,13 +52,24 @@ export const mergePool = (pool: PoolEntry[], entries: PoolEntry[], mode: ImportM
 		return { pool: entries, added, updated };
 	}
 	const incoming = new Map(entries.map(entry => [poolKeyOf(entry), entry]));
-	const merged = pool.map(entry => incoming.get(poolKeyOf(entry)) ?? entry);
+	// an import file has no country, so an updated entry keeps the one it had
+	const merged = pool.map(entry => {
+		const next = incoming.get(poolKeyOf(entry));
+		const countryCode = next?.countryCode ?? entry.countryCode;
+		return next ? { ...next, ...(countryCode ? { countryCode } : {}) } : entry;
+	});
 	return { pool: [...merged, ...entries.filter(entry => !old.has(poolKeyOf(entry)))], added, updated };
 };
 
 /** Imports, lists and deletes the proxy pool of the admin config. It only knows the ConfigStore. */
 export class ProxyPoolService {
-	constructor(private readonly configStore: ConfigStore) {
+	constructor(
+		private readonly configStore: ConfigStore,
+		/** Makes the proxy list source for an API key. The Webshare API is the default. */
+		private readonly listFactory: (apiKey: string) => ProxyListSource = apiKey => new WebshareProxySource({ apiKey }),
+		/** WEBSHARE_API_KEY is read from here when the admin config has no key. The admin loads the .env file at start. */
+		private readonly env: NodeJS.ProcessEnv = process.env,
+	) {
 	}
 
 	async list(): Promise<PoolItem[]> {
@@ -69,6 +83,7 @@ export class ProxyPoolService {
 			host: entry.host,
 			port: entry.port,
 			username: entry.username,
+			...(entry.countryCode ? { countryCode: entry.countryCode } : {}),
 			usedBy: usage.get(poolKeyOf(entry)) ?? [],
 		}));
 	}
@@ -96,6 +111,36 @@ export class ProxyPoolService {
 			errors: parsed.errors,
 			duplicateLines: parsed.duplicateLines,
 		};
+	}
+
+	/**
+	 * Asks the Webshare API for the proxy list and saves the country of each pool entry that is in it (matched by host:port).
+	 * The API key only goes to Webshare. Entries that the list does not have keep what they had.
+	 */
+	async detectCountries(): Promise<CountryResult> {
+		const config = await this.configStore.load();
+		const apiKey = config.webshare?.apiKey || this.env.WEBSHARE_API_KEY?.trim();
+		if (!apiKey) {
+			throw conflict('No Webshare API key. Put WEBSHARE_API_KEY=... in the .env file and restart the admin.');
+		}
+		const listed = await this.listFactory(apiKey).list();
+		const countries = new Map<string, string>();
+		for (const entry of listed) {
+			if (entry.countryCode) {
+				countries.set(`${entry.host.toLowerCase()}:${entry.port}`, entry.countryCode.toUpperCase());
+			}
+		}
+		let matched = 0;
+		const proxyPool = config.proxyPool.map(entry => {
+			const countryCode = countries.get(poolKeyOf(entry));
+			if (countryCode === undefined) {
+				return entry;
+			}
+			matched++;
+			return { ...entry, countryCode };
+		});
+		await this.configStore.save({ ...config, proxyPool });
+		return { matched, unmatched: config.proxyPool.length - matched, total: config.proxyPool.length };
 	}
 
 	/** Deletes one entry. It is refused while a crawler uses it. */
@@ -140,6 +185,18 @@ export class ProxyPoolService {
 		return { removed, kept };
 	}
 }
+
+/** What "Detect countries" did. */
+export interface CountryResult {
+	matched: number;
+	/** Pool entries that the Webshare list does not have. They have no country. */
+	unmatched: number;
+	total: number;
+}
+
+/** A short text about the detection, for a message on the page. */
+export const countryResultText = ({ matched, unmatched, total }: CountryResult): string =>
+	unmatched === 0 ? `Country found for all ${total} proxies` : `Country found for ${matched} of ${total} proxies. ${unmatched} are not in the Webshare list`;
 
 /** What a delete of many entries did. */
 export interface RemoveManyResult {

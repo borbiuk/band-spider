@@ -85,6 +85,10 @@ session cookie and shows the admin page. From the page you can:
   The DB service counts these with `GET /stats` (`flow`, since it started) and `GET /totals` (the rows of the DB).
   Counting a big DB takes seconds and blocks the service, so `/totals` is cached for five minutes and the admin reads it
   only while the View is open.
+  The View also has two column charts, accounts and items, of how many rows were processed in each month (X is the month,
+  Y is the count with its share of all rows in brackets). `GET /processing-history` scans both tables in a worker thread
+  (about 13 seconds on a 16 GB DB), so it is cached for 30 minutes and the admin reads it at most that often. A row counts
+  in the month of its last processing, because the DB keeps only that date.
 
 Crawlers start only after the DB service is ready. Stopping the admin stops all children.
 
@@ -151,6 +155,9 @@ not rotated after a 429.
 
 Settings are saved in `~/.band-spider/admin-config.json` (`ADMIN_CONFIG_PATH` overrides it). Env: `ADMIN_HOST`
 (default 127.0.0.1), `ADMIN_PORT` (default 4200).
+
+The admin loads a `.env` file from the folder it starts in (git ignores it). `WEBSHARE_API_KEY=...` there lets the Proxies page
+"Detect countries" button ask the Webshare API for the country of each proxy. Restart the admin after you change `.env`.
 
 Security: the admin checks the Host header (127.0.0.1, localhost or [::1] with its own port) and the Origin header
 of state-changing requests, and every route except `/health` needs a random session token made at each start.

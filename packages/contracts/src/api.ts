@@ -127,6 +127,26 @@ export const totalsResponseSchema = z.object({
 });
 export type TotalsResponse = z.infer<typeof totalsResponseSchema>;
 
+/** How many rows of one table were processed last in each month. */
+const monthlyProcessingSchema = z.object({
+	/** All rows of the table, also the ones that were never processed. */
+	total: z.number().int(),
+	/** Months with at least one row, oldest first. `month` is `YYYY-MM` in UTC. */
+	months: z.array(z.object({ month: z.string().regex(/^\d{4}-\d{2}$/), count: z.number().int() })),
+});
+export type MonthlyProcessing = z.infer<typeof monthlyProcessingSchema>;
+
+/**
+ * When the rows were processed, by month of the last processing. A row that was processed again counts
+ * only in the month of its last processing. The query is heavy, so the service reuses the answer for half an hour.
+ */
+export const processingHistoryResponseSchema = z.object({
+	countedAt: z.coerce.date(),
+	items: monthlyProcessingSchema,
+	accounts: monthlyProcessingSchema,
+});
+export type ProcessingHistoryResponse = z.infer<typeof processingHistoryResponseSchema>;
+
 /** The body of every error response. Only a message string, no stack and no Error object. */
 export const errorResponseSchema = z.object({
 	message: z.string(),

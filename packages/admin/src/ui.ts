@@ -7,13 +7,14 @@ import { autoAddText, AutoCrawlerService, autoCrawlerKindSchema } from './auto-c
 import { AdminConfig, adminConfigSchema, crawlerSettingSchema, CrawlerSetting, poolKeyOf } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError, conflict, notFound } from './errors';
-import { ImportMode, ProxyPoolService, RemoveManyResult, removeManyText } from './proxy-pool';
+import { countryResultText, ImportMode, ProxyPoolService, RemoveManyResult, removeManyText } from './proxy-pool';
 import { maskConfig, restoreSecrets } from './secrets';
 import { Supervisor } from './supervisor';
 import { bulkText } from './ui-bulk';
 import { renderCrawlerDetail } from './ui-detail';
 import { renderInsights } from './ui-insights';
 import {
+	countriesOf,
 	emptyForm,
 	formFromSetting,
 	FormValues,
@@ -254,7 +255,7 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 		const { name } = z.object({ name: z.string().min(1) }).parse(request.query);
 		const status = (await supervisor.status()).crawlers.find(crawler => crawler.name === name);
 		const setting = (await configStore.load()).crawlers.find(crawler => crawler.name === name);
-		return html(reply, renderCrawlerDetail(name, status, setting, Date.now()));
+		return html(reply, renderCrawlerDetail(name, status, setting, Date.now(), countriesOf((await configStore.load()).proxyPool)));
 	});
 
 	app.get('/fragments/detail-close', async (_request, reply) => html(reply, ''));
@@ -420,6 +421,16 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 
 	const removeManyToast = (result: RemoveManyResult): string =>
 		toast(result.kept.length > 0 ? 'warn' : 'ok', removeManyText(result));
+
+	// Asks the Webshare API for the country of each proxy. A missing key or an API error shows as a message.
+	app.post('/fragments/proxies/detect-countries', async (_request, reply) => {
+		try {
+			const result = await proxyPool.detectCountries();
+			return html(reply, await proxyListHtml() + toast(result.matched === 0 ? 'warn' : 'ok', countryResultText(result)));
+		} catch (error) {
+			return html(reply, await proxyListHtml() + toast('error', errorText(error)));
+		}
+	});
 
 	// Deletes the whole pool, or the chosen proxies. Proxies that crawlers use are kept and named in the message.
 	app.post('/fragments/proxies/delete-all', async (_request, reply) => {

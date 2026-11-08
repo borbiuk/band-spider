@@ -24,14 +24,15 @@ import {
 	toggleButton,
 	totalText,
 	trendChart,
+	Countries,
 } from './ui-render';
 
 const line = (label: string, value: string): string =>
 	`<li class="line-row"><span class="meta">${esc(label)}</span><b>${esc(value)}</b></li>`;
 
-const settingLines = (setting: CrawlerSetting): string => [
+const settingLines = (setting: CrawlerSetting, countries?: Countries): string => [
 	line('Type', setting.type),
-	line('Proxy', proxyText(setting)),
+	line('Proxy', proxyText(setting, countries)),
 	line('Workers', String(setting.workers)),
 	line('Delay, ms', `${setting.minDelayMs ?? MIN_REQUEST_DELAY_MS} - ${setting.maxDelayMs ?? MAX_REQUEST_DELAY_MS}`),
 	line('Wait when no URLs', setting.idleMs === 0 ? 'exits' : `${setting.idleMs ?? DEFAULT_IDLE_MS} ms`),
@@ -48,7 +49,7 @@ const head = (name: string, extra = ''): string => `
  * The detail drawer of one crawler: its actions, speeds, a chart, the totals, the counts and the settings.
  * It is refreshed by the live updates while it is open. Without a status the crawler is gone.
  */
-export const renderCrawlerDetail = (name: string, status: CrawlerStatus | undefined, setting: CrawlerSetting | undefined, now: number): string => {
+export const renderCrawlerDetail = (name: string, status: CrawlerStatus | undefined, setting: CrawlerSetting | undefined, now: number, countries?: Countries): string => {
 	if (!status) {
 		return `<aside class="drawer drawer-detail" role="dialog" aria-label="Crawler ${esc(name)}" data-detail="${esc(name)}">${head(name)}
 		<div class="empty">${icon('info')}<p>No crawler ${esc(name)} in the config. It was removed.</p></div></aside>`;
@@ -106,7 +107,7 @@ export const renderCrawlerDetail = (name: string, status: CrawlerStatus | undefi
 	<div class="detail-grid">
 		${stats ? `<div class="panel panel-inner"><h3>Since start</h3><p class="meta">${esc(totalText(stats))}</p></div>` : ''}
 		${countLines ? `<div class="panel panel-inner"><h3>URL counts</h3><ul class="rows plain">${countLines}</ul></div>` : ''}
-		${setting ? `<div class="panel panel-inner"><h3>Settings</h3><ul class="rows plain">${settingLines(setting)}</ul><p class="meta">Changes are used the next time the crawler starts.</p></div>` : ''}
+		${setting ? `<div class="panel panel-inner"><h3>Settings</h3><ul class="rows plain">${settingLines(setting, countries)}</ul><p class="meta">Changes are used the next time the crawler starts.</p></div>` : ''}
 	</div>
 </aside>`;
 };

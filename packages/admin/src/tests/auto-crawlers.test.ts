@@ -290,15 +290,15 @@ describe('traffic and new links in the crawler table', () => {
 				{ name: 'local', configured: true, state: 'running', stats: { ...stats, bytesPerHour: 0, totals: { ...stats.totals, bytes: 0 } } },
 			],
 		}, config);
-		assert.match(page, /data-sort="links" title="Sort by new item-account links">Links/);
-		assert.match(page, /data-sort="bytes" title="Sort by traffic through the proxy">Traffic/);
-		assert.match(page, /data-label="Traffic"><b>1\.5 GB<\/b><span class="sub">36\.0 MB\/hour<\/span>/);
-		assert.match(page, /data-label="New links"><b>321<\/b><span class="sub">4\.5\/min<\/span>/);
+		assert.match(page, /data-sort="links" title="Sort by new item-account links per minute">Links\/min/);
+		assert.match(page, /data-sort="bytes" title="Sort by traffic through the proxy per hour">Traffic\/hour/);
+		assert.match(page, /data-label="Traffic\/hour"><b>36\.0 MB<\/b><span class="sub">1\.5 GB total<\/span>/);
+		assert.match(page, /data-label="Links\/min"><b>4\.5<\/b><span class="sub">321 total<\/span>/);
 		assert.match(page, /local IP, not counted/);
 		// one crawler is billed: 36 MB an hour for 720 hours
 		assert.match(page, /~25\.9 GB\/month/);
-		assert.match(page, /data-bytes="1500000000" data-links="321"/);
-		assert.match(page, /<option value="bytes">traffic<\/option><option value="links">new links<\/option>|<option value="bytes">traffic<\/option>\s*<option value="links">new links<\/option>/);
+		assert.match(page, /data-bytes="36000000" data-links="4\.5"/);
+		assert.match(page, /<option value="bytes">traffic\/hour<\/option><option value="links">new links\/min<\/option>/);
 	});
 });
 

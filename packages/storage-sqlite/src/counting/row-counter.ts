@@ -1,11 +1,12 @@
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
-import type { RowCounts } from './count-queries';
+import type { ProcessingHistoryCounts, RowCounts } from './count-queries';
 
 /** Counts the rows of the DB. The counts of a big DB take seconds, so a real one runs off the main thread. */
 export interface RowCounter {
 	queueLeft(): Promise<{ items: number, accounts: number }>;
 	rows(): Promise<RowCounts>;
+	processingHistory(): Promise<ProcessingHistoryCounts>;
 	close(): Promise<void>;
 }
 
@@ -31,6 +32,10 @@ export class WorkerRowCounter implements RowCounter {
 		return this.ask('rows');
 	}
 
+	public processingHistory(): Promise<ProcessingHistoryCounts> {
+		return this.ask('processingHistory');
+	}
+
 	public async close(): Promise<void> {
 		const worker = this.worker;
 		this.worker = undefined;
@@ -38,7 +43,7 @@ export class WorkerRowCounter implements RowCounter {
 		await worker?.terminate();
 	}
 
-	private ask<T>(kind: 'queueLeft' | 'rows'): Promise<T> {
+	private ask<T>(kind: 'queueLeft' | 'rows' | 'processingHistory'): Promise<T> {
 		const worker = this.worker ?? this.start();
 		return new Promise<T>((resolve, reject) => {
 			const id = this.nextId++;

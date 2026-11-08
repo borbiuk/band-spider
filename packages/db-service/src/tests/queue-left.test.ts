@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it } from 'node:test';
-import { statsResponseSchema, totalsResponseSchema } from '@band-spider/contracts';
+import { processingHistoryResponseSchema, statsResponseSchema, totalsResponseSchema } from '@band-spider/contracts';
 import { BandDatabase } from '@band-spider/storage-sqlite';
 import { startDbService } from '../index';
 
@@ -61,6 +61,29 @@ describe('GET /totals and the flow counters of /stats', () => {
 			const stats = statsResponseSchema.parse(await (await fetch(service.url + '/stats')).json());
 			assert.equal(stats.flow?.itemPages.saved, 0);
 			assert.deepEqual(stats.flow?.accountPages.wishlist, { total: 0, newRecords: 0, newRelations: 0 });
+		} finally {
+			await seed.close();
+			await service.stop();
+			fs.rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe('GET /processing-history', () => {
+	it('counts the rows by the month of the last processing', async () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-service-history-'));
+		const file = path.join(dir, 'history.sqlite');
+		const service = await startDbService({ host: '127.0.0.1', port: 0, database: { file, synchronize: true } });
+		const seed = await BandDatabase.open({ file, synchronize: false });
+		try {
+			await seed.item.insert('https://sh.bandcamp.com/track/1');
+			await seed.item.insert('https://sh.bandcamp.com/track/2');
+			await seed.account.insert('https://bandcamp.com/sh-one');
+			await seed.query("UPDATE items SET lastProcessingDate = unixepoch('2026-02-10') WHERE id = 1");
+
+			const history = processingHistoryResponseSchema.parse(await (await fetch(service.url + '/processing-history')).json());
+			assert.deepEqual(history.items, { total: 2, months: [{ month: '2026-02', count: 1 }] });
+			assert.deepEqual(history.accounts, { total: 1, months: [] });
 		} finally {
 			await seed.close();
 			await service.stop();

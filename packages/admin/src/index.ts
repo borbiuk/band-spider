@@ -26,6 +26,15 @@ const main = async (): Promise<void> => {
 	// Log to the console and to the log file
 	logToFile();
 
+	// Secrets like WEBSHARE_API_KEY live in the .env file of the folder the admin starts in. It is optional.
+	try {
+		process.loadEnvFile();
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+			throw error;
+		}
+	}
+
 	const admin = await startAdmin(readAdminConfig());
 	logger.info(logMessage(LogSource.Main, `Admin API: ${admin.url}, open ${admin.sessionUrl}`));
 

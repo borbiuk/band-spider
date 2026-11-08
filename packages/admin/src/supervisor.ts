@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AdminConfig, CrawlerSetting, poolKeyOf, proxyUrlOf, proxyUrlOfEntry } from './config';
 import { ConfigStore } from './config-store';
 import { CrawlerMetricsTracker } from './crawler-metrics';
-import { DbStats, DbStatsSource, DbTotals, HttpDbStatsSource } from './db-stats';
+import { DbProcessingHistory, DbStats, DbStatsSource, DbTotals, HttpDbStatsSource } from './db-stats';
 import { AdminError, conflict, notFound } from './errors';
 import { FlowSample, flowSample } from './insights';
 import { ChildStatus, CrawlerCounts, ManagedChild } from './managed-child';
@@ -55,6 +55,10 @@ export interface InsightsSnapshot {
 	totalsError?: string;
 	/** True while the DB service counts its rows. The first count of a big DB takes a while. */
 	totalsLoading: boolean;
+	/** When the items and the accounts were processed, by month. It is read every half an hour. */
+	processingHistory?: DbProcessingHistory;
+	processingHistoryError?: string;
+	processingHistoryLoading: boolean;
 }
 
 export interface CrawlerStatus extends ChildStatus {
@@ -119,6 +123,8 @@ const FLOW_HISTORY_LENGTH = 180;
 const TOTALS_REFRESH_MS = 5 * 60_000;
 /** A failed read of the DB size is tried again after this time. */
 const TOTALS_RETRY_MS = 60_000;
+/** The months of the processing are read again after this time. The query is heavy, so it is rare. */
+const PROCESSING_HISTORY_REFRESH_MS = 30 * 60_000;
 
 /**
  * Starts, stops and watches the DB service and the crawlers.
@@ -141,6 +147,9 @@ export class Supervisor {
 	private totals?: { value: DbTotals; at: number };
 	private totalsError?: { message: string; at: number };
 	private totalsReading = false;
+	private processingHistory?: { value: DbProcessingHistory; at: number };
+	private processingHistoryError?: { message: string; at: number };
+	private processingHistoryReading = false;
 	private dbStatsTimer?: NodeJS.Timeout;
 	private dbStatsReading = false;
 
@@ -186,6 +195,7 @@ export class Supervisor {
 	async insights(): Promise<InsightsSnapshot> {
 		const status = await this.status();
 		this.requestTotals();
+		this.requestProcessingHistory();
 		return {
 			db: status.db,
 			crawlers: status.crawlers,
@@ -193,6 +203,9 @@ export class Supervisor {
 			totals: this.totals?.value,
 			totalsError: this.totalsError?.message,
 			totalsLoading: this.totalsReading,
+			processingHistory: this.processingHistory?.value,
+			processingHistoryError: this.processingHistoryError?.message,
+			processingHistoryLoading: this.processingHistoryReading,
 		};
 	}
 
@@ -390,6 +403,8 @@ export class Supervisor {
 			this.flowHistory = [];
 			this.totals = undefined;
 			this.totalsError = undefined;
+			this.processingHistory = undefined;
+			this.processingHistoryError = undefined;
 		}
 	}
 
@@ -425,6 +440,38 @@ export class Supervisor {
 			},
 		).finally(() => {
 			this.totalsReading = false;
+			this.emit({ kind: 'status' });
+		});
+	}
+
+	/** Reads the months of the processing in the background when they are missing or older than half an hour. */
+	private requestProcessingHistory(): void {
+		const url = this.db.url;
+		if (!url || this.db.state !== 'running' || this.processingHistoryReading || !this.dbStatsSource.readProcessingHistory) {
+			return;
+		}
+		const now = this.nowMs;
+		if (this.processingHistory && now - this.processingHistory.at < PROCESSING_HISTORY_REFRESH_MS) {
+			return;
+		}
+		if (this.processingHistoryError && now - this.processingHistoryError.at < TOTALS_RETRY_MS) {
+			return;
+		}
+		this.processingHistoryReading = true;
+		void this.dbStatsSource.readProcessingHistory(url, this.dbToken).then(
+			value => {
+				if (this.db.state === 'running') {
+					this.processingHistory = { value, at: this.nowMs };
+					this.processingHistoryError = undefined;
+				}
+			},
+			(error: Error) => {
+				if (this.db.state === 'running') {
+					this.processingHistoryError = { message: error.message, at: this.nowMs };
+				}
+			},
+		).finally(() => {
+			this.processingHistoryReading = false;
 			this.emit({ kind: 'status' });
 		});
 	}

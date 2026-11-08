@@ -91,6 +91,33 @@ export const FAILING_SHARE = 0.5;
 export const isFailing = (crawler: { state: string; stats?: { failShare?: number; failedPerMin: number } }): boolean =>
 	crawler.state === 'running' && !!crawler.stats && crawler.stats.failedPerMin > 0 && (crawler.stats.failShare ?? 0) >= FAILING_SHARE;
 
+/** The flag of a country code as an emoji, or an empty text for a missing or bad code. */
+export const flagOf = (code?: string): string =>
+	code && /^[A-Za-z]{2}$/.test(code)
+		? String.fromCodePoint(...[...code.toUpperCase()].map(letter => 0x1f1e6 + letter.charCodeAt(0) - 65))
+		: '';
+
+const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+
+/** The English name of a country code, for example "United States". The code itself when the name is not known. */
+export const countryName = (code: string): string => {
+	try {
+		return regionNames.of(code.toUpperCase()) ?? code;
+	} catch {
+		return code;
+	}
+};
+
+/**
+ * True when a crawler needs a look: it failed, fails most of its URLs, has a proxy warning
+ * or gets too many HTTP 429 answers. The "Problems" filter of the table uses it.
+ */
+export const hasProblem = (crawler: { state: string; stats?: { failShare?: number; failedPerMin: number; http429PerHour: number; warning?: unknown } }): boolean =>
+	crawler.state === 'failed'
+	|| isFailing(crawler)
+	|| (crawler.state === 'running' && !!crawler.stats && crawler.stats.http429PerHour >= BAD_429_PER_HOUR)
+	|| !!crawler.stats?.warning;
+
 export const isActive = (state: string): boolean => state === 'starting' || state === 'running' || state === 'stopping';
 
 /** A state as a small colored badge with its name. */
@@ -100,22 +127,37 @@ export const stateBadge = (state: string): string => `<span class="state state-$
 export const stateDot = (state: string): string =>
 	`<span class="dot state-${esc(state)}" title="${esc(state)}" role="img" aria-label="${esc(state)}"></span>`;
 
-/** A KPI card. With a link the whole card opens that page. */
-export const kpi = (label: string, value: string, sub: string, tone: string, spark = '', href = ''): string => {
-	const body = `<span class="kpi-label">${esc(label)}</span><span class="kpi-value">${esc(value)}</span>`
-		+ `<span class="kpi-sub clip">${sub}</span>${spark}`;
+/** The text of a piece of HTML without its tags, for a tooltip. */
+const plainText = (html: string): string => html.replace(/<[^>]*>/g, '');
+
+export interface KpiOptions {
+	/** The time window of the number, for example "avg 5 min". It shows next to the label. */
+	window?: string;
+	/** What the number means. It is the tooltip of the card. */
+	hint?: string;
+}
+
+/**
+ * A KPI card. With a link the whole card opens that page. The sub line wraps to two lines,
+ * and the tooltip has all of it, so the meaning is not cut off.
+ */
+export const kpi = (label: string, value: string, sub: string, tone: string, spark = '', href = '', options: KpiOptions = {}): string => {
+	const window = options.window ? `<span class="kpi-window">${esc(options.window)}</span>` : '';
+	const body = `<span class="kpi-label">${esc(label)}${window}</span><span class="kpi-value">${esc(value)}</span>`
+		+ `<span class="kpi-sub" title="${esc(plainText(sub))}">${sub}</span>${spark}`;
+	const title = options.hint ? ` title="${esc(options.hint)}"` : '';
 	return href
-		? `<a class="kpi kpi-${tone} kpi-link" href="${esc(href)}">${body}</a>`
-		: `<div class="kpi kpi-${tone}">${body}</div>`;
+		? `<a class="kpi kpi-${tone} kpi-link" href="${esc(href)}"${title}>${body}</a>`
+		: `<div class="kpi kpi-${tone}"${title}>${body}</div>`;
 };
 
 const SPARK_W = 100;
 const SPARK_H = 30;
 
-const sparkPoints = (values: number[], max: number, height: number, width: number): string =>
+const sparkPoints = (values: number[], max: number, height: number, width: number, min = 0): string =>
 	values.map((value, i) => {
 		const x = values.length > 1 ? (i / (values.length - 1)) * width : 0;
-		const y = height - 1 - (Math.max(value, 0) / max) * (height - 2);
+		const y = height - 1 - ((Math.max(value, min) - min) / (max - min)) * (height - 2);
 		return `${x.toFixed(1)},${y.toFixed(1)}`;
 	}).join(' ');
 
@@ -123,13 +165,17 @@ const sparkPoints = (values: number[], max: number, height: number, width: numbe
  * A tiny line chart as inline SVG. It uses attributes and classes only, because the page CSP has no inline styles.
  * Without values it draws a flat line of the same size, so the cell does not change its height.
  */
-export const sparkline = (values: number[] | undefined, tone: string, label: string): string => {
+export const sparkline = (values: number[] | undefined, tone: string, label: string, fit = false): string => {
 	if (!values || values.length < 2) {
 		return `<svg class="spark spark-${tone} spark-empty" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}: no data">`
 			+ `<polyline class="line" fill="none" points="0,${SPARK_H - 1} ${SPARK_W},${SPARK_H - 1}"/></svg>`;
 	}
-	const max = Math.max(...values, 1);
-	const points = sparkPoints(values, max, SPARK_H, SPARK_W);
+	// `fit`: the scale runs from the lowest to the highest value, so a slow change of a big number is visible.
+	// Rates start at zero, so a flat line near zero is not drawn as a big change.
+	const low = fit ? Math.min(...values) : 0;
+	const high = fit ? Math.max(...values) : Math.max(...values, 1);
+	const max = high > low ? high : low + 1;
+	const points = sparkPoints(values, max, SPARK_H, SPARK_W, low);
 	return `<svg class="spark spark-${tone}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" preserveAspectRatio="none" role="img" aria-label="${esc(label)}">`
 		+ `<title>${esc(label)}</title>`
 		+ `<polygon class="area" points="0,${SPARK_H} ${points} ${SPARK_W},${SPARK_H}"/>`
@@ -181,9 +227,99 @@ export const trendChart = (lines: ChartLine[], minutes: number, title = 'Request
 	const legend = lines.map(line =>
 		`<span class="legend"><i class="swatch chart-${line.tone}"></i>${esc(line.label)}, now <b>${esc(format(line.values[line.values.length - 1] ?? 0))}</b></span>`).join('');
 	return `<div class="chart-legend">${legend}<span class="meta">peak ${esc(format(max))} ${esc(unit)}</span></div>
-	<div class="chart-box"><span class="chart-max meta" aria-hidden="true">${esc(format(max))}</span>
+	<div class="chart-box"><span class="chart-max meta" aria-hidden="true">${esc(format(max))}</span><span class="chart-mid meta" aria-hidden="true">${esc(format(max / 2))}</span>
 	<svg class="chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}, last ${minutes} minutes">${grid}${drawn}${hover}</svg></div>
 	<div class="chart-axis meta"><span>${minutes} min ago</span><span>now</span></div>`;
+};
+
+/**
+ * Columns of one minute each, with the parts stacked: for example saved and failed URLs. The height is the sum,
+ * so the chart shows where the work went, not only how much of it there was.
+ */
+export const stackedBars = (parts: ChartLine[], minutes: number, title: string): string => {
+	const count = Math.max(...parts.map(part => part.values.length), 0);
+	const totals = Array.from({ length: count }, (_, i) => parts.reduce((sum, part) => sum + (part.values[i] ?? 0), 0));
+	const max = Math.max(...totals, 1);
+	const slot = BARS_W / Math.max(count, 1);
+	const columns = Array.from({ length: count }, (_, i) => {
+		let bottom = BARS_H;
+		return parts.map(part => {
+			const height = ((part.values[i] ?? 0) / max) * BARS_H;
+			bottom -= height;
+			return height > 0 ? `<rect class="col chart-${part.tone}" x="${(i * slot + slot * 0.1).toFixed(1)}" y="${bottom.toFixed(1)}" width="${(slot * 0.8).toFixed(1)}" height="${height.toFixed(1)}"/>` : '';
+		}).join('');
+	}).join('');
+	const hover = Array.from({ length: count }, (_, i) => {
+		const ago = count - 1 - i;
+		const text = parts.map(part => `${part.label}: ${number(part.values[i] ?? 0)}`).join(', ');
+		return `<rect class="hit" x="${(i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${BARS_H}"><title>${esc(`${ago === 0 ? 'this minute' : `${ago} min ago`}: ${text}`)}</title></rect>`;
+	}).join('');
+	const legend = parts.map(part =>
+		`<span class="legend"><i class="swatch chart-${part.tone}"></i>${esc(part.label)}, now <b>${esc(number(part.values[part.values.length - 1] ?? 0))}</b></span>`).join('');
+	return `<div class="chart-legend">${legend}<span class="meta">peak ${esc(number(max))} per minute, saved and failed stacked</span></div>
+	<div class="chart-box"><span class="chart-max meta" aria-hidden="true">${esc(number(max))}</span><span class="chart-mid meta" aria-hidden="true">${esc(number(Math.round(max / 2)))}</span>
+	<svg class="chart bars-stacked" viewBox="0 0 ${BARS_W} ${BARS_H}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}, last ${minutes} minutes">${columns}${hover}</svg></div>
+	<div class="chart-axis meta"><span>${minutes} min ago</span><span>now</span></div>`;
+};
+
+export interface MonthCount {
+	/** `YYYY-MM`. */
+	month: string;
+	count: number;
+}
+
+/** The months from the first to the last one, each one once. A month without rows has zero, so the time scale has no gaps. */
+export const fillMonths = (months: MonthCount[]): MonthCount[] => {
+	if (months.length === 0) {
+		return [];
+	}
+	const counts = new Map(months.map(entry => [entry.month, entry.count]));
+	const sorted = [...counts.keys()].sort();
+	const [firstYear, firstMonth] = sorted[0].split('-').map(Number);
+	const [lastYear, lastMonth] = sorted[sorted.length - 1].split('-').map(Number);
+	const filled: MonthCount[] = [];
+	for (let index = firstYear * 12 + firstMonth - 1; index <= lastYear * 12 + lastMonth - 1; index++) {
+		const month = `${Math.floor(index / 12)}-${String(index % 12 + 1).padStart(2, '0')}`;
+		filled.push({ month, count: counts.get(month) ?? 0 });
+	}
+	return filled;
+};
+
+/** A count and its share of the total: `1,234 (12.3%)`. Without a total there is no share. */
+export const countWithShare = (count: number, total: number): string =>
+	total > 0 ? `${number(count)} (${(Math.round((count / total) * 1000) / 10).toFixed(1)}%)` : number(count);
+
+const BARS_W = 600;
+const BARS_H = 120;
+/** The most month names under the chart. More would overlap. */
+const MAX_MONTH_LABELS = 6;
+
+/**
+ * A column chart of the rows per month. X is the month, Y is the count; the labels of Y also show the share of the total.
+ * It is inline SVG with attributes and classes only, because the page CSP has no inline styles. Each month has an
+ * invisible column with a tooltip, so a small bar can be hovered too.
+ */
+export const monthlyBars = (months: MonthCount[], total: number, tone: string, title: string): string => {
+	const filled = fillMonths(months);
+	const max = Math.max(...filled.map(entry => entry.count), 1);
+	const slot = BARS_W / filled.length;
+	const grid = [0.25, 0.5, 0.75].map(part => {
+		const y = (BARS_H * part).toFixed(1);
+		return `<line class="grid" x1="0" y1="${y}" x2="${BARS_W}" y2="${y}"/>`;
+	}).join('');
+	const columns = filled.map((entry, i) => {
+		const height = (entry.count / max) * BARS_H;
+		return `<rect class="col" x="${(i * slot + slot * 0.1).toFixed(1)}" y="${(BARS_H - height).toFixed(1)}" width="${(slot * 0.8).toFixed(1)}" height="${height.toFixed(1)}"/>`;
+	}).join('');
+	const hover = filled.map((entry, i) =>
+		`<rect class="hit" x="${(i * slot).toFixed(1)}" y="0" width="${slot.toFixed(1)}" height="${BARS_H}"><title>${esc(`${entry.month}: ${countWithShare(entry.count, total)}`)}</title></rect>`).join('');
+	const labelCount = Math.min(filled.length, MAX_MONTH_LABELS);
+	const labels = Array.from({ length: labelCount }, (_, i) =>
+		`<span>${esc(filled[labelCount === 1 ? 0 : Math.round((i / (labelCount - 1)) * (filled.length - 1))].month)}</span>`).join('');
+	const ticks = [max, max / 2, 0].map(value => `<span>${esc(countWithShare(Math.round(value), total))}</span>`).join('');
+	return `<div class="bars-box"><div class="bars-y meta" aria-hidden="true">${ticks}</div>
+	<svg class="bars chart-${tone}" viewBox="0 0 ${BARS_W} ${BARS_H}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}, ${filled.length} months from ${esc(filled[0].month)} to ${esc(filled[filled.length - 1].month)}">${grid}${columns}${hover}</svg></div>
+	<div class="bars-x meta">${labels}</div>`;
 };
 
 /** Adds series of the same length, a missing one counts as zeros. */
@@ -203,7 +339,24 @@ export const shareBar = (percent: number, tone: string, label: string): string =
 };
 
 /** A short text for the proxy column. It never has a user name or a password. */
-export const proxyText = (setting: CrawlerSetting): string => {
+/** The country of each pool proxy by its host:port key. */
+export type Countries = ReadonlyMap<string, string>;
+
+/** The flag and the name of a country code, for example "🇩🇪 Germany". Empty for no code. */
+export const countryLabel = (code?: string): string => code ? `${flagOf(code)} ${countryName(code)}`.trim() : '';
+
+/** The countries of a pool, by host:port. Entries without a country are left out. */
+export const countriesOf = (pool: ReadonlyArray<{ host: string; port: number; countryCode?: string }>): Countries => {
+	const countries = new Map<string, string>();
+	for (const entry of pool) {
+		if (entry.countryCode) {
+			countries.set(`${entry.host}:${entry.port}`, entry.countryCode);
+		}
+	}
+	return countries;
+};
+
+export const proxyText = (setting: CrawlerSetting, countries?: Countries): string => {
 	const { proxy } = setting;
 	switch (proxy.kind) {
 		case 'none':
@@ -219,7 +372,7 @@ export const proxyText = (setting: CrawlerSetting): string => {
 		case 'webshare-list':
 			return proxy.id !== undefined ? `webshare list, id ${proxy.id}` : `webshare list, #${proxy.index}`;
 		case 'pool':
-			return `pool ${proxy.key}`;
+			return `pool ${proxy.key}${countries?.get(proxy.key) ? ` · ${countryLabel(countries.get(proxy.key))}` : ''}`;
 	}
 };
 

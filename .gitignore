@@ -1,6 +1,8 @@
 .idea/
 .vscode/
 node_modules/
+# secrets, for example WEBSHARE_API_KEY
+.env
 dist/
 tmp/
 temp/

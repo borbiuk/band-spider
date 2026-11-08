@@ -160,13 +160,14 @@ describe('the live pages', () => {
 		assert.doesNotMatch(renderStatus(stopped, config, NOW), /row-failing|errors 90%/);
 	});
 
-	it('draws the errors on the overview chart and on the traffic page', () => {
+	it('draws the errors on the overview chart, not on the traffic page', () => {
 		const withSeries = status([{ name: 'a', configured: true, state: 'running', stats: stats(), series: {
 			requests: Array(30).fill(1), urls: Array(30).fill(1), http429: Array(30).fill(0), failed: Array(30).fill(4), links: Array(30).fill(2), bytes: Array(30).fill(1000),
 		} }]);
 		const live = renderStatus(withSeries, config, NOW);
 		assert.match(live, /errors\/min, now <b>4<\/b>/);
-		assert.match(live, /Errors per minute, last 30 min/);
+		assert.doesNotMatch(live, /Errors per minute, last 30 min/);
+		assert.match(live, /data-chart-pane="outcome"/);
 		assert.match(live, /data-chart-pane="errors"/);
 	});
 
@@ -190,7 +191,7 @@ describe('the live pages', () => {
 	it('counts only the traffic of crawlers with a proxy, with the month estimate and the plan box', () => {
 		const traffic = /data-view="traffic"[\s\S]*$/.exec(page)![0];
 		// a and c have 1 MB each, c uses the local IP
-		assert.match(traffic, /Since start<\/span><span class="kpi-value">1\.0 MB<\/span>/);
+		assert.match(traffic, /Since start<span class="kpi-window">[^<]*<\/span><\/span><span class="kpi-value">1\.0 MB<\/span>/);
 		assert.match(traffic, /data-plan data-month-bytes="2592000000"/);
 		assert.match(traffic, /Not counted, they use the local IP: c/);
 		assert.match(traffic, /data-key="traffic:a"/);
@@ -256,12 +257,38 @@ describe('the proxy list', () => {
 		assert.match(html, /data-pstate="free"/);
 		assert.match(html, /<span class="dot state-running"[^>]*><\/span>a<\/button>/);
 		assert.match(html, /<span class="dot state-failed"[^>]*><\/span>b<\/button>/);
-		assert.match(html, /<b>1\.0 MB<\/b><span class="sub">3\.6 MB\/hour<\/span>/);
-		assert.match(html, /data-proxy-chip="shared" aria-pressed="false">Shared <b>1<\/b>/);
+		assert.match(html, /<b>3\.6 MB<\/b><span class="sub">1\.0 MB total<\/span>/);
+		assert.match(html, /data-proxy-chip="shared" aria-pressed="false"[^>]*>Shared <b>1<\/b>/);
 		// a used proxy cannot be deleted, the server refuses it anyway
-		assert.match(html, /aria-label="Delete 10\.1\.0\.1:80" hx-delete="\/fragments\/proxy-list\/10\.1\.0\.1%3A80"[^>]* disabled>/);
+		assert.match(html, /aria-label="Cannot delete 10\.1\.0\.1:80: used by a, b\. Remove the crawler first\." hx-delete="\/fragments\/proxy-list\/10\.1\.0\.1%3A80"[^>]* disabled>/);
 		assert.match(html, /id="chosen-form" class="actionbar"/);
 		assert.match(html, /data-open-dialog="import-dialog"/);
+	});
+
+	it('shows the country, the verdict with its reason, and the panels with the best and the proxies to replace', () => {
+		const pool = [1, 2, 3, 4, 5].map(n => ({ key: `10.2.0.${n}:80`, host: `10.2.0.${n}`, port: 80, username: 'u', countryCode: n === 1 ? 'DE' : 'US', usedBy: [`p${n}`] }));
+		const crawlers = pool.map((_entry, i) => ({
+			name: `p${i + 1}`, configured: true, state: 'running' as const,
+			stats: i === 4
+				? stats({ urlsPerMin: 5, failedPerMin: 4, failShare: 0.8 })
+				: stats({ urlsPerMin: 30 - i * 2, requestsPerMin: 32 - i * 2, failedPerMin: 0, failShare: 0 }),
+		}));
+		const html = renderProxyList(pool, crawlers);
+		assert.match(html, /<span title="DE">\u{1F1E9}\u{1F1EA} Germany<\/span>/u);
+		assert.match(html, /data-key="proxy:10\.2\.0\.1:80" data-pstate="used" data-verdict="best"/);
+		assert.match(html, /class="pill pill-best" title="Place 1 of 4:[^"]*">Best <span class="rank">#1<\/span>/);
+		assert.match(html, /data-key="proxy:10\.2\.0\.5:80" data-pstate="used" data-verdict="replace"/);
+		assert.match(html, /<h2>Replace or check <span class="count count-bad">1<\/span><\/h2>/);
+		assert.match(html, /<h2>Best proxies<\/h2>/);
+		assert.match(html, /<h2>By country<\/h2>/);
+		assert.match(html, /data-proxy-chip="replace" aria-pressed="false"[^>]*>Replace <b>1<\/b>/);
+		assert.match(html, /hx-post="\/fragments\/proxies\/detect-countries"/);
+	});
+
+	it('says how to get the countries when there are none', () => {
+		const html = renderProxyList(items, []);
+		assert.match(html, /No countries yet/);
+		assert.match(html, /No ranking yet/);
 	});
 
 	it('has an empty state with the import button', () => {

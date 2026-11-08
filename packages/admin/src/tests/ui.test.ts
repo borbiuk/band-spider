@@ -253,3 +253,12 @@ describe('events (SSE)', () => {
 		await sseApp.close();
 	});
 });
+
+describe('detect countries', () => {
+	it('shows a message when the Webshare API key is missing, and keeps the list', async () => {
+		const response = await post('/fragments/proxies/detect-countries');
+		assert.equal(response.statusCode, 200);
+		assert.match(response.body, /toast toast-error/);
+		assert.match(response.body, /WEBSHARE_API_KEY/);
+	});
+});

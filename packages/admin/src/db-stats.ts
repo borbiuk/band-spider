@@ -1,4 +1,4 @@
-import { StatsResponse, statsResponseSchema, TotalsResponse, totalsResponseSchema } from '@band-spider/contracts';
+import { ProcessingHistoryResponse, processingHistoryResponseSchema, StatsResponse, statsResponseSchema, TotalsResponse, totalsResponseSchema } from '@band-spider/contracts';
 
 /** What the admin shows about the DB service. */
 export type DbStats = StatsResponse;
@@ -6,11 +6,16 @@ export type DbStats = StatsResponse;
 /** The size of the DB. */
 export type DbTotals = TotalsResponse;
 
+/** When the items and the accounts were processed, by month. */
+export type DbProcessingHistory = ProcessingHistoryResponse;
+
 /** Reads the counters of a running DB service. */
 export interface DbStatsSource {
 	read(url: string, token?: string): Promise<DbStats>;
 	/** Reads the size of the DB. Counting a big DB takes seconds, so ask rarely. A source without it has no totals. */
 	readTotals?(url: string, token?: string): Promise<DbTotals>;
+	/** Reads when the rows were processed. It scans the big tables, so ask rarely. A source without it has no history. */
+	readProcessingHistory?(url: string, token?: string): Promise<DbProcessingHistory>;
 }
 
 const TOTALS_TIMEOUT_MS = 120_000;
@@ -41,5 +46,17 @@ export class HttpDbStatsSource implements DbStatsSource {
 			throw new Error(`DB service answered HTTP ${response.status} for the DB size`);
 		}
 		return totalsResponseSchema.parse(await response.json());
+	}
+
+	async readProcessingHistory(url: string, token?: string): Promise<DbProcessingHistory> {
+		// the query scans the items and the accounts
+		const response = await fetch(new URL('/processing-history', url), {
+			headers: token ? { authorization: `Bearer ${token}` } : {},
+			signal: AbortSignal.timeout(TOTALS_TIMEOUT_MS),
+		});
+		if (!response.ok) {
+			throw new Error(`DB service answered HTTP ${response.status} for the processing history`);
+		}
+		return processingHistoryResponseSchema.parse(await response.json());
 	}
 }

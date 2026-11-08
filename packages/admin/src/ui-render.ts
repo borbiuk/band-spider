@@ -1,6 +1,7 @@
 import { DEFAULT_IDLE_MS, MAX_REQUEST_DELAY_MS, MIN_REQUEST_DELAY_MS } from '@band-spider/core';
 import { AdminConfig, CrawlerSetting, DEFAULT_REVERSE, DEFAULT_WORKERS } from './config';
 import { CrawlerStats, ProxyWarning, warningName } from './crawler-metrics';
+import { MIN_DONE_URLS, MIN_PEERS, ProxyPerf, ProxyVerdict, rateProxies } from './proxy-performance';
 import { ImportResult, PoolItem } from './proxy-pool';
 import { CrawlerStatus, DbStatus, SupervisorStatus } from './supervisor';
 import { attentionItems } from './ui-attention';
@@ -13,6 +14,7 @@ import {
 	durationText,
 	esc,
 	formatNumber as number,
+	hasProblem,
 	icon,
 	iconButton,
 	isActive,
@@ -26,6 +28,11 @@ import {
 	sparkline,
 	stateDot,
 	stripAnsi,
+	BAD_429_PER_HOUR,
+	countriesOf,
+	Countries,
+	countryLabel,
+	WARN_429_PER_HOUR,
 } from './ui-parts';
 
 // the small parts are shared with the other renderers and the tests
@@ -77,21 +84,28 @@ const controlBar = (db: DbStatus): string => `
 	</div>
 </div>`;
 
+/** The share of the latest URLs that were saved, 0-100. Undefined before a URL was done. */
+const successPercent = (stats: CrawlerStats | undefined): number | undefined =>
+	stats?.failShare === undefined ? undefined : Math.round((1 - stats.failShare) * 100);
+
 /** What the filter and the sort of the table read. The page script does the work, so a live update keeps the choice. */
-const rowData = (name: string, status: CrawlerStatus, setting: CrawlerSetting | undefined, index: number): string => {
+const rowData = (name: string, status: CrawlerStatus, setting: CrawlerSetting | undefined, index: number, countries?: Countries): string => {
 	const stats = status.stats;
 	const pairs: Array<[string, string | number]> = [
 		['index', index],
 		['name', name.toLowerCase()],
 		['state', status.state],
 		['type', setting?.type ?? ''],
-		['search', `${name} ${setting ? proxyText(setting) : ''}`.toLowerCase()],
+		['search', `${name} ${setting ? proxyText(setting, countries) : ''}`.toLowerCase()],
 		['requests', stats?.requestsPerMin ?? 0],
 		['urls', stats?.urlsPerMin ?? 0],
 		['http429', stats?.http429PerHour ?? 0],
 		['saved', stats?.totals.processed ?? 0],
-		['bytes', stats?.totals.bytes ?? 0],
-		['links', stats?.totals.newLinks ?? 0],
+		// the table shows speeds first, so the sort uses the speeds too
+		['success', successPercent(stats) ?? -1],
+		['bytes', stats?.bytesPerHour ?? 0],
+		['links', stats?.linksPerMin ?? 0],
+		['problem', hasProblem(status) ? 1 : 0],
 	];
 	return pairs.map(([key, value]) => `data-${key}="${esc(value)}"`).join(' ');
 };
@@ -103,10 +117,11 @@ const SORT_KEYS: Array<[string, string]> = [
 	['state', 'state'],
 	['requests', 'requests/min'],
 	['urls', 'URLs/min'],
+	['success', 'success rate'],
 	['http429', 'HTTP 429/hour'],
 	['saved', 'saved total'],
-	['bytes', 'traffic'],
-	['links', 'new links'],
+	['bytes', 'traffic/hour'],
+	['links', 'new links/min'],
 ];
 
 const chip = (group: string, value: string, label: string, count?: number): string =>
@@ -117,10 +132,10 @@ const tableTools = (summary: CrawlerSummary): string => `
 <div class="toolbar" data-tools>
 	<label class="search">${icon('search')}<input type="search" data-filter="search" placeholder="Search name or proxy" aria-label="Search crawlers" autocomplete="off"></label>
 	<div class="chips" role="group" aria-label="State">
-		${chip('state', '', 'All', summary.total)}${chip('state', 'active', 'Running', summary.active)}${chip('state', 'failed', 'Failed', summary.failed)}${chip('state', 'stopped', 'Stopped', summary.stopped)}
+		${chip('state', '', 'All', summary.total)}${chip('state', 'active', 'Running', summary.active)}${chip('state', 'problems', 'Problems', summary.problems)}${chip('state', 'failed', 'Failed', summary.failed)}${chip('state', 'stopped', 'Stopped', summary.stopped)}
 	</div>
 	<div class="chips" role="group" aria-label="Type">
-		${chip('type', '', 'All types')}${chip('type', 'item', 'Items', summary.items)}${chip('type', 'account', 'Accounts', summary.accounts)}
+		${chip('type', '', 'All types', summary.total)}${chip('type', 'item', 'Items', summary.items)}${chip('type', 'account', 'Accounts', summary.accounts)}
 	</div>
 	<label class="sort-pick">Sort by<select data-sort-key>
 		${SORT_KEYS.map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}
@@ -165,21 +180,28 @@ const rowPill = (status: CrawlerStatus): string => {
 	return warning + failing + silent + paused + (stats?.idle ? '<span class="pill">waiting for URLs</span>' : '');
 };
 
-/** The cells of the numbers. Every cell has the same two lines, so a row keeps its height before the first report. */
+/**
+ * The cells of the numbers. Every cell has the same two lines, so a row keeps its height before the first report.
+ * The first line is always a speed or a share of now, the second line is the total since the start.
+ */
 const metricCells = (stats: CrawlerStats | undefined, setting: CrawlerSetting | undefined): string => {
+	const local = setting?.proxy.kind === 'none';
 	if (!stats) {
-		return numCell('Requests/min', '-', '') + numCell('URLs/min', '-', '')
-			+ numCell('HTTP 429/hour', '-', '') + numCell('New links', '-', '')
-			+ numCell('Traffic', '-', setting?.proxy.kind === 'none' ? 'local IP, not counted' : '');
+		return numCell('Requests/min', '-', '') + numCell('URLs/min', '-', '') + numCell('Success', '-', '')
+			+ numCell('HTTP 429/hour', '-', '') + numCell('Links/min', '-', '')
+			+ numCell('Traffic/hour', '-', local ? 'local IP, not counted' : '');
 	}
 	const level = level429(stats.http429PerHour);
+	const success = successPercent(stats);
+	const successLevel = success === undefined ? '' : success < 50 ? 'lvl-bad' : success < 90 ? 'lvl-warn' : '';
 	return numCell('Requests/min', rateText(stats.requestsPerMin), `${number(stats.totals.requests)} total`, '', totalText(stats))
 		+ numCell('URLs/min', rateText(stats.urlsPerMin), `${number(stats.totals.processed)} saved`)
+		+ numCell('Success', success === undefined ? '-' : `${success}%`, `${number(stats.totals.failed)} failed`, successLevel, 'Share of the latest URLs that were saved')
 		+ numCell('HTTP 429/hour', number(stats.http429PerHour), `${number(stats.totals.http429)} total`, level === 'ok' ? '' : `lvl-${level}`)
-		+ numCell('New links', number(stats.totals.newLinks), `${rateText(stats.linksPerMin)}/min`)
-		+ (setting?.proxy.kind === 'none'
-			? numCell('Traffic', '-', 'local IP, not counted')
-			: numCell('Traffic', bytesText(stats.totals.bytes), `${bytesText(stats.bytesPerHour)}/hour`));
+		+ numCell('Links/min', rateText(stats.linksPerMin), `${number(stats.totals.newLinks)} total`)
+		+ (local
+			? numCell('Traffic/hour', '-', 'local IP, not counted')
+			: numCell('Traffic/hour', bytesText(stats.bytesPerHour), `${bytesText(stats.totals.bytes)} total`));
 };
 
 /** The start or stop button of a crawler, as an icon. */
@@ -195,12 +217,12 @@ export const toggleButton = (base: string, status: CrawlerStatus, configured: bo
 		: iconButton('play', 'Start', postStatus(`${base}/start`), !configured, 'ok');
 };
 
-const crawlerRow = (name: string, configured: boolean, status: CrawlerStatus, setting: CrawlerSetting | undefined, index: number): string => {
+const crawlerRow = (name: string, configured: boolean, status: CrawlerStatus, setting: CrawlerSetting | undefined, index: number, countries?: Countries): string => {
 	const base = `/fragments/crawlers/${encodeURIComponent(name)}`;
 	const active = isActive(status.state);
-	const about = setting ? `${settingsText(setting)} · ${proxyText(setting)}` : 'removed from config';
+	const about = setting ? `${settingsText(setting)} · ${proxyText(setting, countries)}` : 'removed from config';
 	return `
-<tr class="row-${esc(status.state)}${isFailing(status) ? ' row-failing' : ''}" data-key="crawler:${esc(name)}" ${rowData(name, status, setting, index)}>
+<tr class="row-${esc(status.state)}${isFailing(status) ? ' row-failing' : ''}" data-key="crawler:${esc(name)}" ${rowData(name, status, setting, index, countries)}>
 	<td class="pick"><input type="checkbox" name="names" value="${esc(name)}" form="bulk-form" aria-label="Choose ${esc(name)}"></td>
 	<td class="name-cell" data-label="Crawler">
 		<div class="name-line">${stateDot(status.state)}<button type="button" class="link name" title="Details of ${esc(name)}" ${detailAttrs(name)}>${esc(name)}</button>${rowPill(status)}</div>
@@ -229,8 +251,8 @@ const crawlerRow = (name: string, configured: boolean, status: CrawlerStatus, se
 const sortHead = (key: string, label: string, title = label): string =>
 	`<th data-sort-col="${key}"><button type="button" class="th-sort" data-sort="${key}" title="Sort by ${esc(title)}">${esc(label)}${icon('sort')}</button></th>`;
 
-const crawlersView = (status: SupervisorStatus, settings: Map<string, CrawlerSetting>, summary: CrawlerSummary): string => {
-	const rows = status.crawlers.map((crawler, index) => crawlerRow(crawler.name, crawler.configured, crawler, settings.get(crawler.name), index));
+const crawlersView = (status: SupervisorStatus, settings: Map<string, CrawlerSetting>, summary: CrawlerSummary, countries: Countries): string => {
+	const rows = status.crawlers.map((crawler, index) => crawlerRow(crawler.name, crawler.configured, crawler, settings.get(crawler.name), index, countries));
 	if (rows.length === 0) {
 		return `
 <div class="view" data-view="crawlers">
@@ -246,7 +268,7 @@ const crawlersView = (status: SupervisorStatus, settings: Map<string, CrawlerSet
 		${tableTools(summary)}
 		<div class="table-wrap">
 		<table class="crawlers">
-			<thead><tr><th class="pick"><input type="checkbox" data-pick-all aria-label="Choose all shown crawlers"></th>${sortHead('name', 'Crawler')}${sortHead('requests', 'Req/min', 'requests per minute')}${sortHead('urls', 'URLs/min', 'URLs per minute')}${sortHead('http429', '429/hour', 'HTTP 429 answers per hour')}${sortHead('links', 'Links', 'new item-account links')}${sortHead('bytes', 'Traffic', 'traffic through the proxy')}<th>Last 30 min</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+			<thead><tr><th class="pick"><input type="checkbox" data-pick-all aria-label="Choose all shown crawlers"></th>${sortHead('name', 'Crawler')}${sortHead('requests', 'Req/min', 'requests per minute')}${sortHead('urls', 'URLs/min', 'URLs per minute')}${sortHead('success', 'Success', 'share of the latest URLs that were saved')}${sortHead('http429', '429/hour', 'HTTP 429 answers per hour')}${sortHead('links', 'Links/min', 'new item-account links per minute')}${sortHead('bytes', 'Traffic/hour', 'traffic through the proxy per hour')}<th>Last 30 min</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
 			<tbody data-keep-order>${rows.join('')}</tbody>
 		</table>
 		</div>
@@ -257,7 +279,7 @@ const crawlersView = (status: SupervisorStatus, settings: Map<string, CrawlerSet
 
 /** Numbers for the badges of the menu. The page script copies them, the menu itself is not part of a live update. */
 const navSummary = (summary: CrawlerSummary, attention: number): string =>
-	`<div hidden data-nav-summary data-running="${summary.running}" data-total="${summary.total}" data-failed="${summary.failed}" data-attention="${attention}"></div>`;
+	`<div hidden data-nav-summary data-running="${summary.active}" data-total="${summary.total}" data-failed="${summary.failed}" data-attention="${attention}"></div>`;
 
 /** The content of the #status block: the bar on top and the live pages Overview, Crawlers and Traffic. */
 export const renderStatus = (status: SupervisorStatus, config: AdminConfig, now = Date.now()): string => {
@@ -268,7 +290,7 @@ export const renderStatus = (status: SupervisorStatus, config: AdminConfig, now 
 ${controlBar(status.db)}
 ${navSummary(summary, attention.filter(item => item.tone !== 'info').length)}
 ${overviewView(status, attention, summary)}
-${crawlersView(status, settings, summary)}
+${crawlersView(status, settings, summary, countriesOf(config.proxyPool))}
 ${trafficView(status, settings)}`;
 };
 
@@ -484,33 +506,45 @@ const usedByCell = (item: PoolItem, states: Map<string, CrawlerStatus>): string 
  */
 export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = []): string => {
 	const states = new Map(crawlers.map(crawler => [crawler.name, crawler]));
+	const perfs = rateProxies(items, crawlers);
+	const perfOf = (item: PoolItem): ProxyPerf => perfs.get(item.key)!;
+	// the order of the verdict sort: what needs a look comes first
+	const VERDICT_ORDER: Record<ProxyVerdict, number> = { replace: 0, slow: 1, idle: 2, learning: 3, ok: 4, best: 5, free: 6 };
+	const VERDICT_TEXT: Record<ProxyVerdict, string> = { replace: 'Replace', slow: 'Slow', idle: 'Not running', learning: 'Collecting data', ok: 'OK', best: 'Best', free: 'Free' };
+
 	const rows = items.map((item, index) => {
 		const kind = item.usedBy.length === 0 ? 'free' : item.usedBy.length > 1 ? 'shared' : 'used';
-		const bytes = item.usedBy.reduce((sum, name) => sum + (states.get(name)?.stats?.totals.bytes ?? 0), 0);
-		const perHour = item.usedBy.reduce((sum, name) => sum + (states.get(name)?.stats?.bytesPerHour ?? 0), 0);
-		const failing = item.usedBy.filter(name => {
-			const crawler = states.get(name);
-			return crawler ? isFailing(crawler) : false;
-		});
-		const warnings = item.usedBy.map(name => states.get(name)?.stats?.warning).filter((warning): warning is ProxyWarning => warning !== undefined);
+		const perf = perfOf(item);
+		const country = item.countryCode ? countryLabel(item.countryCode) : '';
+		const place = perf.rank !== undefined ? ` <span class="rank">#${perf.rank}</span>` : '';
+		const success = perf.successPercent;
+		const pageCost = perf.bytesPer1000Pages === undefined ? '' : `${bytesText(perf.bytesPer1000Pages)} per 1,000 saved pages`;
 		return `
-	<tr data-key="proxy:${esc(item.key)}" data-pstate="${kind}"${failing.length || warnings.length ? ' class="row-failing"' : ''}>
+	<tr data-key="proxy:${esc(item.key)}" data-pstate="${kind}" data-verdict="${perf.verdict}" data-index="${index}" data-search="${esc(`${item.key} ${item.usedBy.join(' ')} ${country} ${item.countryCode ?? ''}`.toLowerCase())}" data-country="${esc(country.toLowerCase())}" data-verdict-order="${VERDICT_ORDER[perf.verdict]}" data-rank="${perf.rank ?? 100000}" data-perf="${perf.savedPerMin ?? -1}" data-success="${success ?? -1}" data-r429="${perf.http429PerHour}" data-bytes="${perf.bytesPerHour}"${perf.verdict === 'replace' ? ' class="row-failing"' : ''}>
 		<td class="pick"><input type="checkbox" form="chosen-form" name="keys" value="${esc(item.key)}" aria-label="Choose ${esc(item.key)}"${item.usedBy.length ? '' : ' data-free'}></td>
-		<td class="num-col" data-label="No.">${index + 1}</td>
-		<td data-label="Proxy"><b class="mono">${esc(item.key)}</b>${failing.length ? `<span class="pill pill-bad" title="${esc(`Most URLs fail through this proxy (${failing.join(', ')}). Bandcamp may have blocked it.`)}">errors</span>` : ''}${warningPill(warnings[0])}</td>
+		<td data-label="Proxy"><b class="mono">${esc(item.key)}</b></td>
+		<td data-label="Country" class="country">${country ? `<span title="${esc(item.countryCode ?? '')}">${esc(country)}</span>` : '<span class="meta" title="Use Detect countries">-</span>'}</td>
 		<td data-label="Used by">${usedByCell(item, states)}</td>
-		<td class="num" data-label="Traffic">${item.usedBy.length ? `<b>${esc(bytesText(bytes))}</b><span class="sub">${esc(bytesText(perHour))}/hour</span>` : '<span class="meta">-</span>'}</td>
-		<td class="actions">${iconButton('trash', `Delete ${item.key}`, `hx-delete="/fragments/proxy-list/${esc(encodeURIComponent(item.key))}" hx-target="#proxy-list" hx-swap="morph" hx-confirm="Delete proxy ${esc(item.key)}?"`, item.usedBy.length > 0, 'danger')}</td>
+		<td data-label="Verdict"><span class="pill pill-${perf.verdict}" title="${esc(perf.reason)}">${VERDICT_TEXT[perf.verdict]}${place}</span></td>
+		<td class="num" data-label="Saved/min" title="Saved pages per minute, the last 5 minutes. Failed URLs are not counted.">${perf.savedPerMin === undefined ? '<span class="meta">-</span>' : `<b>${rateText(perf.savedPerMin)}</b><span class="sub">${rateText(perf.requestsPerMin ?? 0)} req/min</span>`}</td>
+		<td class="num" data-label="Success">${success === undefined ? '<span class="meta">-</span>' : `<b${success < 50 ? ' class="lvl-bad"' : success < 90 ? ' class="lvl-warn"' : ''}>${success}%</b><span class="sub">latest URLs</span>`}</td>
+		<td class="num" data-label="HTTP 429/hour">${item.usedBy.length ? `<b${perf.http429PerHour >= BAD_429_PER_HOUR ? ' class="lvl-bad"' : perf.http429PerHour >= WARN_429_PER_HOUR ? ' class="lvl-warn"' : ''}>${number(perf.http429PerHour)}</b>` : '<span class="meta">-</span>'}</td>
+		<td class="num" data-label="Traffic/hour"${pageCost ? ` title="${esc(pageCost)}"` : ''}>${item.usedBy.length ? `<b>${esc(bytesText(perf.bytesPerHour))}</b><span class="sub">${esc(bytesText(perf.bytesTotal))} total</span>` : '<span class="meta">-</span>'}</td>
+		<td class="actions">${iconButton('trash', item.usedBy.length > 0 ? `Cannot delete ${item.key}: used by ${item.usedBy.join(', ')}. Remove the crawler first.` : `Delete ${item.key}`, `hx-delete="/fragments/proxy-list/${esc(encodeURIComponent(item.key))}" hx-target="#proxy-list" hx-swap="morph" hx-confirm="Delete proxy ${esc(item.key)}?"`, item.usedBy.length > 0, 'danger')}</td>
 	</tr>`;
 	});
 	const used = items.filter(item => item.usedBy.length > 0).length;
+	const psort = (key: string, label: string, numeric = false, title = label): string =>
+		`<th${numeric ? ' class="num"' : ''}><button type="button" class="th-sort" data-psort="${key}" title="Sort by ${esc(title)}">${esc(label)}${icon('sort')}</button></th>`;
 	const shared = items.filter(item => item.usedBy.length > 1).length;
 	const free = items.length - used;
+	const count = (verdict: ProxyVerdict): number => items.filter(item => perfOf(item).verdict === verdict).length;
 	const head = `
 <div class="controlbar">
 	<h1 class="page-title">Proxies</h1>
 	<div class="buttons">
 		<button type="button" class="${items.length ? 'btn-ghost' : 'btn-primary'}" data-open-dialog="import-dialog">${icon('upload')}Import list</button>
+		${items.length === 0 ? '' : `<button type="button" class="btn-ghost" hx-post="/fragments/proxies/detect-countries" hx-target="#proxy-list" hx-swap="morph" title="Asks the Webshare API for the country of each proxy. It needs WEBSHARE_API_KEY in the .env file.">${icon('proxies')}Detect countries</button>`}
 		${items.length === 0 ? '' : addCrawlersForm(free)}
 		${items.length === 0 ? '' : `<button type="button" class="btn-danger" hx-post="/fragments/proxies/delete-all" hx-target="#proxy-list" hx-swap="morph" hx-confirm="${esc(deleteAllQuestion(items.length, used))}">${icon('trash')}Delete all</button>`}
 	</div>
@@ -522,20 +556,19 @@ export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = [
 	<button type="button" class="btn-primary" data-open-dialog="import-dialog">${icon('upload')}Import list</button>
 </div>`;
 	}
-	const chip = (value: string, label: string, count: number): string =>
-		`<button type="button" class="chip" data-proxy-chip="${value}" aria-pressed="false">${esc(label)} <b>${count}</b></button>`;
+	const chip = (value: string, label: string, total: number, hint: string): string =>
+		`<button type="button" class="chip" data-proxy-chip="${value}" aria-pressed="false" title="${esc(hint)}">${esc(label)} <b>${total}</b></button>`;
 	return `${head}
-<div class="kpis kpis-small">
-	<div class="kpi kpi-idle"><span class="kpi-label">Proxies</span><span class="kpi-value">${items.length}</span><span class="kpi-sub">in the pool</span></div>
-	<div class="kpi kpi-ok"><span class="kpi-label">Used</span><span class="kpi-value">${used}</span><span class="kpi-sub">by a crawler</span></div>
-	<div class="kpi kpi-queue"><span class="kpi-label">Free</span><span class="kpi-value">${free}</span><span class="kpi-sub">ready for a crawler</span></div>
-	<div class="kpi kpi-idle"><span class="kpi-label">Shared</span><span class="kpi-value">${shared}</span><span class="kpi-sub">more than one crawler</span></div>
-</div>
+${proxyInsights(items, perfs)}
 <div class="panel panel-table">
 	<div class="toolbar">
 		<div class="chips" role="group" aria-label="Show">
-			${chip('', 'All', items.length)}${chip('free', 'Free', free)}${chip('used', 'Used', used)}${chip('shared', 'Shared', shared)}
+			${chip('', 'All', items.length, 'All proxies of the pool')}${chip('free', 'Free', free, 'No crawler uses them. Ready for a new crawler.')}${chip('used', 'Used', used, 'At least one crawler uses them. Shared ones are included.')}${chip('shared', 'Shared', shared, 'More than one crawler uses them. This is a part of Used.')}
 		</div>
+		<div class="chips" role="group" aria-label="Performance">
+			${chip('replace', 'Replace', count('replace'), 'Blocked, rate limited, with a warning, or with a failed crawler')}${chip('slow', 'Slow', count('slow'), 'Saves less than half of the median speed')}${chip('best', 'Best', count('best'), 'The fastest healthy proxies')}
+		</div>
+		<label class="search">${icon('search')}<input type="search" data-proxy-search placeholder="Search proxy, country or crawler" aria-label="Search proxies" autocomplete="off"></label>
 		<span class="grow"></span>
 		<span class="meta hint">Shift+click chooses a range</span>
 		<button type="button" class="btn-ghost btn-small" data-select="all">${icon('check')}Select all</button>
@@ -544,12 +577,70 @@ export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = [
 	</div>
 	<div class="table-wrap">
 		<table class="pool">
-			<thead><tr><th class="pick"><span class="sr-only">Choose</span></th><th class="num-col">No.</th><th>Proxy</th><th>Used by</th><th class="num">Traffic</th><th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
-			<tbody>${rows.join('')}</tbody>
+			<thead><tr><th class="pick"><span class="sr-only">Choose</span></th><th>Proxy</th>${psort('country', 'Country')}<th>Used by</th>${psort('verdict-order', 'Verdict')}${psort('perf', 'Saved/min', true, 'saved pages per minute')}${psort('success', 'Success', true)}${psort('r429', '429/hour', true)}${psort('bytes', 'Traffic/hour', true)}<th class="actions"><span class="sr-only">Actions</span></th></tr></thead>
+			<tbody data-keep-order>${rows.join('')}</tbody>
 		</table>
 	</div>
 </div>
 ${chosenCrawlersForm()}`;
+};
+
+/** A list line of the insight panels: place, flag, proxy, and a short number or reason. */
+const insightRow = (item: PoolItem, perf: ProxyPerf, text: string): string =>
+	`<li><span class="rank">${perf.rank !== undefined ? `#${perf.rank}` : ''}</span><span class="mono">${esc(item.key)}</span>`
+	+ `<span class="country-small">${esc(item.countryCode ? countryLabel(item.countryCode) : '')}</span><span class="meta clip" title="${esc(perf.reason)}">${esc(text)}</span></li>`;
+
+const INSIGHT_ROWS = 5;
+
+/**
+ * Three small panels above the table: the best proxies, the ones to replace or check, and the speed by country.
+ * The numbers come from the crawlers that use the proxies, so a proxy without a running crawler has none.
+ */
+const proxyInsights = (items: PoolItem[], perfs: Map<string, ProxyPerf>): string => {
+	const entries = items.map(item => ({ item, perf: perfs.get(item.key)! }));
+	const best = entries.filter(entry => entry.perf.verdict === 'best' || entry.perf.verdict === 'ok')
+		.sort((a, b) => (a.perf.rank ?? 0) - (b.perf.rank ?? 0)).slice(0, INSIGHT_ROWS);
+	const bad = entries.filter(entry => entry.perf.verdict === 'replace' || entry.perf.verdict === 'slow')
+		.sort((a, b) => (a.perf.verdict === b.perf.verdict ? (a.perf.savedPerMin ?? 0) - (b.perf.savedPerMin ?? 0) : a.perf.verdict === 'replace' ? -1 : 1));
+	const rated = entries.filter(entry => entry.perf.rank !== undefined).length;
+
+	const bestBody = best.length === 0
+		? `<div class="empty">${icon('info')}<p>No ranking yet. A proxy is rated after ${MIN_DONE_URLS} URLs, and the ranking needs ${MIN_PEERS} rated proxies.</p></div>`
+		: `<ul class="insight-rows">${best.map(({ item, perf }) => insightRow(item, perf, `${rateText(perf.savedPerMin ?? 0)} pages/min, ${perf.successPercent ?? '-'}%`)).join('')}</ul>`;
+	const badBody = bad.length === 0
+		? `<div class="empty empty-ok">${icon('check')}<p>${rated === 0 ? 'Nothing to replace yet.' : 'No proxy needs replacing.'}</p></div>`
+		: `<ul class="insight-rows">${bad.slice(0, INSIGHT_ROWS).map(({ item, perf }) => insightRow(item, perf, perf.reason)).join('')}</ul>`
+			+ (bad.length > INSIGHT_ROWS ? `<p class="meta">and ${bad.length - INSIGHT_ROWS} more. <button type="button" class="link" data-proxy-chip="replace">Show in the table</button></p>` : '');
+
+	// the speed by country: the mean saved pages per minute of the rated proxies of each country
+	const byCountry = new Map<string, { code: string; proxies: number; speed: number; success: number[] }>();
+	for (const { item, perf } of entries) {
+		if (!item.countryCode || perf.savedPerMin === undefined || perf.rank === undefined) {
+			continue;
+		}
+		const row = byCountry.get(item.countryCode) ?? { code: item.countryCode, proxies: 0, speed: 0, success: [] };
+		row.proxies++;
+		row.speed += perf.savedPerMin;
+		if (perf.successPercent !== undefined) {
+			row.success.push(perf.successPercent);
+		}
+		byCountry.set(item.countryCode, row);
+	}
+	const countries = [...byCountry.values()].sort((a, b) => b.speed / b.proxies - a.speed / a.proxies);
+	const known = items.filter(item => item.countryCode).length;
+	const countryBody = countries.length === 0
+		? `<div class="empty">${icon('info')}<p>${known === 0 ? 'No countries yet. Put WEBSHARE_API_KEY in the .env file, restart the admin, then press Detect countries.' : 'No country has rated proxies yet.'}</p></div>`
+		: `<ul class="insight-rows country-rows">${countries.slice(0, INSIGHT_ROWS).map(row =>
+			`<li><span class="country-small">${esc(countryLabel(row.code))}</span><span class="meta">${row.proxies} ${row.proxies === 1 ? 'proxy' : 'proxies'}</span>`
+			+ `<b>${rateText(row.speed / row.proxies)}</b><span class="meta">pages/min each, ${row.success.length ? Math.round(row.success.reduce((a, b) => a + b, 0) / row.success.length) : '-'}% success</span></li>`).join('')}</ul>`
+			+ `<p class="meta">${known} of ${items.length} proxies have a country.</p>`;
+
+	return `<div class="cols cols-3">
+	<div class="panel"><div class="panel-head"><h2>Best proxies</h2><span class="meta">by saved pages per minute</span></div>${bestBody}</div>
+	<div class="panel"><div class="panel-head"><h2>Replace or check ${bad.length ? `<span class="count count-bad">${bad.length}</span>` : ''}</h2><span class="meta">blocked, rate limited or slow</span></div>${badBody}</div>
+	<div class="panel"><div class="panel-head"><h2>By country</h2><span class="meta">mean speed of one proxy</span></div>${countryBody}</div>
+</div>
+<p class="meta perf-note">The speed also depends on the settings of the crawler (workers, delay), so compare proxies whose crawlers are set alike. The numbers start again when a crawler starts.</p>`;
 };
 
 /** The log drawer. It sits on the right side of the window, so opening it does not move the page. */
@@ -558,6 +649,8 @@ export const renderLogs = (source: string, lines: string[]): string => `
 	<div class="drawer-head">
 		<h2>${icon('logs')}Logs: ${esc(source)}</h2>
 		<div class="buttons">
+			<label class="search search-small">${icon('search')}<input type="search" data-log-filter placeholder="Filter lines" aria-label="Filter log lines" autocomplete="off"></label>
+			<button type="button" class="btn-ghost btn-small" data-log-copy title="Copy the shown lines">Copy</button>
 			<label class="check meta"><input type="checkbox" data-log-follow checked> Follow</label>
 			${iconButton('close', 'Close', 'data-close hx-get="/fragments/logs-close" hx-target="#logs" hx-swap="innerHTML"')}
 		</div>

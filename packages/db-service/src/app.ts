@@ -13,8 +13,10 @@ import {
 	saveAccountResponseSchema,
 	saveItemRequestSchema,
 	saveItemResponseSchema,
+	processingHistoryResponseSchema,
 	statsResponseSchema,
 	totalsResponseSchema,
+	type ProcessingHistoryResponse,
 	type TotalsResponse,
 } from '@band-spider/contracts';
 import { CrawlStore, errorMessage, ReleaseReason, UrlType } from '@band-spider/core';
@@ -35,6 +37,8 @@ export interface AppOptions {
 	queueLeft?: () => Promise<{ items: number, accounts: number }>;
 	/** Counts the rows of the DB. Without it there is no /totals route. The store caches the numbers. */
 	totals?: () => Promise<TotalsResponse>;
+	/** Counts when the items and the accounts were processed. Without it there is no /processing-history route. The store caches the numbers. */
+	processingHistory?: () => Promise<ProcessingHistoryResponse>;
 	/** When set, every request except /health needs this bearer token. */
 	token?: string;
 	/**
@@ -56,7 +60,7 @@ const hasValidToken = (header: string | undefined, token: string): boolean => {
 };
 
 /** The HTTP side of the DB service. It only knows the CrawlStore interface. */
-export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, totals, token, maxOpenRequests = DEFAULT_MAX_OPEN_REQUESTS }: AppOptions): FastifyInstance => {
+export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, totals, processingHistory, token, maxOpenRequests = DEFAULT_MAX_OPEN_REQUESTS }: AppOptions): FastifyInstance => {
 	const app = Fastify({ logger: false }).withTypeProvider<ZodTypeProvider>();
 	app.setValidatorCompiler(validatorCompiler);
 	app.setSerializerCompiler(serializerCompiler);
@@ -109,6 +113,10 @@ export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, totals,
 
 	if (totals) {
 		app.get('/totals', { schema: { response: { 200: totalsResponseSchema, ...errors } } }, async () => await totals());
+	}
+
+	if (processingHistory) {
+		app.get('/processing-history', { schema: { response: { 200: processingHistoryResponseSchema, ...errors } } }, async () => await processingHistory());
 	}
 
 	app.post('/claim', {
