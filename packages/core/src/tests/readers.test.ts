@@ -3,10 +3,10 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { after, before, beforeEach, describe, it } from 'node:test';
-import { ApiRefusedError, HttpStatusError, PageNotFoundError } from '../common/errors';
+import { ApiRefusedError, HttpStatusError, PageNotFoundError, UnexpectedPageError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
 import { RateLimitedError, RateLimitGate } from '../common/rate-limit-gate';
-import { readAccountPageByFetch } from '../account/clients/account-http-reader';
+import { isAccountPageReadable, readAccountPageByFetch } from '../account/clients/account-http-reader';
 import { readItemPageByFetch } from '../item/clients/item-http-reader';
 
 // tests run from `dist/tests`, the fixtures stay in `src/tests/fixtures`
@@ -228,10 +228,20 @@ describe('account reader', () => {
 	it('fails a page without #pagedata as a normal error, not as a missing page', async () => {
 		// a block or error page of a proxy can come with status 200
 		handler = () => ({ status: 200, body: '<html><body>nothing</body></html>' });
-		await assert.rejects(
-			readAccountPageByFetch(accountUrl, createClient()),
-			(e: unknown) => !(e instanceof PageNotFoundError) && (e as Error).message === 'The account page has no "#pagedata" blob',
-		);
+		await assert.rejects(readAccountPageByFetch(accountUrl, createClient()), UnexpectedPageError);
+	});
+
+	it('a control request is readable only with status 200 and #pagedata', async () => {
+		handler = () => ({ status: 200, body: accountBlob({}) });
+		assert.equal(await isAccountPageReadable(accountUrl, createClient()), true);
+
+		for (const answer of [{ status: 200, body: '<html><body>nothing</body></html>' }, { status: 404 }, { status: 502 }]) {
+			handler = () => answer;
+			assert.equal(await isAccountPageReadable(accountUrl, createClient()), false, JSON.stringify(answer));
+		}
+
+		handler = () => ({ status: 429 });
+		await assert.rejects(isAccountPageReadable(accountUrl, createClient()), RateLimitedError);
 	});
 
 	it('maps 429 of the page and of the API to RateLimitedError', async () => {

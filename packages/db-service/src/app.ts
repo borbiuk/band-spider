@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import {
 	claimRequestSchema,
 	claimResponseSchema,
+	controlUrlResponseSchema,
 	errorResponseSchema,
 	extendLeaseRequestSchema,
 	extendLeaseResponseSchema,
@@ -138,6 +139,13 @@ export const buildApp = ({ store, stats = new ServiceStats(), queueLeft, totals,
 			.reduce((sum, tab) => sum + tab.newUrls.length, 0);
 		stats.onAccountSaved(newUrls, statistic);
 		return { statistic };
+	});
+
+	app.post('/control-url', {
+		schema: { response: { 200: controlUrlResponseSchema, ...errors } },
+	}, async () => {
+		const url = await store.controlUrl();
+		return url === undefined ? {} : { url };
 	});
 
 	app.post('/release', {

@@ -89,6 +89,7 @@ describe('crawler metrics event', () => {
 					} as ItemPageData;
 				},
 				readAccountPage: async () => { throw new Error('not used'); },
+				isAccountPageReadable: async () => true,
 			});
 
 			const events: CrawlerEvent[] = [];

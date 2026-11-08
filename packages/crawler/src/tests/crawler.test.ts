@@ -97,6 +97,10 @@ class FakeReader implements PageReader {
 	public async readAccountPage(url: string): Promise<AccountPageData> {
 		return this.onAccount(url);
 	}
+
+	public async isAccountPageReadable(): Promise<boolean> {
+		return true;
+	}
 }
 
 const row = async (db: BandDatabase, table: 'items' | 'accounts', url: string) =>

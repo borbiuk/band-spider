@@ -66,6 +66,10 @@ export class CountingCrawlStore implements CrawlStore {
 		return statistic;
 	}
 
+	public controlUrl(): Promise<string | undefined> {
+		return this.inner.controlUrl();
+	}
+
 	public async release(task: CrawlTask, reason: ReleaseReason): Promise<void> {
 		await this.inner.release(task, reason);
 		this.counts[reason]++;

@@ -1,6 +1,6 @@
 import { DEFAULT_IDLE_MS, MAX_REQUEST_DELAY_MS, MIN_REQUEST_DELAY_MS } from '@band-spider/core';
 import { CrawlerSetting } from './config';
-import { SERIES_BUCKETS } from './crawler-metrics';
+import { SERIES_BUCKETS, warningName } from './crawler-metrics';
 import { CrawlerStatus } from './supervisor';
 import { crawlerFailures } from './ui-failures';
 import {
@@ -58,6 +58,7 @@ export const renderCrawlerDetail = (name: string, status: CrawlerStatus | undefi
 	const active = isActive(status.state);
 	const running = status.state === 'running';
 	const pause = running && stats && stats.pauseMs > 0 ? `<p class="warn">${icon('pause')}paused after HTTP 429, ${esc(durationText(stats.pauseMs))} left</p>` : '';
+	const warning = stats?.warning ? `<p class="warn">${icon('info')}${esc(warningName(stats.warning))}: ${esc(stats.warning.message)}</p>` : '';
 	const idle = running && stats?.idle ? `<p class="meta">${icon('info')}waiting for URLs</p>` : '';
 	const reported = stats?.reportedAt === undefined ? 'no report yet' : `last report ${durationText(Math.max(now - stats.reportedAt, 0))} ago`;
 	const local = setting?.proxy.kind === 'none';
@@ -98,7 +99,7 @@ export const renderCrawlerDetail = (name: string, status: CrawlerStatus | undefi
 	</div>
 	${status.error ? `<p class="error banner">${esc(status.error)}</p>` : ''}
 	${configured ? '' : '<p class="warn">Removed from the config. It still runs until it is stopped.</p>'}
-	${pause}${idle}
+	${warning}${pause}${idle}
 	${kpis}
 	${chart}
 	${stats ? crawlerFailures(stats.failures) : ''}

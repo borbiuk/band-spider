@@ -5,6 +5,7 @@ import { AccountEntity } from '../entities/account-entity';
 import { AccountScanEntity } from '../entities/account-scan-entity';
 import { FollowerEntity } from '../entities/follower-entity';
 import { normalizeAccountUrl } from '../models/item-url';
+import { toUnixSeconds } from '../entities/transformers';
 import { ItemToAccountEntity } from '../entities/item-to-account-entity';
 import { DB_BATCH_SIZE, insertManyByUrl, insertRelation, insertUnique } from './insert-helpers';
 import { NEXT_FAILED_COUNT_SQL, NOT_FOUND_MARK, notProcessedWhere, processedWhere } from './selection';
@@ -25,6 +26,18 @@ export class AccountRepository {
 			order: newestFirst ? { id: 'DESC' } : undefined,
 			take: 400
 		});
+	}
+
+	/**
+	 * URLs of accounts that were read without errors since `since`. The rows come in the order of the
+	 * table, so the query stops early when such accounts are many.
+	 */
+	public async getProcessedSince(since: Date, take: number): Promise<string[]> {
+		const rows: { url: string }[] = await this.manager.query(
+			'SELECT url FROM accounts WHERE lastProcessingDate >= ? AND failedCount = 0 LIMIT ?',
+			[toUnixSeconds(since), take],
+		);
+		return rows.map(row => row.url);
 	}
 
 	/** How many accounts are left to process. The filter is the one of `getNotProcessed`. */

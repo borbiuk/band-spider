@@ -88,7 +88,7 @@ export const runCrawler = async (config: CrawlerConfig, deps: CrawlerDeps = {}):
 	};
 	const failures = new FailureTally();
 	const spider = new BandSpider(store, createReader, failure => failures.record(failure));
-	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics([...clients], store.counts, spider.isIdle, store.newLinks, failures.snapshot()) });
+	const sendMetrics = (): void => onEvent({ type: 'metrics', metrics: collectMetrics([...clients], store.counts, spider.isIdle, store.newLinks, failures.snapshot(), spider.warning) });
 	const metricsTimer = setInterval(sendMetrics, metricsIntervalMs);
 	// the timer must not keep the process alive
 	metricsTimer.unref();

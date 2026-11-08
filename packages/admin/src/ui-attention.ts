@@ -1,3 +1,4 @@
+import { warningName } from './crawler-metrics';
 import { SupervisorStatus } from './supervisor';
 import { BAD_429_PER_HOUR, durationText, formatNumber, isFailing } from './ui-parts';
 
@@ -38,6 +39,9 @@ export const attentionItems = (status: SupervisorStatus, now: number): Attention
 		}
 		if (!crawler.configured && crawler.state !== 'stopped') {
 			add('warn', 'removed from the config', 'it still runs, stop it');
+		}
+		if (stats?.warning) {
+			add('bad', warningName(stats.warning), `${stats.warning.message}. The proxy may not work.`);
 		}
 		if (crawler.state !== 'running' || !stats) {
 			continue;

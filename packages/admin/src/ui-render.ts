@@ -1,6 +1,6 @@
 import { DEFAULT_IDLE_MS, MAX_REQUEST_DELAY_MS, MIN_REQUEST_DELAY_MS } from '@band-spider/core';
 import { AdminConfig, CrawlerSetting, DEFAULT_REVERSE, DEFAULT_WORKERS } from './config';
-import { CrawlerStats } from './crawler-metrics';
+import { CrawlerStats, ProxyWarning, warningName } from './crawler-metrics';
 import { ImportResult, PoolItem } from './proxy-pool';
 import { CrawlerStatus, DbStatus, SupervisorStatus } from './supervisor';
 import { attentionItems } from './ui-attention';
@@ -140,13 +140,18 @@ export const totalText = (stats: CrawlerStats): string =>
 	`total: ${number(stats.totals.requests)} requests, ${number(stats.totals.processed)} saved, `
 	+ `${number(stats.totals.failed)} failed, ${number(stats.totals.http429)} HTTP 429`;
 
+/** The label of a proxy warning. It stays after the crawler stopped, until the next start. */
+const warningPill = (warning: ProxyWarning | undefined): string =>
+	warning ? `<span class="pill pill-bad" title="${esc(warning.message)}">${esc(warningName(warning))}</span>` : '';
+
 /** Small labels after the name: paused, waiting, failed or removed. They sit on the name line, so the row keeps its height. */
 const rowPill = (status: CrawlerStatus): string => {
 	if (!status.configured) {
 		return '<span class="pill pill-warn">removed from config</span>';
 	}
+	const warning = warningPill(status.stats?.warning);
 	if (status.state === 'failed') {
-		return `<span class="pill pill-bad" title="${esc(status.error ?? 'failed')}">${esc(status.error ? 'error' : 'failed')}</span>`;
+		return `<span class="pill pill-bad" title="${esc(status.error ?? 'failed')}">${esc(status.error ? 'error' : 'failed')}</span>${warning}`;
 	}
 	// the last report of a stopped crawler can still say "paused", that is old news
 	const stats = status.state === 'running' ? status.stats : undefined;
@@ -157,7 +162,7 @@ const rowPill = (status: CrawlerStatus): string => {
 		? `<span class="pill pill-bad" title="${esc(`${Math.round((stats?.failShare ?? 0) * 100)}% of the latest URLs failed, ${rateText(stats?.failedPerMin ?? 0)} per minute. The proxy may be blocked.`)}">errors ${Math.round((stats?.failShare ?? 0) * 100)}%</span>`
 		: '';
 	const silent = isActive(status.state) && !status.stats ? '<span class="pill">no report yet</span>' : '';
-	return failing + silent + paused + (stats?.idle ? '<span class="pill">waiting for URLs</span>' : '');
+	return warning + failing + silent + paused + (stats?.idle ? '<span class="pill">waiting for URLs</span>' : '');
 };
 
 /** The cells of the numbers. Every cell has the same two lines, so a row keeps its height before the first report. */
@@ -481,11 +486,12 @@ export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = [
 			const crawler = states.get(name);
 			return crawler ? isFailing(crawler) : false;
 		});
+		const warnings = item.usedBy.map(name => states.get(name)?.stats?.warning).filter((warning): warning is ProxyWarning => warning !== undefined);
 		return `
-	<tr data-key="proxy:${esc(item.key)}" data-pstate="${kind}"${failing.length ? ' class="row-failing"' : ''}>
+	<tr data-key="proxy:${esc(item.key)}" data-pstate="${kind}"${failing.length || warnings.length ? ' class="row-failing"' : ''}>
 		<td class="pick"><input type="checkbox" form="chosen-form" name="keys" value="${esc(item.key)}" aria-label="Choose ${esc(item.key)}"${item.usedBy.length ? '' : ' data-free'}></td>
 		<td class="num-col" data-label="No.">${index + 1}</td>
-		<td data-label="Proxy"><b class="mono">${esc(item.key)}</b>${failing.length ? `<span class="pill pill-bad" title="${esc(`Most URLs fail through this proxy (${failing.join(', ')}). Bandcamp may have blocked it.`)}">errors</span>` : ''}</td>
+		<td data-label="Proxy"><b class="mono">${esc(item.key)}</b>${failing.length ? `<span class="pill pill-bad" title="${esc(`Most URLs fail through this proxy (${failing.join(', ')}). Bandcamp may have blocked it.`)}">errors</span>` : ''}${warningPill(warnings[0])}</td>
 		<td data-label="Used by">${usedByCell(item, states)}</td>
 		<td class="num" data-label="Traffic">${item.usedBy.length ? `<b>${esc(bytesText(bytes))}</b><span class="sub">${esc(bytesText(perHour))}/hour</span>` : '<span class="meta">-</span>'}</td>
 		<td class="actions">${iconButton('trash', `Delete ${item.key}`, `hx-delete="/fragments/proxy-list/${esc(encodeURIComponent(item.key))}" hx-target="#proxy-list" hx-swap="morph" hx-confirm="Delete proxy ${esc(item.key)}?"`, item.usedBy.length > 0, 'danger')}</td>

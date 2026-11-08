@@ -1,9 +1,8 @@
-import { BurstGuard } from './common/burst-guard';
 import { HttpClient } from './common/http-client';
 import { RateLimitGate } from './common/rate-limit-gate';
 import { AccountScanMarks } from './models/account-scan-marks';
 import { AccountPageData } from './account/models/account-page-data';
-import { readAccountPageByFetch } from './account/clients/account-http-reader';
+import { isAccountPageReadable, readAccountPageByFetch } from './account/clients/account-http-reader';
 import { readItemPageByFetch } from './item/clients/item-http-reader';
 import { ItemPageData } from './item/models/item-page-data';
 
@@ -12,6 +11,11 @@ export interface PageReader {
 	readItemPage(url: string): Promise<ItemPageData>;
 	/** @param marks - Where the last complete read of each tab began; see `buildAccountPageData`. */
 	readAccountPage(url: string, marks?: AccountScanMarks): Promise<AccountPageData>;
+	/**
+	 * A control request to an account page that is known to exist: true when it came as expected.
+	 * @throws `RateLimitedError` for HTTP 429.
+	 */
+	isAccountPageReadable(url: string): Promise<boolean>;
 }
 
 /** Plain HTTP requests. */
@@ -26,6 +30,10 @@ export class FetchPageReader implements PageReader {
 	public readAccountPage(url: string, marks?: AccountScanMarks): Promise<AccountPageData> {
 		return readAccountPageByFetch(url, this.http, marks);
 	}
+
+	public isAccountPageReadable(url: string): Promise<boolean> {
+		return isAccountPageReadable(url, this.http);
+	}
 }
 
 /** What a worker reads pages with, and what it does around it. */
@@ -33,10 +41,6 @@ export interface PageSource {
 	reader: PageReader;
 	/** The 429 pause of this worker. */
 	rateLimitGate: RateLimitGate;
-	/** Tells a real 404 from a block of the IP of this worker. */
-	notFoundGuard: BurstGuard;
-	/** Tells a network error of one URL from a failure of the IP or the proxy of this worker. */
-	connectionGuard: BurstGuard;
 	/** Called after every processed URL. */
 	afterUrl: () => Promise<void>;
 	close: () => Promise<void>;

@@ -5,6 +5,16 @@ export class PageNotFoundError extends Error {
 	}
 }
 
+/**
+ * A page came with status 200 but is not the page that was asked for, for example an account page
+ * without `#pagedata`. A block or error page of a proxy can look like this.
+ */
+export class UnexpectedPageError extends Error {
+	constructor(message: string, public readonly url: string) {
+		super(`${message}: ${url}`);
+	}
+}
+
 /** A page request was answered with a status that is not 200, 404 or 429. */
 export class HttpStatusError extends Error {
 	constructor(
@@ -34,10 +44,12 @@ export class NetworkError extends Error {
 
 /**
  * True for an error that is likely about the connection, not about the page: a network error, a
- * timeout, HTTP 403 or a 5xx status. A failing proxy or a blocked IP gives these for every page.
+ * timeout, HTTP 403 or a 5xx status, or an unexpected page. A failing proxy or a blocked IP gives
+ * these for every page.
  */
 export const isConnectionFailure = (error: unknown): boolean =>
 	error instanceof NetworkError
+	|| error instanceof UnexpectedPageError
 	|| (error instanceof HttpStatusError && (error.status === 403 || error.status >= 500))
 	|| (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'));
 
@@ -51,7 +63,7 @@ export const asError = (error: unknown): Error =>
 
 /** Why a URL failed: a short stable key and the message of the error. */
 export interface FailureReport {
-	/** `http:<status>`, `api:<status>`, `timeout`, `network:<code>`, `save`, `scrape`. */
+	/** `http:<status>`, `api:<status>`, `timeout`, `network:<code>`, `page:unexpected`, `not-found`, `save`, `scrape`. */
 	key: string;
 	message: string;
 	url: string;
@@ -73,6 +85,9 @@ export const failureKey = (error: unknown, stage: FailureStage = 'scrape'): stri
 	}
 	if (error instanceof NetworkError) {
 		return `network:${error.code}`;
+	}
+	if (error instanceof UnexpectedPageError) {
+		return 'page:unexpected';
 	}
 	if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
 		return 'timeout';

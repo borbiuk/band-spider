@@ -112,6 +112,14 @@ export class RateLimitGate {
 		return { started: true, until: this.pausedUntil, pauseMs: this.pausedUntil - now, level: this.level };
 	}
 
+	/**
+	 * Starts a pause of the given length that is not about 429: the backoff level does not change.
+	 * An active longer pause is kept.
+	 */
+	public pauseFor(ms: number): void {
+		this.pausedUntil = Math.max(this.pausedUntil, this.now() + ms);
+	}
+
 	/** A page loaded without 429: the next 429 starts from the first pause again. */
 	public reportSuccess(): void {
 		if (!this.isPaused) {

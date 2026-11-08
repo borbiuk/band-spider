@@ -59,6 +59,12 @@ export const extendLeaseResponseSchema = z.object({
 });
 export type ExtendLeaseResponse = z.infer<typeof extendLeaseResponseSchema>;
 
+/** `url` is missing when the DB has no account that was read lately. */
+export const controlUrlResponseSchema = z.object({
+	url: z.string().optional(),
+});
+export type ControlUrlResponse = z.infer<typeof controlUrlResponseSchema>;
+
 export const healthResponseSchema = z.object({
 	status: z.literal('ok'),
 });

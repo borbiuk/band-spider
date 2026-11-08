@@ -14,6 +14,7 @@ import { RowCounter } from './counting/row-counter';
 import { BandDatabase } from './db';
 import { saveAccountPageData } from './account/account-db-client';
 import { saveItemPageData } from './item/item-db-client';
+import { REPROCESS_BEFORE } from './repositories/selection';
 
 /** How long a task is taken before it can be taken again. */
 const DEFAULT_LEASE_MS = 10 * 60 * 1000;
@@ -38,6 +39,12 @@ export interface DbTotals {
 
 type Candidate = { id: number, url: string };
 
+/** Control URLs are taken from accounts read in this time, or since `REPROCESS_BEFORE` when there are none. */
+const CONTROL_RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+/** How many control URLs are read at once and how long they are reused. */
+const CONTROL_POOL_SIZE = 50;
+const CONTROL_CACHE_MS = 10 * 60 * 1000;
+
 /** The crawl store that works on the database of this process. */
 export class LocalCrawlStore implements CrawlStore {
 	// url type and row id -> time when the lease ends. It lives in memory only: the DB schema is the same.
@@ -48,6 +55,7 @@ export class LocalCrawlStore implements CrawlStore {
 	// out URLs, so a candidate stays free until it is handed out.
 	private readonly candidates = new Map<string, Candidate[]>();
 
+	private controlCache: { urls: string[], at: number } | undefined;
 	private totalsCache: { value: DbTotals, at: number } | undefined;
 	private queueLeftCache: { value: { items: number, accounts: number }, at: number } | undefined;
 
@@ -207,6 +215,23 @@ export class LocalCrawlStore implements CrawlStore {
 			await repository.updateBusy(task.id, false);
 			this.leases.delete(this.leaseKey(task));
 		});
+	}
+
+	public async controlUrl(): Promise<string | undefined> {
+		const cached = this.controlCache;
+		const urls = cached && this.now() - cached.at < CONTROL_CACHE_MS
+			? cached.urls
+			: await this.writes.run(async () => {
+				const account = this.database.account;
+				let found = await account.getProcessedSince(new Date(this.now() - CONTROL_RECENT_MS), CONTROL_POOL_SIZE);
+				if (found.length === 0) {
+					found = await account.getProcessedSince(REPROCESS_BEFORE, CONTROL_POOL_SIZE);
+				}
+				this.controlCache = { urls: found, at: this.now() };
+				return found;
+			});
+		// a random one: the same page is not asked for again and again
+		return urls.length === 0 ? undefined : urls[Math.floor(Math.random() * urls.length)];
 	}
 
 	private async claimNow(type: UrlType, count: number, newestFirst: boolean): Promise<CrawlTask[]> {

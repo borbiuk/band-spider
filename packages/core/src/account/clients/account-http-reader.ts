@@ -1,5 +1,7 @@
 import * as cheerio from 'cheerio';
+import { UnexpectedPageError } from '../../common/errors';
 import { getPageHtml, HttpClient } from '../../common/http-client';
+import { RateLimitedError } from '../../common/rate-limit-gate';
 import { isNullOrUndefined } from '../../common/utils';
 import { AccountScanMarks } from '../../models/account-scan-marks';
 import { AccountPageData } from '../models/account-page-data';
@@ -21,7 +23,7 @@ export async function readAccountPageByFetch(
 
 	const blob = readPageBlob(html);
 	if (isNullOrUndefined(blob)) {
-		throw new Error('The account page has no "#pagedata" blob');
+		throw new UnexpectedPageError('The account page has no "#pagedata" blob', url);
 	}
 
 	return await buildAccountPageData(url, blob, async (endpoint, body) => {
@@ -31,6 +33,25 @@ export async function readAccountPageByFetch(
 			body: answer.status >= 200 && answer.status < 300 ? JSON.parse(answer.body) : undefined,
 		};
 	}, marks);
+}
+
+/**
+ * A control request: loads an account page that is known to exist and tells whether it came as
+ * expected (status 200 with `#pagedata`). The tabs are not read.
+ *
+ * @throws `RateLimitedError` for HTTP 429: that says nothing about the proxy.
+ */
+export async function isAccountPageReadable(url: string, http: HttpClient): Promise<boolean> {
+	let html: string;
+	try {
+		html = await getPageHtml(http, url);
+	} catch (e) {
+		if (e instanceof RateLimitedError) {
+			throw e;
+		}
+		return false;
+	}
+	return !isNullOrUndefined(readPageBlob(html));
 }
 
 /** Reads the JSON blob the page embeds for its own front-end. Null when the page carries none. */

@@ -1,5 +1,6 @@
 import {
 	claimResponseSchema,
+	controlUrlResponseSchema,
 	extendLeaseResponseSchema,
 	releaseResponseSchema,
 	saveAccountResponseSchema,
@@ -86,6 +87,11 @@ export class RemoteCrawlStore implements CrawlStore {
 		} finally {
 			this.untrack(task);
 		}
+	}
+
+	public async controlUrl(): Promise<string | undefined> {
+		const answer = await this.transport.post('/control-url', {});
+		return controlUrlResponseSchema.parse(answer).url;
 	}
 
 	/** Stops the lease timer. Tasks that are still in work are not released here: the owner does it. */

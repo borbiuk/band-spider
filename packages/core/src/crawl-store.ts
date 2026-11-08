@@ -34,4 +34,9 @@ export interface CrawlStore {
 	saveAccount(task: CrawlTask, data: AccountPageData): Promise<AccountPageStatistic>;
 	/** Gives the task back. `rateLimited` is not counted as a failure, the other reasons are. */
 	release(task: CrawlTask, reason: ReleaseReason): Promise<void>;
+	/**
+	 * The URL of an account page that was read without errors not long ago, for a control request
+	 * that tells a failing proxy from pages that are gone. Undefined when there is none.
+	 */
+	controlUrl(): Promise<string | undefined>;
 }

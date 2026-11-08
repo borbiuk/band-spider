@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
-import { BandSpider, BurstGuard, parseOptions } from '@band-spider/core';
+import { BandSpider, parseOptions } from '@band-spider/core';
 import { BandDatabase, LocalCrawlStore } from '@band-spider/storage-sqlite';
 
 const tempDir: string = fs.mkdtempSync(path.join(os.tmpdir(), 'band-spider-run-'));
@@ -45,7 +45,7 @@ describe('BandSpider.run', () => {
 	const fixture = (name: string): string => fs.readFileSync(path.join(__dirname, '../../../core/src/tests/fixtures', name), 'utf8');
 
 	/** Runs the spider with `answer` in place of the network. The run stops after the first request. */
-	const runWith = async (args: string[], answer: (url: string) => Response, guard?: () => BurstGuard): Promise<void> => {
+	const runWith = async (args: string[], answer: (url: string) => Response): Promise<void> => {
 		const stop = new AbortController();
 		const realFetch = globalThis.fetch;
 		globalThis.fetch = (async (input: string | URL | Request) => {
@@ -53,11 +53,33 @@ describe('BandSpider.run', () => {
 			return answer(String(input));
 		}) as typeof fetch;
 		try {
-			await new BandSpider(new LocalCrawlStore(db), undefined, undefined, guard).run(parseOptions(args), stop.signal);
+			await new BandSpider(new LocalCrawlStore(db)).run(parseOptions(args), stop.signal);
 		} finally {
 			globalThis.fetch = realFetch;
 		}
 	};
+
+	/**
+	 * Runs the spider until the queue is empty. The task URL gets `main`, any other URL is a control
+	 * request and gets `control`.
+	 */
+	const runToEnd = async (args: string[], task: string, main: () => Response, control: () => Response): Promise<void> => {
+		// an account read just now, for control requests
+		await db.account.insert('https://bandcamp.com/run-control');
+		await db.query("UPDATE accounts SET lastProcessingDate = unixepoch(), failedCount = 0 WHERE url = 'https://bandcamp.com/run-control'");
+		const realFetch = globalThis.fetch;
+		globalThis.fetch = (async (input: string | URL | Request) => String(input) === task ? main() : control()) as typeof fetch;
+		try {
+			await new BandSpider(new LocalCrawlStore(db)).run(parseOptions(args));
+		} finally {
+			globalThis.fetch = realFetch;
+		}
+	};
+
+	/** A fan page that is read as expected. */
+	const goodControl = () => new Response('<html><body><div id="pagedata" data-blob="{}"></div></body></html>', { status: 200 });
+	/** What a failing proxy gives. */
+	const badControl = () => new Response('', { status: 502 });
 
 	const itemRow = async (url: string) =>
 		(await db.query('SELECT lastProcessingDate IS NOT NULL AS processed, failedCount, isBusy FROM items WHERE url = ?', [url]))[0];
@@ -80,13 +102,12 @@ describe('BandSpider.run', () => {
 		assert.deepEqual(await itemRow(url), { processed: 1, failedCount: 0, isBusy: 0 });
 	});
 
-	it('an item page that cannot be read is marked failed and released', async () => {
+	it('an item page that cannot be read is marked failed when the control request passes', async () => {
 		await reset();
 		const url = 'https://band.bandcamp.com/track/broken';
 		await db.item.insert(url);
 
-		// a guard that trusts every answer
-		await runWith([], () => new Response('', { status: 500 }), () => new BurstGuard({ minSamples: 1, maxShare: 1 }));
+		await runToEnd([], url, () => new Response('', { status: 500 }), goodControl);
 
 		assert.deepEqual(await itemRow(url), { processed: 0, failedCount: 1, isBusy: 0 });
 	});
@@ -101,45 +122,42 @@ describe('BandSpider.run', () => {
 		assert.deepEqual(await itemRow(url), { processed: 0, failedCount: 0, isBusy: 0 });
 	});
 
-	it('an account page that cannot be read is marked failed and released', async () => {
+	it('an account page that cannot be read is marked failed when the control request passes', async () => {
 		await reset();
 		const url = 'https://bandcamp.com/run-fan';
 		await db.account.insert(url);
 
-		await runWith(['--account'], () => new Response('', { status: 500 }), () => new BurstGuard({ minSamples: 1, maxShare: 1 }));
+		await runToEnd(['--account'], url, () => new Response('', { status: 500 }), goodControl);
 
 		assert.deepEqual(await accountRow(url), { processed: 0, failedCount: 1, isBusy: 0 });
 	});
 
-	it('an item page with a 5xx the guard does not trust is only released', async () => {
+	it('an item page with a 5xx is only released when the control request fails', async () => {
 		await reset();
 		const url = 'https://band.bandcamp.com/track/unsure';
 		await db.item.insert(url);
 
-		// the default guard needs more answers before it trusts a network error or a 5xx
-		await runWith([], () => new Response('', { status: 503 }));
+		await runToEnd([], url, () => new Response('', { status: 503 }), badControl);
 
 		assert.deepEqual(await itemRow(url), { processed: 0, failedCount: 0, isBusy: 0 });
 	});
 
-	it('an account page that does not exist gets the not-found mark and is released', async () => {
+	it('an account page that does not exist gets the not-found mark when the control request passes', async () => {
 		await reset();
 		const url = 'https://bandcamp.com/run-gone';
 		await db.account.insert(url);
 
-		// a guard that trusts every answer
-		await runWith(['--account'], () => new Response('', { status: 404 }), () => new BurstGuard({ minSamples: 1, maxShare: 1 }));
+		await runToEnd(['--account'], url, () => new Response('', { status: 404 }), goodControl);
 
 		assert.deepEqual(await accountRow(url), { processed: 0, failedCount: 404, isBusy: 0 });
 	});
 
-	it('an account page with a 404 the guard does not trust is only released', async () => {
+	it('an account page with a 404 is only released when the control request fails', async () => {
 		await reset();
 		const url = 'https://bandcamp.com/run-unsure';
 		await db.account.insert(url);
 
-		// the default guard needs more answers before it trusts a 404
-		await runWith(['--account'], () => new Response('', { status: 404 }));
+		await runToEnd(['--account'], url, () => new Response('', { status: 404 }), badControl);
 
 		assert.deepEqual(await accountRow(url), { processed: 0, failedCount: 0, isBusy: 0 });
 	});

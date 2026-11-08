@@ -140,6 +140,21 @@ describe('the live pages', () => {
 		assert.equal((pool.match(/class="row-failing"/g) ?? []).length, 1);
 	});
 
+	it('shows a 404 warning of a crawler that stopped after failed control requests, in the table, the attention list and the proxy list', () => {
+		const warned = stats({ warning: { kind: 'notFound', message: 'the control request failed again, the crawler stopped', since: NOW - 60_000 } });
+		const crawlers: SupervisorStatus['crawlers'] = [
+			{ name: 'a', configured: true, state: 'failed', error: '404 warning: the control request failed twice', stats: warned },
+			{ name: 'b', configured: true, state: 'running', stats: stats({ warning: { kind: 'connection', message: 'the control request failed, paused for 5 min', since: NOW } }) },
+		];
+		const live = renderStatus(status(crawlers), config, NOW);
+		assert.match(live, /pill pill-bad"[^>]*>404 warning</);
+		assert.match(live, /pill pill-bad"[^>]*>network warning</);
+		assert.match(live, /<b>a: 404 warning<\/b>/);
+		const pool = renderProxyList([{ key: '10.1.0.1:80', host: '10.1.0.1', port: 80, username: 'u', usedBy: ['a'] }, { key: '10.1.0.2:80', host: '10.1.0.2', port: 80, username: 'u', usedBy: [] }], crawlers);
+		assert.match(pool, /class="row-failing"[^>]*>\s*<td class="pick">[^]*?10\.1\.0\.1:80[^]*?404 warning/);
+		assert.equal((pool.match(/class="row-failing"/g) ?? []).length, 1);
+	});
+
 	it('does not mark a stopped crawler, whatever its last report said', () => {
 		const stopped = status([{ name: 'a', configured: true, state: 'stopped', stats: stats({ failedPerMin: 12, failShare: 0.9 }) }]);
 		assert.doesNotMatch(renderStatus(stopped, config, NOW), /row-failing|errors 90%/);

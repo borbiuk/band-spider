@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { BandSpider, MAX_PAUSES_IN_ROW } from '../band-spider';
+import { BandSpider, BandSpiderTuning } from '../band-spider';
 import { FailureReport, HttpStatusError, NetworkError, PageNotFoundError } from '../common/errors';
 import { HttpClient } from '../common/http-client';
-import { BurstGuard } from '../common/burst-guard';
 import { RateLimitedError } from '../common/rate-limit-gate';
 import type { CrawlStore, CrawlTask } from '../crawl-store';
 import { defaultItemTabStatistic } from '../item/models/item-tab-statistic';
@@ -52,6 +51,11 @@ class FakeStore implements CrawlStore {
 		this.released.push(`${reason}:${task.url}`);
 		this.queue.push(task.url);
 	}
+
+	/** The URL for control requests. */
+	public control: string | undefined = 'https://bandcamp.com/control';
+
+	public async controlUrl(): Promise<string | undefined> { return this.control; }
 }
 
 const itemData = (url: string): ItemPageData => ({
@@ -65,13 +69,18 @@ const itemData = (url: string): ItemPageData => ({
 	errors: [],
 });
 
-const reader = (onItem: (url: string) => Promise<ItemPageData> | ItemPageData = itemData): PageReader => ({
+const reader = (
+	onItem: (url: string) => Promise<ItemPageData> | ItemPageData = itemData,
+	/** The answer to a control request. */
+	onControl: () => boolean = () => true,
+): PageReader => ({
 	readItemPage: async url => onItem(url),
 	readAccountPage: async () => { throw new Error('not used'); },
+	isAccountPageReadable: async () => onControl(),
 });
 
-/** A guard that trusts every answer, so a single 404 or network error counts at once. */
-const trustingGuard = () => new BurstGuard({ minSamples: 1, maxShare: 1 });
+/** Short times: a held answer waits 20 ms for a confirmation, the pause after a failed control request is 30 ms. */
+const fast: BandSpiderTuning = { suspects: { confirmWindowMs: 20 }, controlPauseMs: 30 };
 
 const options = (extra: { concurrency?: number, idleWaitMs?: number, type?: UrlType } = {}) => ({
 	concurrency: 1, type: UrlType.Item, superTag: false, reverse: false, minDelayMs: 0, maxDelayMs: 0, ...extra,
@@ -169,15 +178,20 @@ describe('workers of one BandSpider run', () => {
 });
 
 describe('failure reports', () => {
-	it('names the HTTP status of a page that could not be read', async () => {
+	/** A store whose released URLs are not queued again: a loop with no real I/O would starve the timers of the test. */
+	const storeOf = (...urls: string[]): FakeStore => {
 		const store = new FakeStore();
-		// a failed URL is not queued again: a loop with no real I/O would starve the timers of the test
 		store.release = async (task, reason) => { store.released.push(`${reason}:${task.url}`); };
+		store.queue.push(...urls);
+		return store;
+	};
+
+	it('saves a network error as a failure with its status when the control request passes', async () => {
 		const url = 'https://a.bandcamp.com/track/1';
-		store.queue.push(url);
+		const store = storeOf(url);
 		const failures: FailureReport[] = [];
 		const stop = new AbortController();
-		const spider = new BandSpider(store, () => reader(() => { throw new HttpStatusError(503, url); }), failure => failures.push(failure), trustingGuard);
+		const spider = new BandSpider(store, () => reader(() => { throw new HttpStatusError(503, url); }), failure => failures.push(failure), fast);
 		const running = spider.run(options({ idleWaitMs: 10 }), stop.signal);
 
 		await until(() => failures.length > 0);
@@ -185,79 +199,111 @@ describe('failure reports', () => {
 		await running;
 
 		assert.deepEqual(failures[0], { key: 'http:503', message: `HTTP 503: ${url}`, url });
-		assert.equal(store.released[0], `failed:${url}`);
+		assert.deepEqual(store.released, [`failed:${url}`]);
 	});
 
-	it('only releases a URL with a network error the guard does not trust', async () => {
-		const store = new FakeStore();
-		store.release = async (task, reason) => { store.released.push(`${reason}:${task.url}`); };
-		const url = 'https://a.bandcamp.com/track/1';
-		store.queue.push(url);
-		const failures: FailureReport[] = [];
+	it('saves a 404 between two read pages as not found without a control request', async () => {
+		const gone = 'https://a.bandcamp.com/track/gone';
+		const store = storeOf('https://a.bandcamp.com/track/1', gone, 'https://a.bandcamp.com/track/2');
+		let controls = 0;
 		const stop = new AbortController();
-		// the default guard needs more answers before it trusts a network error
-		const spider = new BandSpider(store, () => reader(() => { throw new NetworkError(`Request failed (0): ${url}`, '0'); }), failure => failures.push(failure));
+		const spider = new BandSpider(store, () => reader(
+			url => { if (url === gone) { throw new PageNotFoundError(); } return itemData(url); },
+			() => { controls++; return true; },
+		));
 		const running = spider.run(options({ idleWaitMs: 10 }), stop.signal);
-
-		await until(() => failures.length > 0);
-		stop.abort();
-		await running;
-
-		assert.deepEqual(failures.map(x => x.key), ['network:0']);
-		assert.deepEqual(store.released, [`rateLimited:${url}`]);
-	});
-
-	it('stops with an error after too many pauses in a row', async () => {
-		const store = new FakeStore();
-		store.queue.push('https://a.bandcamp.com/track/1');
-		let reads = 0;
-		// a pause of 0 seconds: each 429 starts a new pause right away
-		const spider = new BandSpider(store, () => reader(url => { reads++; throw new RateLimitedError(url, '0'); }));
-
-		await assert.rejects(spider.run(options({ idleWaitMs: 10 })), /Requests kept failing: 8 pauses in a row/);
-		assert.equal(reads, MAX_PAUSES_IN_ROW);
-	});
-
-	/** Runs the spider on one URL that answers 404 and returns the release and the failure keys. */
-	const runNotFound = async (type: UrlType, guard?: () => BurstGuard) => {
-		const store = new FakeStore();
-		// a released URL is not queued again: a loop with no real I/O would starve the timers of the test
-		store.release = async (task, reason) => { store.released.push(`${reason}:${task.url}`); };
-		const url = type === UrlType.Item ? 'https://a.bandcamp.com/track/gone' : 'https://bandcamp.com/gone';
-		store.queue.push(url);
-		const failures: FailureReport[] = [];
-		const stop = new AbortController();
-		const notFound = async (): Promise<never> => { throw new PageNotFoundError(); };
-		const spider = new BandSpider(
-			store,
-			() => ({ readItemPage: notFound, readAccountPage: notFound }),
-			failure => failures.push(failure),
-			guard,
-		);
-		const running = spider.run(options({ idleWaitMs: 10, type }), stop.signal);
 
 		await until(() => store.released.length > 0);
 		stop.abort();
 		await running;
-		return { url, released: store.released, keys: failures.map(x => x.key) };
-	};
+
+		assert.deepEqual(store.released, [`notFound:${gone}`]);
+		assert.equal(controls, 0);
+	});
 
 	for (const type of [UrlType.Item, UrlType.Account]) {
-		it(`releases an ${type} page that does not exist as not found when the guard trusts the 404`, async () => {
-			const { url, released, keys } = await runNotFound(type, trustingGuard);
+		it(`saves an ${type} 404 as not found when the control request passes`, async () => {
+			const url = type === UrlType.Item ? 'https://a.bandcamp.com/track/gone' : 'https://bandcamp.com/gone';
+			const store = storeOf(url);
+			const failures: FailureReport[] = [];
+			const stop = new AbortController();
+			const notFound = async (): Promise<never> => { throw new PageNotFoundError(); };
+			const spider = new BandSpider(
+				store,
+				() => ({ readItemPage: notFound, readAccountPage: notFound, isAccountPageReadable: async () => true }),
+				failure => failures.push(failure),
+				fast,
+			);
+			const running = spider.run(options({ idleWaitMs: 10, type }), stop.signal);
 
-			assert.deepEqual(released, [`notFound:${url}`]);
-			assert.deepEqual(keys, ['not-found']);
-		});
+			await until(() => store.released.length > 0);
+			stop.abort();
+			await running;
 
-		it(`only releases an ${type} page with a 404 the guard does not trust`, async () => {
-			// the default guard needs more answers before it trusts a 404
-			const { url, released, keys } = await runNotFound(type);
-
-			assert.deepEqual(released, [`rateLimited:${url}`]);
-			assert.deepEqual(keys, ['not-found:unsure']);
+			assert.deepEqual(store.released, [`notFound:${url}`]);
+			assert.deepEqual(failures.map(x => x.key), ['not-found']);
+			assert.equal(spider.warning, undefined);
 		});
 	}
+
+	it('drops a 404 when the control request fails, pauses, and stops when it fails again', async () => {
+		const url = 'https://a.bandcamp.com/track/gone';
+		const store = storeOf(url);
+		let controls = 0;
+		const spider = new BandSpider(store, () => reader(() => { throw new PageNotFoundError(); }, () => { controls++; return false; }), undefined, fast);
+
+		await assert.rejects(spider.run(options({ idleWaitMs: 10 })), /404 warning: the control request failed twice/);
+		// tried again later, with no mark
+		assert.deepEqual(store.released, [`rateLimited:${url}`]);
+		assert.equal(controls, 2);
+		assert.equal(spider.warning?.kind, 'notFound');
+	});
+
+	it('names a network warning when network errors made the control request', async () => {
+		const store = storeOf('https://a.bandcamp.com/track/1');
+		const spider = new BandSpider(store, () => reader(url => { throw new NetworkError(`Request failed (0): ${url}`, '0'); }, () => false), undefined, fast);
+
+		await assert.rejects(spider.run(options({ idleWaitMs: 10 })), /network warning/);
+		assert.equal(spider.warning?.kind, 'connection');
+	});
+
+	it('clears the warning when the control request after the pause passes', async () => {
+		const store = storeOf('https://a.bandcamp.com/track/gone');
+		let controls = 0;
+		let warned = false;
+		const stop = new AbortController();
+		const spider: BandSpider = new BandSpider(store, () => reader(
+			() => { throw new PageNotFoundError(); },
+			() => {
+				controls++;
+				warned ||= spider.warning !== undefined;
+				return controls > 1;
+			},
+		), undefined, fast);
+		const running = spider.run(options({ idleWaitMs: 10 }), stop.signal);
+
+		await until(() => controls === 2);
+		await until(() => spider.warning === undefined);
+		stop.abort();
+		await running;
+
+		assert.equal(warned, true);
+	});
+
+	it('gives held URLs back without a mark when the crawler stops', async () => {
+		const url = 'https://a.bandcamp.com/track/gone';
+		const store = storeOf(url);
+		const stop = new AbortController();
+		// the default window is long: the 404 is still held when the crawler stops
+		const spider = new BandSpider(store, () => reader(() => { throw new PageNotFoundError(); }));
+		const running = spider.run(options({ idleWaitMs: 10 }), stop.signal);
+
+		await until(() => store.claims > 1);
+		stop.abort();
+		await running;
+
+		assert.deepEqual(store.released, [`rateLimited:${url}`]);
+	});
 
 	it('reports each scraping issue of a saved page', async () => {
 		const store = new FakeStore();

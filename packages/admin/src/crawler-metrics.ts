@@ -15,7 +15,20 @@ export interface MetricsReport {
 	newLinks?: number;
 	/** Why URLs failed, by reason. The counts are from the start of the crawler. */
 	failures?: Record<string, FailureReason>;
+	/** Set while a control request failed and no later one passed: the proxy may not work. */
+	warning?: ProxyWarning;
 }
+
+/** A warning about the proxy of a crawler. `notFound`: 404s made the control request, `connection`: network errors. */
+export interface ProxyWarning {
+	kind: 'notFound' | 'connection';
+	message: string;
+	/** When the control request failed, in ms since 1970. */
+	since: number;
+}
+
+/** The short name of a warning, as the pages show it. */
+export const warningName = (warning: ProxyWarning): string => warning.kind === 'notFound' ? '404 warning' : 'network warning';
 
 /** One reason of failed URLs. The key is like `http:503`, `timeout` or `network:ECONNRESET`. */
 export interface FailureReason {
@@ -45,6 +58,8 @@ export interface CrawlerStats {
 	failures: Array<FailureReason & { key: string }>;
 	/** Time of the last report, in ms since 1970. Undefined before the first report. */
 	reportedAt?: number;
+	/** The warning of the last report. It stays after the crawler stopped. */
+	warning?: ProxyWarning;
 }
 
 /** Per-minute values for the last minutes, oldest first. They feed the charts. */
@@ -139,6 +154,7 @@ export class CrawlerMetricsTracker {
 				.map(([key, reason]) => ({ key, ...reason }))
 				.sort((a, b) => b.count - a.count || a.key.localeCompare(b.key)),
 			reportedAt: last.at,
+			...(last.warning ? { warning: last.warning } : {}),
 		};
 	}
 

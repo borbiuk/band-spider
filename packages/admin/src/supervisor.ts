@@ -95,6 +95,7 @@ const metricsSchema = z.object({
 	bytesReceived: z.number().optional(),
 	newLinks: z.number().optional(),
 	failures: z.record(z.string(), z.object({ count: z.number(), last: z.string() })).optional(),
+	warning: z.object({ kind: z.enum(['notFound', 'connection']), message: z.string(), since: z.number() }).optional(),
 });
 
 /** What a DB service sends over IPC. */
