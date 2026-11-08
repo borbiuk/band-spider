@@ -110,4 +110,51 @@ export class ProxyPoolService {
 		}
 		await this.configStore.save({ ...config, proxyPool: config.proxyPool.filter(entry => poolKeyOf(entry) !== key) });
 	}
+
+	/**
+	 * Deletes many entries at once: the given keys, or the whole pool when no keys are given.
+	 * An entry that a crawler uses is kept and reported, like in `remove`. Keys not in the pool are ignored.
+	 */
+	async removeMany(keys?: string[]): Promise<RemoveManyResult> {
+		const config = await this.configStore.load();
+		const wanted = keys === undefined ? undefined : new Set(keys);
+		const usage = poolUsage(config);
+		const removed: string[] = [];
+		const kept: { key: string; usedBy: string[] }[] = [];
+		const pool = config.proxyPool.filter(entry => {
+			const key = poolKeyOf(entry);
+			if (wanted && !wanted.has(key)) {
+				return true;
+			}
+			const users = usage.get(key);
+			if (users) {
+				kept.push({ key, usedBy: users });
+				return true;
+			}
+			removed.push(key);
+			return false;
+		});
+		if (removed.length > 0) {
+			await this.configStore.save({ ...config, proxyPool: pool });
+		}
+		return { removed, kept };
+	}
 }
+
+/** What a delete of many entries did. */
+export interface RemoveManyResult {
+	removed: string[];
+	/** Entries that were asked for but kept, because crawlers use them. */
+	kept: { key: string; usedBy: string[] }[];
+}
+
+/** A short text about a delete of many entries, for a message on the page. */
+export const removeManyText = ({ removed, kept }: RemoveManyResult): string => {
+	const parts = [`${removed.length} ${removed.length === 1 ? 'proxy' : 'proxies'} deleted`];
+	if (kept.length > 0) {
+		const crawlers = [...new Set(kept.flatMap(item => item.usedBy))];
+		const names = crawlers.slice(0, 5).join(', ') + (crawlers.length > 5 ? ` and ${crawlers.length - 5} more` : '');
+		parts.push(`${kept.length} kept, because crawlers use them (${names}). Remove those crawlers or change their proxy first`);
+	}
+	return parts.join('. ');
+};

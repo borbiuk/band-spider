@@ -290,6 +290,53 @@ describe('proxy fragments', () => {
 	});
 });
 
+describe('delete many proxies', () => {
+	const LIST3 = `10.0.0.1:80:u:${PASS}\n10.0.0.2:80:u:${PASS}\n10.0.0.3:80:u:${PASS}`;
+	const hosts = () => saved().proxyPool.map((entry: { host: string }) => entry.host);
+
+	it('deletes the whole pool', async () => {
+		await importList(LIST3);
+		assert.match((await get('/fragments/proxy-list')).body, /hx-post="\/fragments\/proxies\/delete-all"[^>]*hx-confirm="Delete all 3 proxies\?"/);
+
+		const response = await postForm('/fragments/proxies/delete-all', {});
+		assert.equal(response.statusCode, 200);
+		assert.match(response.body, /toast-ok/);
+		assert.match(response.body, /3 proxies deleted/);
+		assert.deepEqual(hosts(), []);
+	});
+
+	it('keeps the proxies that crawlers use and names the crawlers', async () => {
+		await importList(LIST3);
+		await addPoolCrawler('c1', '10.0.0.2:80');
+		assert.match((await get('/fragments/proxy-list')).body, /Delete all 2 free proxies\? 1 used by crawlers are kept/);
+
+		const response = await postForm('/fragments/proxies/delete-all', {});
+		assert.match(response.body, /toast-warn/);
+		assert.match(response.body, /2 proxies deleted\. 1 kept, because crawlers use them \(c1\)/);
+		assert.deepEqual(hosts(), ['10.0.0.2']);
+	});
+
+	it('deletes only the chosen proxies', async () => {
+		await importList(LIST3);
+		await addPoolCrawler('c1', '10.0.0.2:80');
+		const response = await app.inject({
+			method: 'POST',
+			url: '/fragments/proxies/delete-chosen',
+			headers: { ...headers, origin, 'content-type': 'application/x-www-form-urlencoded' },
+			payload: 'keys=10.0.0.1%3A80&keys=10.0.0.2%3A80&type=item',
+		});
+		assert.match(response.body, /1 proxy deleted\. 1 kept/);
+		assert.deepEqual(hosts(), ['10.0.0.2', '10.0.0.3']);
+	});
+
+	it('asks to choose a proxy when none is chosen', async () => {
+		await importList(LIST3);
+		const response = await postForm('/fragments/proxies/delete-chosen', { type: 'item' });
+		assert.match(response.body, /Choose at least one proxy first/);
+		assert.equal(hosts().length, 3);
+	});
+});
+
 describe('crawler form with a pool', () => {
 	it('shows a select of pool entries and says when another crawler uses one', async () => {
 		await importList(`10.0.0.1:80:u:${PASS}\n10.0.0.2:80:u:${PASS}`);

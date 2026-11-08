@@ -7,7 +7,7 @@ import { autoAddText, AutoCrawlerService, autoCrawlerKindSchema } from './auto-c
 import { AdminConfig, adminConfigSchema, crawlerSettingSchema, CrawlerSetting, poolKeyOf } from './config';
 import { ConfigStore } from './config-store';
 import { AdminError, conflict, notFound } from './errors';
-import { ImportMode, ProxyPoolService } from './proxy-pool';
+import { ImportMode, ProxyPoolService, RemoveManyResult, removeManyText } from './proxy-pool';
 import { maskConfig, restoreSecrets } from './secrets';
 import { Supervisor } from './supervisor';
 import { bulkText } from './ui-bulk';
@@ -416,6 +416,24 @@ export const registerUi = (app: FastifyInstance, { supervisor, configStore, prox
 				: toast('ok', `${result.added} ${result.added === 1 ? 'crawler' : 'crawlers'} started`);
 		}
 		return html(reply, await proxyListHtml() + await statusOob() + message);
+	});
+
+	const removeManyToast = (result: RemoveManyResult): string =>
+		toast(result.kept.length > 0 ? 'warn' : 'ok', removeManyText(result));
+
+	// Deletes the whole pool, or the chosen proxies. Proxies that crawlers use are kept and named in the message.
+	app.post('/fragments/proxies/delete-all', async (_request, reply) => {
+		const result = await proxyPool.removeMany();
+		return html(reply, await proxyListHtml() + removeManyToast(result));
+	});
+
+	app.post('/fragments/proxies/delete-chosen', async (request, reply) => {
+		const form = chosenCrawlersFormSchema.safeParse(request.body ?? {});
+		if (!form.success || form.data.keys.length === 0) {
+			return html(reply, await proxyListHtml() + toast('warn', 'Choose at least one proxy first'));
+		}
+		const result = await proxyPool.removeMany(form.data.keys);
+		return html(reply, await proxyListHtml() + removeManyToast(result));
 	});
 
 	app.delete('/fragments/proxy-list/:key', async (request, reply) => {

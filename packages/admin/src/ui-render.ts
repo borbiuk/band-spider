@@ -459,8 +459,14 @@ const chosenCrawlersForm = (): string => `
 	<label class="check"><input type="checkbox" name="start" value="1" checked> Start right away</label>
 	<span class="grow"></span>
 	<button type="button" class="btn-ghost" data-select="none">Clear</button>
+	<button type="button" class="btn-danger" hx-post="/fragments/proxies/delete-chosen" hx-confirm="Delete the chosen proxies? Proxies that crawlers use are kept.">${icon('trash')}Delete chosen</button>
 	<button type="submit" class="btn-primary">${icon('plus')}Create crawlers for chosen proxies</button>
 </form>`;
+
+/** The question before the whole pool is deleted. */
+const deleteAllQuestion = (total: number, used: number): string => used === 0
+	? `Delete all ${total} proxies?`
+	: `Delete all ${total - used} free proxies? ${used} used by crawlers are kept.`;
 
 /** The crawlers of a proxy with a state dot each. A click opens the details. */
 const usedByCell = (item: PoolItem, states: Map<string, CrawlerStatus>): string => {
@@ -506,6 +512,7 @@ export const renderProxyList = (items: PoolItem[], crawlers: CrawlerStatus[] = [
 	<div class="buttons">
 		<button type="button" class="${items.length ? 'btn-ghost' : 'btn-primary'}" data-open-dialog="import-dialog">${icon('upload')}Import list</button>
 		${items.length === 0 ? '' : addCrawlersForm(free)}
+		${items.length === 0 ? '' : `<button type="button" class="btn-danger" hx-post="/fragments/proxies/delete-all" hx-target="#proxy-list" hx-swap="morph" hx-confirm="${esc(deleteAllQuestion(items.length, used))}">${icon('trash')}Delete all</button>`}
 	</div>
 </div>`;
 	if (rows.length === 0) {
